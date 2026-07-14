@@ -1,0 +1,11 @@
+
+> staypilot-pms@0.1.0 dev
+> node node_modules/next/dist/bin/next dev -p 3014
+
+   ▲ Next.js 15.5.19
+   - Local:        http://localhost:3014
+   - Network:      http://26.43.151.249:3014
+   - Environments: .env
+
+ ✓ Starting...
+ ✓ Ready in 2.2s
