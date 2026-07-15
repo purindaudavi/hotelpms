@@ -74,13 +74,30 @@ export function migrateReservationRecord(record: Reservation, propertyId: string
     ? record.reservationRooms
     : [{}];
   const reservationRooms = legacyRooms.map((room, index) => migrateRoom(room, reservation, propertyId, currency, index, timestamp));
+  const occupants = record.occupants?.length ? record.occupants : [{
+    id: createStableUuid(`${propertyId}:${id}:main-guest`),
+    propertyId,
+    reservationId: id,
+    roomLineId: reservationRooms[0]?.id ?? "",
+    name: record.guest || "Unassigned guest",
+    title: record.guestTitle,
+    guestType: "Adult" as const,
+    isPrimary: true,
+    isMainBooker: true,
+    email: record.email === "-" ? "" : record.email,
+    phone: record.phone === "-" ? "" : record.phone,
+    country: record.country === "-" ? "" : record.country,
+    createdAt: timestamp,
+    updatedAt: record.updatedAt ?? timestamp
+  }];
 
   return {
     ...reservation,
     rooms: reservationRooms.length,
     roomType: reservationRooms[0]?.roomType ?? reservation.roomType,
     room: reservationRooms[0]?.roomNumber ?? reservation.room,
-    reservationRooms
+    reservationRooms,
+    occupants
   };
 }
 

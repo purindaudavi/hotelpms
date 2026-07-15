@@ -2,6 +2,8 @@
 
 import { type Dispatch, type SetStateAction, useEffect, useRef, useState } from "react";
 
+const localStorageSyncEvent = "staypilot:local-storage-sync";
+
 export type StorageValidator<T> = (value: unknown) => value is T;
 export type StorageNormalizer<T> = (value: T) => T;
 
@@ -14,6 +16,15 @@ function isCompatibleWithFallback<T>(value: unknown, fallback: T): value is T {
   if (fallback === null) return value === null;
   if (typeof fallback === "object") return Boolean(value) && typeof value === "object" && !Array.isArray(value);
   return typeof value === typeof fallback;
+}
+
+function storageValuesEqual<T>(left: T, right: T) {
+  if (Object.is(left, right)) return true;
+  try {
+    return JSON.stringify(left) === JSON.stringify(right);
+  } catch {
+    return false;
+  }
 }
 
 function parseStoredValue<T>(raw: string | null, fallback: T, validator?: StorageValidator<T>, normalizer?: StorageNormalizer<T>): T | null {
@@ -83,9 +94,37 @@ export function useLocalStorageState<T>(
   }, [key]);
 
   useEffect(() => {
+    function sync(event: Event) {
+      const detail = (event as CustomEvent<{ key: string; value: unknown }>).detail;
+      if (!detail || detail.key !== key) return;
+      const next = detail.value;
+      if (!(validatorRef.current ? validatorRef.current(next) : isCompatibleWithFallback(next, resolveInitialValue(initialRef.current)))) return;
+      const normalized = normalizerRef.current ? normalizerRef.current(next as T) : next as T;
+      setValue((current) => storageValuesEqual(current, normalized) ? current : normalized);
+    }
+
+    function syncStorage(event: StorageEvent) {
+      if (event.storageArea !== window.localStorage || event.key !== key) return;
+      const fallback = resolveInitialValue(initialRef.current);
+      const next = parseStoredValue(event.newValue, fallback, validatorRef.current, normalizerRef.current);
+      if (next !== null) setValue((current) => storageValuesEqual(current, next) ? current : next);
+    }
+
+    window.addEventListener(localStorageSyncEvent, sync);
+    window.addEventListener("storage", syncStorage);
+    return () => {
+      window.removeEventListener(localStorageSyncEvent, sync);
+      window.removeEventListener("storage", syncStorage);
+    };
+  }, [key]);
+
+  useEffect(() => {
     if (!hydrated) return;
     try {
-      window.localStorage.setItem(key, JSON.stringify(value));
+      const serialized = JSON.stringify(value);
+      if (window.localStorage.getItem(key) === serialized) return;
+      window.localStorage.setItem(key, serialized);
+      window.dispatchEvent(new CustomEvent(localStorageSyncEvent, { detail: { key, value } }));
     } catch {
       // The app keeps the in-memory value if storage is unavailable or full.
     }

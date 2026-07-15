@@ -1,5 +1,7 @@
 import type { Reservation, Room } from "@/app/data/pms-data";
 import type { InventoryCellMap, RatePlan, RoomTypeRecord } from "./types";
+import type { BusinessBlock } from "../reservation/types";
+import { roomTypeAvailability } from "@/app/lib/business-block-repository";
 
 export function addDays(value: string, days: number) {
   const date = new Date(`${value}T00:00:00`);
@@ -36,9 +38,8 @@ export function buildInventoryCells(ratePlans: RatePlan[], dates: string[]) {
   }, {});
 }
 
-export function availabilityFor(roomType: RoomTypeRecord, date: string, reservations: Reservation[]) {
-  const occupied = reservations.filter((booking) => booking.roomType === roomType.name && date >= booking.checkIn && date < booking.checkOut).length;
-  return Math.max(roomType.rooms.length - occupied, 0);
+export function availabilityFor(roomType: RoomTypeRecord, date: string, reservations: Reservation[], blocks: BusinessBlock[] = []) {
+  return roomTypeAvailability(roomType.name, date, roomType.rooms.length, reservations, blocks);
 }
 
 export function roomTypeSearch(roomType: RoomTypeRecord, query: string) {

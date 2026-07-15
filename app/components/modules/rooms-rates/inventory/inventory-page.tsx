@@ -9,6 +9,11 @@ import type { InventoryCellMap, RatePlan, RoomTypeRecord, RoomsRatesModuleProps 
 import { addDays, availabilityFor, buildInventoryCells, dateLabel, makeInventoryKey, weekdayLabel } from "../utils";
 import { RatePlanDrawer } from "../components/rate-plan-drawer";
 import { Drawer, Field, Panel, RoomsRatesFrame, SelectInput, TextInput, ToolbarButton } from "../components/rooms-rates-ui";
+import { useLocalStorageState } from "@/app/components/hooks/use-local-storage-state";
+import { businessBlockStorageKey, isBusinessBlockArray, migrateBusinessBlockRecords } from "@/app/lib/business-block-repository";
+import { initialBusinessBlocks } from "../../reservation/constants";
+import type { BusinessBlock } from "../../reservation/types";
+import { property } from "@/app/data/pms-data";
 
 type InventoryPageProps = RoomsRatesModuleProps & {
   roomTypes: RoomTypeRecord[];
@@ -20,6 +25,7 @@ type InventoryAction = "" | "bulk" | "rules" | "logs" | "settings";
 type ActiveInventoryAction = Exclude<InventoryAction, "">;
 
 export function InventoryPage({ propertyId, roomTypes, ratePlans, setRatePlans, reservations, setToast }: InventoryPageProps) {
+  const [businessBlocks] = useLocalStorageState<BusinessBlock[]>(businessBlockStorageKey(propertyId), initialBusinessBlocks, isBusinessBlockArray, (records) => migrateBusinessBlockRecords(records, propertyId, property.currency, property.systemDate));
   const [currency, setCurrency] = useState("All Currencies");
   const [rateCode, setRateCode] = useState("All Rate Codes");
   const [option, setOption] = useState("All Inventory");
@@ -211,7 +217,7 @@ export function InventoryPage({ propertyId, roomTypes, ratePlans, setRatePlans, 
                       </td>
                       {dates.map((date) => (
                         <td key={date} className="border border-line px-3 py-3 text-center text-lg font-bold">
-                          {availabilityFor(roomType, date, reservations)}
+                          {availabilityFor(roomType, date, reservations, businessBlocks)}
                         </td>
                       ))}
                     </tr>

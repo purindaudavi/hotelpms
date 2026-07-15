@@ -8,12 +8,17 @@ import { addDays, bookingToForm, daysBetween, roomHasOverlap } from "../utils";
 import { RatePlan, ReservationForm, ReservationRoomDraft } from "../types";
 import { IconButton } from "./controls";
 import { InputField, SelectField, TextAreaField } from "./form-fields";
+import { useLocalStorageState } from "@/app/components/hooks/use-local-storage-state";
+import { businessBlockStorageKey, isBusinessBlockArray, migrateBusinessBlockRecords, roomTypeAvailability } from "@/app/lib/business-block-repository";
+import { initialBusinessBlocks } from "../../reservation/constants";
+import type { BusinessBlock } from "../../reservation/types";
 
 type SaveResult = { ok: true } | { ok: false; error: string };
 
 type ReservationEditorProps = {
   propertyId: string;
   booking: Reservation | null;
+  initialForm?: ReservationForm | null;
   reservations: Reservation[];
   roomList: Room[];
   ratePlans: RatePlan[];
@@ -27,9 +32,9 @@ type ReservationEditorProps = {
 };
 
 export function ReservationEditor(props: ReservationEditorProps) {
-  const { propertyId, booking, reservations, roomList, ratePlans, setRatePlans, homeCurrency, defaultDate, onClose, onSave, onDelete, setToast } = props;
+  const { propertyId, booking, initialForm, reservations, roomList, ratePlans, setRatePlans, homeCurrency, defaultDate, onClose, onSave, onDelete, setToast } = props;
   const [form, setForm] = useState(() => {
-    const initial = bookingToForm(booking, defaultDate, propertyId, ratePlans, homeCurrency);
+    const initial = initialForm ? structuredClone(initialForm) : bookingToForm(booking, defaultDate, propertyId, ratePlans, homeCurrency);
     if (booking) return initial;
     const firstLine = initial.roomLines[0];
     const available = roomList.find((room) => room.type === firstLine.roomType && room.status === "Available"
@@ -37,6 +42,7 @@ export function ReservationEditor(props: ReservationEditorProps) {
     initial.roomLines[0] = { ...firstLine, roomId: available?.id ?? "", roomNumber: available?.code ?? "" };
     return initial;
   });
+  const [businessBlocks] = useLocalStorageState<BusinessBlock[]>(businessBlockStorageKey(propertyId), initialBusinessBlocks, isBusinessBlockArray, (records) => migrateBusinessBlockRecords(records, propertyId, homeCurrency, defaultDate));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [rateDialogOpen, setRateDialogOpen] = useState(false);
@@ -49,6 +55,7 @@ export function ReservationEditor(props: ReservationEditorProps) {
       if (key === "bookingSource" && value === "Direct") {
         next.bookingReference = ""; next.tourNumber = ""; next.groupName = "";
       }
+      if (key === "status" && value !== "Checked-in") next.checkInNow = false;
       if (key === "checkIn" || key === "nights" || key === "isDayRoom") {
         next.checkOut = next.isDayRoom ? next.checkIn : addDays(next.checkIn, Math.max(Number(next.nights), 1));
       }
@@ -130,6 +137,17 @@ export function ReservationEditor(props: ReservationEditorProps) {
     if (!form.isDayRoom && form.checkOut <= form.checkIn) return "Check-out must be after check-in.";
     if (!form.roomLines.length) return "Add at least one room.";
     if (new Set(form.roomLines.map((line) => line.roomNumber)).size !== form.roomLines.length) return "The same physical room cannot be assigned twice.";
+    if (!form.businessBlockId) {
+      const dates = stayDates(form.checkIn, form.isDayRoom ? addDays(form.checkIn, 1) : form.checkOut);
+      const counts = form.roomLines.reduce<Record<string, number>>((result, line) => ({ ...result, [line.roomType]: (result[line.roomType] || 0) + 1 }), {});
+      for (const [roomTypeName, requested] of Object.entries(counts)) {
+        const capacity = roomTypes.find((type) => type.name === roomTypeName)?.rooms.length || 0;
+        for (const date of dates) {
+          const available = roomTypeAvailability(roomTypeName, date, capacity, reservations.filter((item) => item.id !== booking?.id), businessBlocks);
+          if (requested > available) return `${roomTypeName} has only ${available} sellable room(s) remaining on ${date} after active Business Block holds.`;
+        }
+      }
+    }
     for (const line of form.roomLines) {
       if (!line.roomNumber) return `Select an available room for ${line.roomType}.`;
       const room = roomList.find((item) => item.code === line.roomNumber);
@@ -165,6 +183,7 @@ export function ReservationEditor(props: ReservationEditorProps) {
         </header>
 
         <div className="flex-1 overflow-y-auto px-6 py-4">
+          {form.businessBlockId ? <div className="mb-3 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-800">Linked Business Block reservation. Saving updates pickup and remaining counts automatically.</div> : null}
           {error ? <div role="alert" className="mb-3 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
           <section className="rounded-md bg-slate-50 p-3"><div className="grid gap-3 lg:grid-cols-4">
             <SelectField label="Booking Source" value={form.bookingSource} onChange={(value) => update("bookingSource", value)} options={["Direct", "Agoda", "Expedia", "Booking.com", "Travel Agent"]} />
@@ -214,6 +233,8 @@ export function ReservationEditor(props: ReservationEditorProps) {
     </div>
   );
 }
+
+function stayDates(start: string, end: string) { const dates: string[] = []; const date = new Date(`${start}T00:00:00`); const last = new Date(`${end}T00:00:00`); while (date < last) { dates.push(date.toISOString().slice(0, 10)); date.setDate(date.getDate() + 1); } return dates; }
 
 function RatePlanDialog({ propertyId, homeCurrency, onClose, onCreate }: { propertyId: string; homeCurrency: string; onClose: () => void; onCreate: (plan: RatePlan) => void }) {
   const [name, setName] = useState("");

@@ -79,7 +79,8 @@ export function bookingToForm(booking: Reservation | null, defaultDate: string, 
     isFoc: false, focReason: "", requiresManagerApproval: false, createdAt: now, updatedAt: now
   }];
   return {
-    id: booking?.id, title: booking?.guestTitle ?? "Select", bookingSource: booking?.bookingSource ?? booking?.source ?? "Direct",
+    id: booking?.id, businessBlockId: booking?.businessBlockId, businessBlockAllocationId: booking?.businessBlockAllocationId,
+    title: booking?.guestTitle ?? "Select", bookingSource: booking?.bookingSource ?? booking?.source ?? "Direct",
     bookingReference: booking?.bookingReference ?? booking?.bookingRef ?? "", tourNumber: booking?.tourNumber ?? "", groupName: booking?.groupName ?? "",
     status: booking?.status ?? "Confirmed", checkIn, checkOut, nights: isDayRoom ? 0 : Math.max(daysBetween(checkIn, checkOut), 1), isDayRoom,
     ratePlanId: booking?.ratePlanId ?? plan?.id ?? "", currency: booking?.currency ?? plan?.currency ?? homeCurrency,
@@ -106,10 +107,18 @@ export function formToReservation(
   const nights = form.isDayRoom ? 1 : Math.max(form.nights, 1);
   const lines = form.roomLines.map((line) => ({ ...line, propertyId, reservationId: id, ratePlanId: form.ratePlanId,
     ratePlanName: plan?.name ?? line.ratePlanName, mealPlan: form.mealPlan, currency: form.currency,
+    businessBlockAllocationId: line.businessBlockAllocationId ?? form.businessBlockAllocationId,
     effectiveNightlyRate: line.isFoc ? 0 : Number(line.effectiveNightlyRate), createdAt: line.createdAt ?? now, updatedAt: now }));
   const first = lines[0];
   const total = lines.reduce((sum, line) => sum + line.effectiveNightlyRate * nights, 0);
   const bookingReference = form.bookingSource === "Direct" ? "" : form.bookingReference.trim();
+  const savedOccupants = existing?.occupants ?? [];
+  const mainBooker = savedOccupants.find((guest) => guest.isMainBooker);
+  const occupants = mainBooker
+    ? savedOccupants.map((guest) => guest.id === mainBooker.id ? { ...guest, roomLineId: lines.some((line) => line.id === guest.roomLineId) ? guest.roomLineId : first.id, name: form.guest.trim(), title: form.title, email: form.email.trim(), phone: form.phone.trim(), country: form.country === "Select Country" ? "" : form.country, updatedAt: now } : guest)
+    : [{ id: createUuid(), propertyId, reservationId: id, roomLineId: first.id, name: form.guest.trim(), title: form.title,
+      guestType: "Adult" as const, isPrimary: true, isMainBooker: true, email: form.email.trim(), phone: form.phone.trim(),
+      country: form.country === "Select Country" ? "" : form.country, createdAt: now, updatedAt: now }];
   return {
     ...existing, id, propertyId, resNo: existing?.resNo ?? `RES-${id.slice(0, 8).toUpperCase()}`,
     bookingRef: bookingReference, bookingReference, bookingSource: form.bookingSource, source: form.bookingSource,
@@ -123,6 +132,9 @@ export function formToReservation(
     ratePlanId: form.ratePlanId, ratePlanName: plan?.name ?? first.ratePlanName, mealPlan: form.mealPlan, currency: form.currency,
     refundable: form.refundable, cancellationPolicy: form.cancellationPolicy, reservationRooms: lines,
     emailStatus: form.sendEmail ? "pending" : existing?.emailStatus ?? "not_requested", emailFailureMessage: undefined,
+    businessBlockId: form.businessBlockId ?? existing?.businessBlockId,
+    businessBlockAllocationId: form.businessBlockAllocationId ?? existing?.businessBlockAllocationId,
+    occupants,
     createdBy: existing?.createdBy ?? createdBy, currencyMigratedFromProperty: false,
     createdAt: existing?.createdAt ?? now, updatedAt: now
   };

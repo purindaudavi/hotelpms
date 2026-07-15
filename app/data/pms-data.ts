@@ -93,6 +93,24 @@ export type ReservationRoom = {
   focSelectedBy?: string;
   focSelectedAt?: string;
   requiresManagerApproval: boolean;
+  businessBlockAllocationId?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ReservationOccupant = {
+  id: string;
+  propertyId: string;
+  reservationId: string;
+  roomLineId: string;
+  name: string;
+  title?: string;
+  guestType: "Adult" | "Child";
+  isPrimary: boolean;
+  isMainBooker: boolean;
+  email?: string;
+  phone?: string;
+  country?: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -134,6 +152,9 @@ export type Reservation = {
   refundable?: boolean;
   cancellationPolicy?: string;
   reservationRooms?: ReservationRoom[];
+  occupants?: ReservationOccupant[];
+  businessBlockId?: string;
+  businessBlockAllocationId?: string;
   checkedInAt?: string;
   checkedInBy?: string;
   emailStatus?: ReservationEmailStatus;

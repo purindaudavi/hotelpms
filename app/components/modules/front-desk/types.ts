@@ -25,6 +25,8 @@ export type DeskColumn = {
 
 export type ReservationForm = {
   id?: string;
+  businessBlockId?: string;
+  businessBlockAllocationId?: string;
   title: string;
   bookingSource: string;
   bookingReference: string;

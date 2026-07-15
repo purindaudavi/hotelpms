@@ -4,12 +4,16 @@ import { statusDotClass, statusPillClass } from "../constants";
 import { DeskColumn, DeskTab } from "../types";
 import { bookingMatchesCell, cellClass, groupRooms, occupiedOnDate, reservationRoomNumbers } from "../utils";
 import { IconButton } from "./controls";
+import type { BusinessBlock } from "../../reservation/types";
+import { roomTypeAvailability } from "@/app/lib/business-block-repository";
 
 type FrontDeskGridProps = {
   columns: DeskColumn[];
   displayedDateRange: string;
   roomList: Room[];
   reservations: Reservation[];
+  inventoryReservations: Reservation[];
+  businessBlocks: BusinessBlock[];
   tab: DeskTab;
   dayUse: boolean;
   gridDays: number;
@@ -29,6 +33,8 @@ export function FrontDeskGrid({
   displayedDateRange,
   roomList,
   reservations,
+  inventoryReservations,
+  businessBlocks,
   tab,
   dayUse,
   gridDays,
@@ -117,10 +123,10 @@ export function FrontDeskGrid({
             </tr>
           </thead>
           <tbody>
-            <SummaryRow label="Availability" columns={columns} roomList={roomList} reservations={reservations} dayUse={dayUse} />
-            <SummaryRow label="Occupied" columns={columns} roomList={roomList} reservations={reservations} dayUse={dayUse} mode="occupied" />
-            <SummaryRow label="Occupancy %" columns={columns} roomList={roomList} reservations={reservations} dayUse={dayUse} mode="occupancy" />
-            <SummaryRow label="Total (All)" columns={columns} roomList={roomList} reservations={reservations} dayUse={dayUse} mode="total" />
+            <SummaryRow label="Availability" columns={columns} roomList={roomList} reservations={inventoryReservations} businessBlocks={businessBlocks} dayUse={dayUse} />
+            <SummaryRow label="Occupied" columns={columns} roomList={roomList} reservations={inventoryReservations} businessBlocks={businessBlocks} dayUse={dayUse} mode="occupied" />
+            <SummaryRow label="Occupancy %" columns={columns} roomList={roomList} reservations={inventoryReservations} businessBlocks={businessBlocks} dayUse={dayUse} mode="occupancy" />
+            <SummaryRow label="Total (All)" columns={columns} roomList={roomList} reservations={inventoryReservations} businessBlocks={businessBlocks} dayUse={dayUse} mode="total" />
 
             {roomsByType.map(({ type, rooms }) => (
               <RoomGroup
@@ -129,6 +135,8 @@ export function FrontDeskGrid({
                 rooms={rooms}
                 columns={columns}
                 reservations={reservations}
+                inventoryReservations={inventoryReservations}
+                businessBlocks={businessBlocks}
                 tab={tab}
                 dayUse={dayUse}
                 onBookingClick={onBookingClick}
@@ -155,6 +163,7 @@ function SummaryRow({
   columns,
   roomList,
   reservations,
+  businessBlocks,
   dayUse,
   mode = "availability"
 }: {
@@ -162,6 +171,7 @@ function SummaryRow({
   columns: DeskColumn[];
   roomList: Room[];
   reservations: Reservation[];
+  businessBlocks: BusinessBlock[];
   dayUse: boolean;
   mode?: "availability" | "occupied" | "occupancy" | "total";
 }) {
@@ -174,7 +184,7 @@ function SummaryRow({
       {columns.map((column) => {
         const sellableRooms = roomList.filter((room) => room.status !== "Out of Order" && room.status !== "Maintenance");
         const occupied = occupiedOnDate(sellableRooms, reservations, column.date, dayUse);
-        const available = Math.max(sellableRooms.length - occupied, 0);
+        const available = availabilityAcrossTypes(sellableRooms, reservations, businessBlocks, column.date);
         const occupancy = Math.round((occupied / Math.max(sellableRooms.length, 1)) * 100);
         const value = mode === "occupied" ? occupied : mode === "occupancy" ? `${occupancy}%` : mode === "total" ? `${available} / ${occupied} (${occupancy}%)` : available;
         return (
@@ -192,6 +202,8 @@ function RoomGroup({
   rooms,
   columns,
   reservations,
+  inventoryReservations,
+  businessBlocks,
   tab,
   dayUse,
   onBookingClick
@@ -200,6 +212,8 @@ function RoomGroup({
   rooms: Room[];
   columns: DeskColumn[];
   reservations: Reservation[];
+  inventoryReservations: Reservation[];
+  businessBlocks: BusinessBlock[];
   tab: DeskTab;
   dayUse: boolean;
   onBookingClick: (booking: Reservation) => void;
@@ -213,10 +227,10 @@ function RoomGroup({
         </td>
         {columns.map((column) => {
           const sellableRooms = rooms.filter((room) => room.status !== "Out of Order" && room.status !== "Maintenance");
-          const occupied = occupiedOnDate(sellableRooms, reservations, column.date, dayUse);
+          const available = roomTypeAvailability(type, column.date, sellableRooms.length, inventoryReservations, businessBlocks);
           return (
             <td key={`${type}-${column.key}`} className={cellClass(column, dayUse, "border-b border-r border-line bg-slate-100 px-3 py-2 text-center font-semibold")}>
-              {Math.max(sellableRooms.length - occupied, 0)}/{sellableRooms.length}
+              {available}/{sellableRooms.length}
             </td>
           );
         })}
@@ -243,6 +257,10 @@ function RoomGroup({
       ))}
     </>
   );
+}
+
+function availabilityAcrossTypes(roomList: Room[], reservations: Reservation[], blocks: BusinessBlock[], date: string) {
+  return groupRooms(roomList).reduce((sum, group) => sum + roomTypeAvailability(group.type, date, group.rooms.length, reservations, blocks), 0);
 }
 
 function BookingPill({ booking, onClick }: { booking: Reservation; onClick: () => void }) {

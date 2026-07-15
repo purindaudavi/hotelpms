@@ -15,16 +15,63 @@ export type ReservationModuleProps = {
 
 export type BookingTab = "reservations" | "business-blocks";
 
+export type BusinessBlockStatus = "Tentative" | "Active" | "Released" | "Cancelled" | "Completed";
+
+export type BusinessBlockAllocation = {
+  id: string;
+  propertyId: string;
+  businessBlockId: string;
+  roomTypeId: string;
+  roomTypeName: string;
+  quantity: number;
+  ratePlanId?: string;
+  ratePlanName?: string;
+  mealPlan: string;
+  currency: string;
+  negotiatedRate: number;
+  taxInclusive: boolean;
+  isComplimentary: boolean;
+  complimentaryReason?: string;
+  releasedQuantity: number;
+};
+
 export type BusinessBlock = {
   id: string;
-  blockNo: string;
-  company: string;
-  contact: string;
-  status: "Active" | "Tentative" | "Released";
-  from: string;
-  to: string;
-  rooms: number;
-  rate: number;
+  propertyId: string;
+  blockNumber: string;
+  blockName: string;
+  companyName: string;
+  contactName: string;
+  contactEmail: string;
+  contactPhone: string;
+  checkIn: string;
+  checkOut: string;
+  cutoffDate: string;
+  status: BusinessBlockStatus;
+  paymentMethod?: string;
+  billingParty: "Company" | "Guest" | "Travel Agent" | "Split";
+  depositRequired: number;
+  depositPaid: number;
+  paymentDueDate?: string;
+  billingRemarks?: string;
+  cancellationPolicy?: string;
+  blockRemarks?: string;
+  internalRemarks?: string;
+  specialRequirements?: string;
+  allocations: BusinessBlockAllocation[];
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type BusinessBlockLogEntry = {
+  id: string;
+  propertyId: string;
+  businessBlockId: string;
+  action: string;
+  description: string;
+  createdBy: string;
+  createdAt: string;
 };
 
 export type EventBooking = {

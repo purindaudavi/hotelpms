@@ -2,9 +2,17 @@
 
 import type { Dispatch, SetStateAction } from "react";
 import type { Reservation, Room } from "@/app/data/pms-data";
+import { useLocalStorageState } from "@/app/components/hooks/use-local-storage-state";
 import { currentSessionUser } from "@/app/lib/current-user";
 import { isValidEmail, sendReservationConfirmation } from "@/app/lib/emailjs-confirmation";
 import { deleteReservation, saveReservationRecord } from "@/app/lib/reservation-repository";
+import {
+  appendReservationLog,
+  createReservationLogEntry,
+  isReservationLogArray,
+  reservationChanges,
+  reservationLogStorageKey
+} from "@/app/lib/reservation-activity-repository";
 import type { RatePlan, ReservationForm } from "./types";
 import { formToReservation, reservationRoomNumbers } from "./utils";
 
@@ -27,6 +35,12 @@ export type ReservationSaveResult =
 
 export function useReservationActions(options: UseReservationActionsOptions) {
   const { propertyId, businessDate, reservations, setReservations, roomList, setRoomList, ratePlans, setToast } = options;
+  const [, setReservationLogs] = useLocalStorageState(reservationLogStorageKey(propertyId), [], isReservationLogArray);
+
+  function log(reservationId: string, action: string, description: string, changes?: Record<string, { from: unknown; to: unknown }>) {
+    const entry = createReservationLogEntry({ propertyId, reservationId, action, description, changes, createdBy: currentSessionUser.name });
+    setReservationLogs((current) => appendReservationLog(current, entry));
+  }
 
   async function deliverEmail(booking: Reservation) {
     const result = await sendReservationConfirmation(booking);
@@ -35,6 +49,8 @@ export function useReservationActions(options: UseReservationActionsOptions) {
       : { ...booking, emailStatus: "failed", emailFailureMessage: result.failureMessage, updatedAt: new Date().toISOString() };
 
     setReservations((current) => saveReservationRecord(current, updated));
+    log(booking.id, result.ok ? "Confirmation email sent" : "Confirmation email failed",
+      result.ok ? `Confirmation email sent to ${booking.email}.` : `Confirmation email failed for ${booking.email}: ${result.failureMessage || "Unknown error"}.`);
     setToast(result.ok ? "Reservation saved and confirmation email sent." : "Reservation saved, but the confirmation email could not be sent.");
     return updated;
   }
@@ -74,9 +90,22 @@ export function useReservationActions(options: UseReservationActionsOptions) {
         if (previouslyAssigned.has(room.code)) return { ...room, status: "Available", housekeeping: "Dirty" };
         return room;
       }));
+    } else if (existing?.status === "Checked-in" && booking.status !== "Checked-in") {
+      const previouslyAssigned = new Set(reservationRoomNumbers(existing));
+      setRoomList((current) => current.map((room) => previouslyAssigned.has(room.code)
+        ? { ...room, status: "Available", housekeeping: "Dirty" }
+        : room));
     }
 
     setReservations((current) => saveReservationRecord(current, booking));
+    const changes = existing ? reservationChanges(existing, booking) : undefined;
+    log(booking.id, existing ? "Reservation updated" : "Reservation created",
+      existing ? `Reservation ${booking.resNo} was updated.` : `Reservation ${booking.resNo} was created.`, changes);
+    if (form.checkInNow && existing?.status !== "Checked-in") {
+      log(booking.id, "Checked in", `Guest checked in to room${booking.rooms === 1 ? "" : "s"} ${reservationRoomNumbers(booking).join(", ")}.`);
+    }
+    if (existing?.status === "Checked-in" && booking.status === "Checked-out") log(booking.id, "Checked out", `Guest checked out from ${reservationRoomNumbers(existing).join(", ")}.`);
+    if (existing && existing.status !== "Cancelled" && booking.status === "Cancelled") log(booking.id, "Reservation cancelled", `Reservation ${booking.resNo} was cancelled.`);
     setToast(`Reservation ${existing ? "updated" : "created"} locally`);
 
     if (form.sendEmail && isValidEmail(booking.email)) booking = await deliverEmail(booking);
@@ -92,8 +121,9 @@ export function useReservationActions(options: UseReservationActionsOptions) {
         : room));
     }
     setReservations((current) => deleteReservation(current, bookingId));
+    if (existing) log(existing.id, "Reservation deleted", `Reservation ${existing.resNo} was removed from the prototype reservation list.`);
     setToast("Reservation removed from the shared local PMS source");
   }
 
-  return { saveReservation, removeReservation, deliverEmail };
+  return { saveReservation, removeReservation, deliverEmail, log };
 }
