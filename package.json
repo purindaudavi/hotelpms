@@ -9,7 +9,6 @@
     "typecheck": "node node_modules/typescript/bin/tsc --noEmit"
   },
   "dependencies": {
-    "@emailjs/browser": "^4.4.1",
     "@supabase/supabase-js": "^2.52.1",
     "axios": "^1.18.1",
     "lucide-react": "^0.468.0",

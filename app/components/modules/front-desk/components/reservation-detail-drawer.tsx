@@ -22,6 +22,7 @@ import { statusPillClass } from "../constants";
 import { daysBetween } from "../utils";
 import { IconButton } from "./controls";
 import { ReservationRoomingList } from "./reservation-rooming-list";
+import { ReservationEmailActions } from "./reservation-email-actions";
 
 type DetailTab = "Overview" | "Rooms" | "Guests" | "Financials" | "Rooming List" | "Attachments" | "Log";
 
@@ -31,6 +32,8 @@ type ReservationDetailDrawerProps = {
   onClose: () => void;
   onEdit: (booking: Reservation) => void;
   onRetryEmail: () => Promise<void>;
+  onSendReminder?: () => Promise<boolean>;
+  onSendGeneral?: (to: string, subject: string, message: string) => Promise<boolean>;
   onUpdateReservation: (booking: Reservation) => void;
   setToast: (message: string) => void;
 };
@@ -38,7 +41,7 @@ type ReservationDetailDrawerProps = {
 const detailTabs: DetailTab[] = ["Overview", "Rooms", "Guests", "Financials", "Rooming List", "Attachments", "Log"];
 
 export function ReservationDetailDrawer(props: ReservationDetailDrawerProps) {
-  const { propertyId, booking, onClose, onEdit, onRetryEmail, onUpdateReservation, setToast } = props;
+  const { propertyId, booking, onClose, onEdit, onRetryEmail, onSendReminder, onSendGeneral, onUpdateReservation, setToast } = props;
   const [activeTab, setActiveTab] = useState<DetailTab>("Overview");
   const [documentCategory, setDocumentCategory] = useState("Voucher");
   const [attachmentDescription, setAttachmentDescription] = useState("");
@@ -105,6 +108,7 @@ export function ReservationDetailDrawer(props: ReservationDetailDrawerProps) {
         </div>
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3"><span className="rounded-md bg-slate-100 px-3 py-2 text-sm font-semibold">{booking.isDayRoom ? "Day room" : "Overnight reservation"}</span><div className="flex gap-2"><button type="button" className="rounded-md border border-line px-4 py-2 text-sm font-semibold" onClick={() => void copyReference()}>Copy reference</button><button type="button" className="rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white" onClick={() => onEdit(booking)}>Edit reservation</button></div></div>
         <div className="mt-3 flex items-center justify-between rounded-md bg-slate-50 px-3 py-2 text-xs"><span>Email request: <b>{booking.emailStatus?.replaceAll("_", " ") ?? "not requested"}</b>{booking.emailFailureMessage ? ` - ${booking.emailFailureMessage}` : ""}</span>{booking.emailStatus === "failed" ? <button type="button" className="font-semibold text-blue-700" onClick={() => void onRetryEmail()}>Retry email</button> : null}</div>
+        {onSendReminder && onSendGeneral ? <ReservationEmailActions booking={booking} onReminder={onSendReminder} onGeneral={onSendGeneral} /> : null}
       </header>
 
       <div className="flex-1 overflow-y-auto px-5 py-5">

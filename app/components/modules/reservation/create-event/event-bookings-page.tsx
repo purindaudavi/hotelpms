@@ -26,6 +26,9 @@ export function EventBookingsPage({ propertyId, setToast }: ReservationModulePro
   const [venue, setVenue] = useState("All venues");
   const [view, setView] = useState<"grid" | "list">("grid");
   const [createOpen, setCreateOpen] = useState(false);
+  const [createDate, setCreateDate] = useState(reservationSystemDate);
+  const [createHour, setCreateHour] = useState(10);
+  const [editingEvent, setEditingEvent] = useState<EventBooking | null>(null);
 
   const days = useMemo(() => Array.from({ length: 7 }, (_, index) => addDays(weekStart, index)), [weekStart]);
   const visibleEvents = useMemo(() => {
@@ -39,10 +42,51 @@ export function EventBookingsPage({ propertyId, setToast }: ReservationModulePro
     setToast("Event calendar refreshed");
   }
 
-  function addEvent(event: EventBooking) {
-    setEvents((current) => [event, ...current]);
+  function saveEvent(event: EventBooking) {
+    if (event.end <= event.start) {
+      return "End time must be later than start time.";
+    }
+
+    const conflict = events.find((existing) =>
+      existing.id !== event.id &&
+      existing.date === event.date &&
+      existing.venue === event.venue &&
+      event.start < existing.end &&
+      event.end > existing.start
+    );
+
+    if (conflict) {
+      return `${event.venue} is already booked from ${conflict.start} to ${conflict.end} for “${conflict.title}”.`;
+    }
+
+    const isEditing = events.some((existing) => existing.id === event.id);
+    setEvents((current) => isEditing
+      ? current.map((existing) => existing.id === event.id ? event : existing)
+      : [event, ...current]
+    );
     setCreateOpen(false);
-    setToast("Event booking created");
+    setEditingEvent(null);
+    setToast(isEditing ? "Event booking updated" : "Event booking created");
+    return null;
+  }
+
+  function closeEventForm() {
+    setCreateOpen(false);
+    setEditingEvent(null);
+  }
+
+  function deleteEvent(event: EventBooking) {
+    if (!window.confirm(`Delete “${event.title}”? This action cannot be undone.`)) return;
+
+    setEvents((current) => current.filter((existing) => existing.id !== event.id));
+    closeEventForm();
+    setToast("Event booking deleted");
+  }
+
+  function editEvent(event: EventBooking) {
+    setEditingEvent(event);
+    setCreateDate(event.date);
+    setCreateOpen(true);
   }
 
   return (
@@ -88,22 +132,39 @@ export function EventBookingsPage({ propertyId, setToast }: ReservationModulePro
           <ToolbarButton icon={<RefreshCw className="h-4 w-4" />} onClick={resetCalendar}>
             Refresh
           </ToolbarButton>
-          <ToolbarButton tone="purple" icon={<CalendarPlus className="h-4 w-4" />} onClick={() => setCreateOpen(true)}>
+          <ToolbarButton tone="purple" icon={<CalendarPlus className="h-4 w-4" />} onClick={() => {
+            setEditingEvent(null);
+            setCreateDate(reservationSystemDate);
+            setCreateHour(10);
+            setCreateOpen(true);
+          }}>
             Create event
           </ToolbarButton>
         </div>
       </div>
 
       {view === "grid" ? (
-        <CalendarGrid days={days} events={visibleEvents} onSlotClick={(date, hour) => {
+        <CalendarGrid days={days} events={visibleEvents} onEventClick={editEvent} onSlotClick={(date, hour) => {
+          setEditingEvent(null);
+          setCreateDate(date);
+          setCreateHour(hour);
           setCreateOpen(true);
           setToast(`Creating event on ${date} at ${String(hour).padStart(2, "0")}:00`);
         }} />
       ) : (
-        <EventList events={visibleEvents} />
+        <EventList events={visibleEvents} onEventClick={editEvent} />
       )}
 
-      {createOpen ? <EventFormModal onClose={() => setCreateOpen(false)} onSave={addEvent} /> : null}
+      {createOpen ? (
+        <EventFormModal
+          initialDate={createDate}
+          initialHour={createHour}
+          initialEvent={editingEvent}
+          onClose={closeEventForm}
+          onDelete={deleteEvent}
+          onSave={saveEvent}
+        />
+      ) : null}
     </ReservationPageFrame>
   );
 }
@@ -111,21 +172,25 @@ export function EventBookingsPage({ propertyId, setToast }: ReservationModulePro
 function CalendarGrid({
   days,
   events,
+  onEventClick,
   onSlotClick
 }: {
   days: string[];
   events: EventBooking[];
+  onEventClick: (event: EventBooking) => void;
   onSlotClick: (date: string, hour: number) => void;
 }) {
+  const eventLayouts = createEventLayouts(events);
+
   return (
     <Panel bodyClassName="p-0">
       <div className="max-h-[calc(100vh-250px)] overflow-auto">
         <div className="grid min-w-[1180px] grid-cols-[88px_repeat(7,minmax(140px,1fr))]">
-          <div className="sticky left-0 top-0 z-20 border-b border-r border-line bg-slate-50 p-4 text-sm font-semibold">TIME</div>
+          <div className="sticky left-0 top-0 z-40 border-b border-r border-line bg-slate-50 p-4 text-sm font-semibold">TIME</div>
           {days.map((day) => (
             <div
               key={day}
-              className={`sticky top-0 z-10 border-b border-r border-line p-4 text-center ${
+              className={`sticky top-0 z-30 border-b border-r border-line p-4 text-center ${
                 day === reservationSystemDate ? "bg-violet-50 text-violet-700" : "bg-slate-50"
               }`}
             >
@@ -136,7 +201,15 @@ function CalendarGrid({
           ))}
 
           {hours.map((hour) => (
-            <TimeRow key={hour} hour={hour} days={days} events={events} onSlotClick={onSlotClick} />
+            <TimeRow
+              key={hour}
+              hour={hour}
+              days={days}
+              events={events}
+              eventLayouts={eventLayouts}
+              onEventClick={onEventClick}
+              onSlotClick={onSlotClick}
+            />
           ))}
         </div>
       </div>
@@ -148,11 +221,15 @@ function TimeRow({
   hour,
   days,
   events,
+  eventLayouts,
+  onEventClick,
   onSlotClick
 }: {
   hour: number;
   days: string[];
   events: EventBooking[];
+  eventLayouts: Map<string, EventLayout>;
+  onEventClick: (event: EventBooking) => void;
   onSlotClick: (date: string, hour: number) => void;
 }) {
   return (
@@ -163,31 +240,129 @@ function TimeRow({
       {days.map((day) => {
         const cellEvents = events.filter((event) => event.date === day && Number(event.start.slice(0, 2)) === hour);
         return (
-          <button
+          <div
             key={`${day}-${hour}`}
-            type="button"
+            role="button"
+            tabIndex={0}
             onClick={() => onSlotClick(day, hour)}
-            className={`h-20 border-b border-r border-line p-2 text-left transition hover:bg-slate-50 ${day === reservationSystemDate ? "bg-violet-50/40" : "bg-white"}`}
+            onKeyDown={(keyboardEvent) => {
+              if (
+                keyboardEvent.target === keyboardEvent.currentTarget &&
+                (keyboardEvent.key === "Enter" || keyboardEvent.key === " ")
+              ) onSlotClick(day, hour);
+            }}
+            className={`relative h-20 border-b border-r border-line text-left transition hover:bg-slate-50 ${day === reservationSystemDate ? "bg-violet-50/40" : "bg-white"}`}
           >
-            {cellEvents.map((event) => (
-              <div
-                key={event.id}
-                className={`mb-1 rounded-md px-2 py-1 text-xs font-semibold ${
-                  event.status === "Confirmed" ? "bg-emerald-100 text-emerald-800" : event.status === "Tentative" ? "bg-amber-100 text-amber-800" : "bg-slate-200 text-slate-700"
-                }`}
-              >
-                <p className="truncate">{event.title}</p>
-                <p className="truncate font-normal">{event.start} - {event.end}</p>
-              </div>
-            ))}
-          </button>
+            {cellEvents.map((event) => {
+              const startMinutes = timeToMinutes(event.start);
+              const endMinutes = timeToMinutes(event.end);
+              const layout = eventLayouts.get(event.id) ?? { laneIndex: 0, laneCount: 1 };
+              const top = ((startMinutes % 60) / 60) * 80 + 4;
+              const height = Math.max(((endMinutes - startMinutes) / 60) * 80 - 8, 36);
+              const laneWidth = 100 / layout.laneCount;
+
+              return (
+                <button
+                  key={event.id}
+                  type="button"
+                  onClick={(clickEvent) => {
+                    clickEvent.stopPropagation();
+                    onEventClick(event);
+                  }}
+                  style={{
+                    top,
+                    height,
+                    left: `calc(${layout.laneIndex * laneWidth}% + 4px)`,
+                    width: `calc(${laneWidth}% - 8px)`
+                  }}
+                  className={`absolute z-10 overflow-hidden rounded-md px-2 py-1 text-left text-xs font-semibold shadow-sm transition hover:z-20 hover:ring-2 hover:ring-white/70 ${
+                    event.status === "Confirmed" ? "bg-emerald-100 text-emerald-800" : event.status === "Tentative" ? "bg-amber-100 text-amber-800" : "bg-slate-200 text-slate-700"
+                  }`}
+                >
+                  <p className="truncate">{event.title}</p>
+                  <p className="truncate font-normal">{event.start} - {event.end}</p>
+                  <p className="truncate font-normal opacity-80">{event.venue}</p>
+                </button>
+              );
+            })}
+          </div>
         );
       })}
     </>
   );
 }
 
-function EventList({ events }: { events: EventBooking[] }) {
+function timeToMinutes(time: string) {
+  const [hour, minute] = time.split(":").map(Number);
+  return hour * 60 + minute;
+}
+
+type EventLayout = {
+  laneIndex: number;
+  laneCount: number;
+};
+
+function createEventLayouts(events: EventBooking[]) {
+  const layouts = new Map<string, EventLayout>();
+  const eventsByDate = new Map<string, EventBooking[]>();
+
+  events.forEach((event) => {
+    eventsByDate.set(event.date, [...(eventsByDate.get(event.date) ?? []), event]);
+  });
+
+  eventsByDate.forEach((dayEvents) => {
+    const sortedEvents = [...dayEvents].sort((first, second) =>
+      timeToMinutes(first.start) - timeToMinutes(second.start) ||
+      timeToMinutes(first.end) - timeToMinutes(second.end)
+    );
+    let overlapGroup: EventBooking[] = [];
+    let groupEnd = -1;
+
+    function placeOverlapGroup() {
+      if (!overlapGroup.length) return;
+
+      const laneEndTimes: number[] = [];
+      const assignments = overlapGroup.map((event) => {
+        const start = timeToMinutes(event.start);
+        const end = timeToMinutes(event.end);
+        let laneIndex = laneEndTimes.findIndex((laneEnd) => laneEnd <= start);
+
+        if (laneIndex === -1) {
+          laneIndex = laneEndTimes.length;
+          laneEndTimes.push(end);
+        } else {
+          laneEndTimes[laneIndex] = end;
+        }
+
+        return { event, laneIndex };
+      });
+
+      assignments.forEach(({ event, laneIndex }) => {
+        layouts.set(event.id, { laneIndex, laneCount: laneEndTimes.length });
+      });
+    }
+
+    sortedEvents.forEach((event) => {
+      const start = timeToMinutes(event.start);
+      const end = timeToMinutes(event.end);
+
+      if (overlapGroup.length && start >= groupEnd) {
+        placeOverlapGroup();
+        overlapGroup = [];
+        groupEnd = -1;
+      }
+
+      overlapGroup.push(event);
+      groupEnd = Math.max(groupEnd, end);
+    });
+
+    placeOverlapGroup();
+  });
+
+  return layouts;
+}
+
+function EventList({ events, onEventClick }: { events: EventBooking[]; onEventClick: (event: EventBooking) => void }) {
   return (
     <Panel title="Event bookings" subtitle={`${events.length} events found`} bodyClassName="p-0">
       <table className="w-full text-left text-sm">
@@ -200,7 +375,7 @@ function EventList({ events }: { events: EventBooking[] }) {
         </thead>
         <tbody>
           {events.map((event) => (
-            <tr key={event.id} className="border-t border-line">
+            <tr key={event.id} onClick={() => onEventClick(event)} className="cursor-pointer border-t border-line hover:bg-slate-50">
               <td className="px-5 py-3">{event.date}</td>
               <td className="px-5 py-3">{event.start} - {event.end}</td>
               <td className="px-5 py-3 font-semibold">{event.title}</td>
@@ -215,17 +390,34 @@ function EventList({ events }: { events: EventBooking[] }) {
   );
 }
 
-function EventFormModal({ onClose, onSave }: { onClose: () => void; onSave: (event: EventBooking) => void }) {
-  const [event, setEvent] = useState<EventBooking>({
+function EventFormModal({
+  initialDate,
+  initialHour,
+  initialEvent,
+  onClose,
+  onDelete,
+  onSave
+}: {
+  initialDate: string;
+  initialHour: number;
+  initialEvent: EventBooking | null;
+  onClose: () => void;
+  onDelete: (event: EventBooking) => void;
+  onSave: (event: EventBooking) => string | null;
+}) {
+  const initialStart = `${String(initialHour).padStart(2, "0")}:00`;
+  const initialEnd = initialHour === 23 ? "23:59" : `${String(initialHour + 1).padStart(2, "0")}:00`;
+  const [event, setEvent] = useState<EventBooking>(initialEvent ? { ...initialEvent } : {
     id: `event-${Date.now()}`,
     title: "",
     venue: "Meeting Room",
-    date: reservationSystemDate,
-    start: "10:00",
-    end: "11:00",
+    date: initialDate,
+    start: initialStart,
+    end: initialEnd,
     owner: "Asiri Perera",
     status: "Confirmed"
   });
+  const [error, setError] = useState("");
 
   function update<K extends keyof EventBooking>(key: K, value: EventBooking[K]) {
     setEvent((current) => ({ ...current, [key]: value }));
@@ -233,11 +425,11 @@ function EventFormModal({ onClose, onSave }: { onClose: () => void; onSave: (eve
 
   function submit(formEvent: FormEvent) {
     formEvent.preventDefault();
-    onSave(event);
+    setError(onSave(event) ?? "");
   }
 
   return (
-    <Modal title="Create event" onClose={onClose}>
+    <Modal title={initialEvent ? "Edit event" : "Create event"} onClose={onClose}>
       <form onSubmit={submit} className="space-y-4">
         <Field label="Event title">
           <TextInput value={event.title} onChange={(inputEvent) => update("title", inputEvent.target.value)} placeholder="Event name" required />
@@ -270,11 +462,25 @@ function EventFormModal({ onClose, onSave }: { onClose: () => void; onSave: (eve
             </SelectInput>
           </Field>
         </div>
-        <div className="flex justify-end gap-2 border-t border-line pt-4">
-          <ToolbarButton onClick={onClose}>Cancel</ToolbarButton>
-          <ToolbarButton type="submit" tone="purple">
-            Create event
-          </ToolbarButton>
+        {error ? <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</p> : null}
+        <div className="flex items-center justify-between gap-2 border-t border-line pt-4">
+          <div>
+            {initialEvent ? (
+              <button
+                type="button"
+                onClick={() => onDelete(initialEvent)}
+                className="inline-flex h-11 items-center justify-center rounded-md border border-red-600 bg-red-600 px-4 text-sm font-semibold text-white transition hover:bg-red-700"
+              >
+                Delete event
+              </button>
+            ) : null}
+          </div>
+          <div className="flex gap-2">
+            <ToolbarButton onClick={onClose}>Cancel</ToolbarButton>
+            <ToolbarButton type="submit" tone="purple">
+              {initialEvent ? "Save changes" : "Create event"}
+            </ToolbarButton>
+          </div>
         </div>
       </form>
     </Modal>

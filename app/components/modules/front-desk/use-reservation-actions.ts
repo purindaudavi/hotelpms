@@ -4,8 +4,8 @@ import type { Dispatch, SetStateAction } from "react";
 import type { Reservation, Room } from "@/app/data/pms-data";
 import { useLocalStorageState } from "@/app/components/hooks/use-local-storage-state";
 import { currentSessionUser } from "@/app/lib/current-user";
-import { isValidEmail, sendReservationConfirmation } from "@/app/lib/emailjs-confirmation";
 import { deleteReservation, saveReservationRecord } from "@/app/lib/reservation-repository";
+import { statusEmailCategory } from "@/app/lib/reservation-email";
 import {
   appendReservationLog,
   createReservationLogEntry,
@@ -15,6 +15,7 @@ import {
 } from "@/app/lib/reservation-activity-repository";
 import type { RatePlan, ReservationForm } from "./types";
 import { formToReservation, reservationRoomNumbers } from "./utils";
+import { useReservationEmailDelivery } from "./use-reservation-email-delivery";
 
 const invalidCheckInStatuses = new Set(["Cancelled", "No Show", "Blocked", "Checked-out"]);
 
@@ -42,18 +43,7 @@ export function useReservationActions(options: UseReservationActionsOptions) {
     setReservationLogs((current) => appendReservationLog(current, entry));
   }
 
-  async function deliverEmail(booking: Reservation) {
-    const result = await sendReservationConfirmation(booking);
-    const updated: Reservation = result.ok
-      ? { ...booking, emailStatus: "sent", emailSentAt: result.sentAt, emailFailureMessage: undefined, updatedAt: new Date().toISOString() }
-      : { ...booking, emailStatus: "failed", emailFailureMessage: result.failureMessage, updatedAt: new Date().toISOString() };
-
-    setReservations((current) => saveReservationRecord(current, updated));
-    log(booking.id, result.ok ? "Confirmation email sent" : "Confirmation email failed",
-      result.ok ? `Confirmation email sent to ${booking.email}.` : `Confirmation email failed for ${booking.email}: ${result.failureMessage || "Unknown error"}.`);
-    setToast(result.ok ? "Reservation saved and confirmation email sent." : "Reservation saved, but the confirmation email could not be sent.");
-    return updated;
-  }
+  const emailDelivery = useReservationEmailDelivery({ setReservations, setToast, log });
 
   async function saveReservation(form: ReservationForm): Promise<ReservationSaveResult> {
     const existing = reservations.find((booking) => booking.id === form.id);
@@ -106,9 +96,23 @@ export function useReservationActions(options: UseReservationActionsOptions) {
     }
     if (existing?.status === "Checked-in" && booking.status === "Checked-out") log(booking.id, "Checked out", `Guest checked out from ${reservationRoomNumbers(existing).join(", ")}.`);
     if (existing && existing.status !== "Cancelled" && booking.status === "Cancelled") log(booking.id, "Reservation cancelled", `Reservation ${booking.resNo} was cancelled.`);
-    setToast(`Reservation ${existing ? "updated" : "created"} locally`);
+    const statusChanged = Boolean(existing && existing.status !== booking.status);
+    const emailCategory = !existing
+      ? booking.status === "Checked-in"
+        ? "check-in"
+        : form.sendEmail
+          ? "confirmation"
+          : undefined
+      : statusChanged
+        ? statusEmailCategory[booking.status]
+        : undefined;
 
-    if (form.sendEmail && isValidEmail(booking.email)) booking = await deliverEmail(booking);
+    if (emailCategory) {
+      const delivery = await emailDelivery.deliver(booking, emailCategory, existing ? "status" : "creation");
+      booking = delivery.booking;
+    } else {
+      setToast(`Reservation ${existing ? "updated" : "created"} locally`);
+    }
     return { ok: true, reservation: booking };
   }
 
@@ -125,5 +129,11 @@ export function useReservationActions(options: UseReservationActionsOptions) {
     setToast("Reservation removed from the shared local PMS source");
   }
 
-  return { saveReservation, removeReservation, deliverEmail, log };
+  return {
+    saveReservation,
+    removeReservation,
+    deliverEmail: emailDelivery.retry,
+    sendManualEmail: emailDelivery.sendManual,
+    log
+  };
 }

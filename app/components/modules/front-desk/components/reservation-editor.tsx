@@ -1,8 +1,8 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useMemo, useRef, useState } from "react";
 import { Bot, Maximize2, Pencil, PlaySquare, Plus, Trash2, X } from "lucide-react";
 import { Reservation, ReservationStatus, Room, roomTypes } from "@/app/data/pms-data";
 import { createUuid } from "@/app/lib/record-ids";
-import { isValidEmail } from "@/app/lib/emailjs-confirmation";
+import { isValidEmail } from "@/app/lib/reservation-email";
 import { createRatePlan, getPlanRate } from "../rate-plans";
 import { addDays, bookingToForm, daysBetween, roomHasOverlap } from "../utils";
 import { RatePlan, ReservationForm, ReservationRoomDraft } from "../types";
@@ -44,6 +44,7 @@ export function ReservationEditor(props: ReservationEditorProps) {
   });
   const [businessBlocks] = useLocalStorageState<BusinessBlock[]>(businessBlockStorageKey(propertyId), initialBusinessBlocks, isBusinessBlockArray, (records) => migrateBusinessBlockRecords(records, propertyId, homeCurrency, defaultDate));
   const [saving, setSaving] = useState(false);
+  const submitLock = useRef(false);
   const [error, setError] = useState("");
   const [rateDialogOpen, setRateDialogOpen] = useState(false);
   const [editingLineId, setEditingLineId] = useState(form.roomLines[0]?.id ?? "");
@@ -162,12 +163,18 @@ export function ReservationEditor(props: ReservationEditorProps) {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (submitLock.current) return;
     const validationError = validate();
     if (validationError) { setError(validationError); return; }
+    submitLock.current = true;
     setSaving(true); setError("");
-    const result = await onSave(form);
-    if (!result.ok) setError(result.error);
-    setSaving(false);
+    try {
+      const result = await onSave(form);
+      if (!result.ok) setError(result.error);
+    } finally {
+      submitLock.current = false;
+      setSaving(false);
+    }
   }
 
   const total = useMemo(() => form.roomLines.reduce((sum, line) => sum + line.effectiveNightlyRate * (form.isDayRoom ? 1 : Math.max(form.nights, 1)), 0), [form]);
