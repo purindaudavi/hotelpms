@@ -10,8 +10,16 @@ import { IconButton } from "./controls";
 import { InputField, SelectField, TextAreaField } from "./form-fields";
 import { useLocalStorageState } from "@/app/components/hooks/use-local-storage-state";
 import { businessBlockStorageKey, isBusinessBlockArray, migrateBusinessBlockRecords, roomTypeAvailability } from "@/app/lib/business-block-repository";
-import { initialBusinessBlocks } from "../../reservation/constants";
+import { initialBusinessBlocks, initialCrossBookLinks } from "../../reservation/constants";
 import type { BusinessBlock } from "../../reservation/types";
+import {
+  crossBookedRoomCodes,
+  crossBookLinksStorageKey,
+  isCrossBookLinkArray,
+  normalizeCrossBookLinks,
+  roomsAreCrossBooked
+} from "@/app/lib/cross-booking";
+import type { CrossBookLink } from "../../reservation/types";
 
 type SaveResult = { ok: true } | { ok: false; error: string };
 
@@ -33,12 +41,19 @@ type ReservationEditorProps = {
 
 export function ReservationEditor(props: ReservationEditorProps) {
   const { propertyId, booking, initialForm, reservations, roomList, ratePlans, setRatePlans, homeCurrency, defaultDate, onClose, onSave, onDelete, setToast } = props;
+  const [crossBookLinks] = useLocalStorageState<CrossBookLink[]>(
+    crossBookLinksStorageKey(propertyId),
+    initialCrossBookLinks,
+    isCrossBookLinkArray,
+    normalizeCrossBookLinks
+  );
   const [form, setForm] = useState(() => {
     const initial = initialForm ? structuredClone(initialForm) : bookingToForm(booking, defaultDate, propertyId, ratePlans, homeCurrency);
     if (booking) return initial;
     const firstLine = initial.roomLines[0];
     const available = roomList.find((room) => room.type === firstLine.roomType && room.status === "Available"
-      && !roomHasOverlap(reservations, room.code, initial.checkIn, initial.checkOut));
+      && !roomHasOverlap(reservations, room.code, initial.checkIn, initial.checkOut)
+      && !crossBookConflict(room.code, initial.checkIn, initial.checkOut));
     initial.roomLines[0] = { ...firstLine, roomId: available?.id ?? "", roomNumber: available?.code ?? "" };
     return initial;
   });
@@ -49,6 +64,12 @@ export function ReservationEditor(props: ReservationEditorProps) {
   const [rateDialogOpen, setRateDialogOpen] = useState(false);
   const [editingLineId, setEditingLineId] = useState(form.roomLines[0]?.id ?? "");
   const selectedPlan = ratePlans.find((plan) => plan.id === form.ratePlanId);
+
+  function crossBookConflict(roomCode: string, checkIn: string, checkOut: string) {
+    return crossBookedRoomCodes(crossBookLinks, roomCode).find((linkedRoom) =>
+      roomHasOverlap(reservations, linkedRoom, checkIn, checkOut, booking?.id)
+    );
+  }
 
   function update<K extends keyof ReservationForm>(key: K, value: ReservationForm[K]) {
     setForm((current) => {
@@ -92,7 +113,10 @@ export function ReservationEditor(props: ReservationEditorProps) {
     return roomList.filter((room) => room.type === line.roomType && room.status !== "Out of Order" && room.status !== "Maintenance"
       && (room.status === "Available" || Boolean(booking && line.roomNumber === room.code))
       && (!roomHasOverlap(reservations, room.code, form.checkIn, form.isDayRoom ? addDays(form.checkIn, 1) : form.checkOut, booking?.id) || line.roomNumber === room.code)
-      && !form.roomLines.some((other) => other.id !== line.id && other.roomNumber === room.code));
+      && (!crossBookConflict(room.code, form.checkIn, form.isDayRoom ? addDays(form.checkIn, 1) : form.checkOut) || line.roomNumber === room.code)
+      && !form.roomLines.some((other) => other.id !== line.id && (
+        other.roomNumber === room.code || roomsAreCrossBooked(crossBookLinks, other.roomNumber, room.code)
+      )));
   }
 
   function changeRoomType(line: ReservationRoomDraft, typeName: string) {
@@ -101,7 +125,10 @@ export function ReservationEditor(props: ReservationEditorProps) {
     const rate = plan ? getPlanRate(plan, type.id) : type.baseRate;
     const candidate = roomList.find((room) => room.type === type.name && room.status === "Available"
       && !roomHasOverlap(reservations, room.code, form.checkIn, form.isDayRoom ? addDays(form.checkIn, 1) : form.checkOut, booking?.id)
-      && !form.roomLines.some((other) => other.id !== line.id && other.roomNumber === room.code));
+      && !crossBookConflict(room.code, form.checkIn, form.isDayRoom ? addDays(form.checkIn, 1) : form.checkOut)
+      && !form.roomLines.some((other) => other.id !== line.id && (
+        other.roomNumber === room.code || roomsAreCrossBooked(crossBookLinks, other.roomNumber, room.code)
+      )));
     updateRoomLine(line.id, { roomTypeId: type.id, roomType: type.name, roomId: candidate?.id ?? "", roomNumber: candidate?.code ?? "",
       originalNightlyRate: rate, effectiveNightlyRate: line.isFoc ? 0 : rate });
   }
@@ -111,7 +138,9 @@ export function ReservationEditor(props: ReservationEditorProps) {
     const plan = selectedPlan ?? ratePlans[0];
     const rate = plan ? getPlanRate(plan, type.id) : type.baseRate;
     const room = roomList.find((item) => item.type === type.name && item.status === "Available" && !form.roomLines.some((line) => line.roomNumber === item.code)
-      && !roomHasOverlap(reservations, item.code, form.checkIn, form.isDayRoom ? addDays(form.checkIn, 1) : form.checkOut, booking?.id));
+      && !roomHasOverlap(reservations, item.code, form.checkIn, form.isDayRoom ? addDays(form.checkIn, 1) : form.checkOut, booking?.id)
+      && !crossBookConflict(item.code, form.checkIn, form.isDayRoom ? addDays(form.checkIn, 1) : form.checkOut)
+      && !form.roomLines.some((line) => roomsAreCrossBooked(crossBookLinks, line.roomNumber, item.code)));
     const line: ReservationRoomDraft = { id: createUuid(), roomTypeId: type.id, roomType: type.name, roomId: room?.id ?? "", roomNumber: room?.code ?? "",
       occupancy: "Double", bedType: "Bed Type", adults: 2, children: 0, ratePlanId: plan?.id ?? "", ratePlanName: plan?.name ?? "",
       mealPlan: plan?.mealPlan ?? form.mealPlan, currency: plan?.currency ?? form.currency, originalNightlyRate: rate, effectiveNightlyRate: rate,
@@ -138,6 +167,12 @@ export function ReservationEditor(props: ReservationEditorProps) {
     if (!form.isDayRoom && form.checkOut <= form.checkIn) return "Check-out must be after check-in.";
     if (!form.roomLines.length) return "Add at least one room.";
     if (new Set(form.roomLines.map((line) => line.roomNumber)).size !== form.roomLines.length) return "The same physical room cannot be assigned twice.";
+    for (const line of form.roomLines) {
+      const linkedLine = form.roomLines.find((other) =>
+        other.id !== line.id && roomsAreCrossBooked(crossBookLinks, line.roomNumber, other.roomNumber)
+      );
+      if (linkedLine) return `Rooms ${line.roomNumber} and ${linkedLine.roomNumber} are cross-booked and cannot be assigned together.`;
+    }
     if (!form.businessBlockId) {
       const dates = stayDates(form.checkIn, form.isDayRoom ? addDays(form.checkIn, 1) : form.checkOut);
       const counts = form.roomLines.reduce<Record<string, number>>((result, line) => ({ ...result, [line.roomType]: (result[line.roomType] || 0) + 1 }), {});
@@ -156,6 +191,8 @@ export function ReservationEditor(props: ReservationEditorProps) {
       if (!room || (!savedOnExisting && room.status !== "Available")) return `Room ${line.roomNumber} is not operationally available.`;
       if (line.isFoc && !line.focReason.trim()) return `Enter a complimentary reason for room ${line.roomNumber}.`;
       if (roomHasOverlap(reservations, line.roomNumber, form.checkIn, form.isDayRoom ? addDays(form.checkIn, 1) : form.checkOut, booking?.id)) return `Room ${line.roomNumber} overlaps another active reservation.`;
+      const linkedConflict = crossBookConflict(line.roomNumber, form.checkIn, form.isDayRoom ? addDays(form.checkIn, 1) : form.checkOut);
+      if (linkedConflict) return `Room ${line.roomNumber} is unavailable because cross-booked room ${linkedConflict} has an overlapping reservation.`;
     }
     if (form.sendEmail && !isValidEmail(form.email)) return "Enter a valid guest email before sending confirmation.";
     return "";

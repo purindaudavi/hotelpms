@@ -6,15 +6,27 @@ import { Link2, RefreshCw } from "lucide-react";
 import { initialCrossBookLinks } from "../constants";
 import type { CrossBookLink, ReservationModuleProps } from "../types";
 import { Panel, ReservationPageFrame, SearchBox, ToolbarButton } from "../components/reservation-ui";
+import {
+  crossBookedRoomCodes,
+  crossBookLinksStorageKey,
+  isCrossBookLinkArray,
+  normalizeCrossBookLinks,
+  toggleCrossBookPair
+} from "@/app/lib/cross-booking";
 
 export function CrossBookingPage({ propertyId, roomList, setToast }: ReservationModuleProps) {
   const keyPrefix = `staypilot:${propertyId}:reservation:cross-booking`;
-  const [links, setLinks] = useSessionState<CrossBookLink[]>(`${keyPrefix}:links`, initialCrossBookLinks);
+  const [links, setLinks] = useSessionState<CrossBookLink[]>(
+    crossBookLinksStorageKey(propertyId),
+    initialCrossBookLinks,
+    isCrossBookLinkArray,
+    normalizeCrossBookLinks
+  );
   const [primaryRoom, setPrimaryRoom] = useSessionState(`${keyPrefix}:primary-room`, initialCrossBookLinks[0]?.primaryRoom ?? roomList[0]?.code ?? "02");
   const [primarySearch, setPrimarySearch] = useState("");
   const [crossSearch, setCrossSearch] = useState("");
 
-  const selectedLink = links.find((link) => link.primaryRoom === primaryRoom) ?? { primaryRoom, blockedRooms: [] };
+  const linkedRooms = crossBookedRoomCodes(links, primaryRoom);
   const primaryRooms = useMemo(
     () =>
       roomList.filter((room) =>
@@ -34,29 +46,17 @@ export function CrossBookingPage({ propertyId, roomList, setToast }: Reservation
 
   function setPrimary(code: string) {
     setPrimaryRoom(code);
-    setLinks((current) => (current.some((link) => link.primaryRoom === code) ? current : [...current, { primaryRoom: code, blockedRooms: [] }]));
   }
 
   function toggleBlockedRoom(code: string) {
-    setLinks((current) =>
-      current.map((link) => {
-        if (link.primaryRoom !== primaryRoom) return link;
-        const exists = link.blockedRooms.includes(code);
-        return {
-          ...link,
-          blockedRooms: exists ? link.blockedRooms.filter((roomCode) => roomCode !== code) : [...link.blockedRooms, code]
-        };
-      })
-    );
-    setToast(`Cross-book links updated for room ${primaryRoom}`);
+    setLinks((current) => toggleCrossBookPair(current, primaryRoom, code));
+    setToast(`Cross-book relationship updated for rooms ${primaryRoom} and ${code}`);
   }
 
   function refresh() {
-    setLinks(initialCrossBookLinks);
-    setPrimaryRoom(initialCrossBookLinks[0]?.primaryRoom ?? roomList[0]?.code ?? "02");
     setPrimarySearch("");
     setCrossSearch("");
-    setToast("Cross booking links refreshed");
+    setToast("Cross-booking view refreshed; saved links were kept");
   }
 
   return (
@@ -68,7 +68,7 @@ export function CrossBookingPage({ propertyId, roomList, setToast }: Reservation
             Cross Booking
           </h1>
           <p className="mt-2 max-w-3xl text-sm text-slate-500">
-            Select a primary room on the left, then assign rooms on the right that should be blocked when the primary room is booked.
+            Link rooms only when they share inventory and cannot be sold for overlapping stay dates. The relationship works in both directions.
           </p>
         </div>
         <ToolbarButton icon={<RefreshCw className="h-4 w-4" />} onClick={refresh}>
@@ -94,7 +94,12 @@ export function CrossBookingPage({ propertyId, roomList, setToast }: Reservation
           </div>
         </Panel>
 
-        <Panel title="Cross-book to" subtitle={`Rooms linked to ${primaryRoom}`}>
+        <Panel title="Cross-book to" subtitle={`Rooms that cannot be sold together with ${primaryRoom}`}>
+          <div className={`mb-4 rounded-md border px-4 py-3 text-sm ${linkedRooms.length ? "border-amber-200 bg-amber-50 text-amber-900" : "border-slate-200 bg-slate-50 text-slate-600"}`}>
+            {linkedRooms.length
+              ? `Room ${primaryRoom} conflicts with ${linkedRooms.join(", ")}. Booking either side makes the other unavailable for the same dates.`
+              : `Room ${primaryRoom} has no cross-book relationships. This is the safe default for an independent physical room.`}
+          </div>
           <div className="mb-4">
             <SearchBox value={crossSearch} onChange={(event) => setCrossSearch(event.target.value)} placeholder="Search cross-book rooms..." />
           </div>
@@ -102,7 +107,7 @@ export function CrossBookingPage({ propertyId, roomList, setToast }: Reservation
             {crossRooms.map((room) => (
               <RoomCard
                 key={room.id}
-                checked={selectedLink.blockedRooms.includes(room.code)}
+                checked={linkedRooms.includes(room.code)}
                 code={room.code}
                 type={room.type}
                 onClick={() => toggleBlockedRoom(room.code)}

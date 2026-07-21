@@ -327,10 +327,7 @@ export const initialEvents: EventBooking[] = [
   }
 ];
 
-export const initialCrossBookLinks: CrossBookLink[] = [
-  { primaryRoom: "02", blockedRooms: ["01", "03"] },
-  { primaryRoom: "07", blockedRooms: ["15"] }
-];
+export const initialCrossBookLinks: CrossBookLink[] = [];
 
 export const initialTravelAgents: TravelAgent[] = [
   {

@@ -4,8 +4,9 @@ import { statusDotClass, statusPillClass } from "../constants";
 import { DeskColumn, DeskTab } from "../types";
 import { bookingMatchesCell, cellClass, groupRooms, occupiedOnDate, reservationRoomNumbers } from "../utils";
 import { IconButton } from "./controls";
-import type { BusinessBlock } from "../../reservation/types";
+import type { BusinessBlock, CrossBookLink } from "../../reservation/types";
 import { roomTypeAvailability } from "@/app/lib/business-block-repository";
+import { crossBookedRoomCodes } from "@/app/lib/cross-booking";
 
 type FrontDeskGridProps = {
   columns: DeskColumn[];
@@ -14,6 +15,7 @@ type FrontDeskGridProps = {
   reservations: Reservation[];
   inventoryReservations: Reservation[];
   businessBlocks: BusinessBlock[];
+  crossBookLinks: CrossBookLink[];
   tab: DeskTab;
   dayUse: boolean;
   gridDays: number;
@@ -35,6 +37,7 @@ export function FrontDeskGrid({
   reservations,
   inventoryReservations,
   businessBlocks,
+  crossBookLinks,
   tab,
   dayUse,
   gridDays,
@@ -123,10 +126,11 @@ export function FrontDeskGrid({
             </tr>
           </thead>
           <tbody>
-            <SummaryRow label="Availability" columns={columns} roomList={roomList} reservations={inventoryReservations} businessBlocks={businessBlocks} dayUse={dayUse} />
-            <SummaryRow label="Occupied" columns={columns} roomList={roomList} reservations={inventoryReservations} businessBlocks={businessBlocks} dayUse={dayUse} mode="occupied" />
-            <SummaryRow label="Occupancy %" columns={columns} roomList={roomList} reservations={inventoryReservations} businessBlocks={businessBlocks} dayUse={dayUse} mode="occupancy" />
-            <SummaryRow label="Total (All)" columns={columns} roomList={roomList} reservations={inventoryReservations} businessBlocks={businessBlocks} dayUse={dayUse} mode="total" />
+            <SummaryRow label="Availability" columns={columns} roomList={roomList} reservations={inventoryReservations} businessBlocks={businessBlocks} crossBookLinks={crossBookLinks} dayUse={dayUse} />
+            <SummaryRow label="Occupied" columns={columns} roomList={roomList} reservations={inventoryReservations} businessBlocks={businessBlocks} crossBookLinks={crossBookLinks} dayUse={dayUse} mode="occupied" />
+            <SummaryRow label="Cross-booked" columns={columns} roomList={roomList} reservations={inventoryReservations} businessBlocks={businessBlocks} crossBookLinks={crossBookLinks} dayUse={dayUse} mode="cross-booked" />
+            <SummaryRow label="Occupancy %" columns={columns} roomList={roomList} reservations={inventoryReservations} businessBlocks={businessBlocks} crossBookLinks={crossBookLinks} dayUse={dayUse} mode="occupancy" />
+            <SummaryRow label="Total (All)" columns={columns} roomList={roomList} reservations={inventoryReservations} businessBlocks={businessBlocks} crossBookLinks={crossBookLinks} dayUse={dayUse} mode="total" />
 
             {roomsByType.map(({ type, rooms }) => (
               <RoomGroup
@@ -137,6 +141,7 @@ export function FrontDeskGrid({
                 reservations={reservations}
                 inventoryReservations={inventoryReservations}
                 businessBlocks={businessBlocks}
+                crossBookLinks={crossBookLinks}
                 tab={tab}
                 dayUse={dayUse}
                 onBookingClick={onBookingClick}
@@ -164,6 +169,7 @@ function SummaryRow({
   roomList,
   reservations,
   businessBlocks,
+  crossBookLinks,
   dayUse,
   mode = "availability"
 }: {
@@ -172,8 +178,9 @@ function SummaryRow({
   roomList: Room[];
   reservations: Reservation[];
   businessBlocks: BusinessBlock[];
+  crossBookLinks: CrossBookLink[];
   dayUse: boolean;
-  mode?: "availability" | "occupied" | "occupancy" | "total";
+  mode?: "availability" | "occupied" | "cross-booked" | "occupancy" | "total";
 }) {
   return (
     <tr className="text-slate-500">
@@ -184,9 +191,10 @@ function SummaryRow({
       {columns.map((column) => {
         const sellableRooms = roomList.filter((room) => room.status !== "Out of Order" && room.status !== "Maintenance");
         const occupied = occupiedOnDate(sellableRooms, reservations, column.date, dayUse);
-        const available = availabilityAcrossTypes(sellableRooms, reservations, businessBlocks, column.date);
+        const crossBooked = crossBookBlockedRoomsOnDate(sellableRooms, reservations, crossBookLinks, column.date, dayUse);
+        const available = Math.max(availabilityAcrossTypes(sellableRooms, reservations, businessBlocks, column.date) - crossBooked.size, 0);
         const occupancy = Math.round((occupied / Math.max(sellableRooms.length, 1)) * 100);
-        const value = mode === "occupied" ? occupied : mode === "occupancy" ? `${occupancy}%` : mode === "total" ? `${available} / ${occupied} (${occupancy}%)` : available;
+        const value = mode === "occupied" ? occupied : mode === "cross-booked" ? crossBooked.size : mode === "occupancy" ? `${occupancy}%` : mode === "total" ? `${available} / ${occupied} (${occupancy}%)` : available;
         return (
           <td key={`${label}-${column.key}`} className={cellClass(column, dayUse, "border-b border-r border-line px-3 py-2 text-center")}>
             {value}
@@ -204,6 +212,7 @@ function RoomGroup({
   reservations,
   inventoryReservations,
   businessBlocks,
+  crossBookLinks,
   tab,
   dayUse,
   onBookingClick
@@ -214,6 +223,7 @@ function RoomGroup({
   reservations: Reservation[];
   inventoryReservations: Reservation[];
   businessBlocks: BusinessBlock[];
+  crossBookLinks: CrossBookLink[];
   tab: DeskTab;
   dayUse: boolean;
   onBookingClick: (booking: Reservation) => void;
@@ -227,7 +237,8 @@ function RoomGroup({
         </td>
         {columns.map((column) => {
           const sellableRooms = rooms.filter((room) => room.status !== "Out of Order" && room.status !== "Maintenance");
-          const available = roomTypeAvailability(type, column.date, sellableRooms.length, inventoryReservations, businessBlocks);
+          const crossBooked = crossBookBlockedRoomsOnDate(sellableRooms, inventoryReservations, crossBookLinks, column.date, dayUse);
+          const available = Math.max(roomTypeAvailability(type, column.date, sellableRooms.length, inventoryReservations, businessBlocks) - crossBooked.size, 0);
           return (
             <td key={`${type}-${column.key}`} className={cellClass(column, dayUse, "border-b border-r border-line bg-slate-100 px-3 py-2 text-center font-semibold")}>
               {available}/{sellableRooms.length}
@@ -243,12 +254,23 @@ function RoomGroup({
           </td>
           {columns.map((column) => {
             const bookings = reservations.filter((booking) => reservationRoomNumbers(booking).includes(room.code) && bookingMatchesCell(booking, column.date, tab, dayUse));
+            const blockingBooking = inventoryReservations.find((booking) =>
+              bookingMatchesCell(booking, column.date, "Front Desk", dayUse) &&
+              reservationRoomNumbers(booking).some((roomCode) => crossBookedRoomCodes(crossBookLinks, room.code).includes(roomCode))
+            );
             return (
               <td key={`${room.id}-${column.key}`} className={cellClass(column, dayUse, "h-11 border-b border-r border-line px-1.5 py-1 align-middle")}>
                 <div className="flex min-w-0 gap-1">
                   {bookings.slice(0, 2).map((booking) => (
                     <BookingPill key={`${booking.id}-${column.key}`} booking={booking} onClick={() => onBookingClick(booking)} />
                   ))}
+                  {!bookings.length && blockingBooking ? (
+                    <CrossBookPill
+                      booking={blockingBooking}
+                      linkedRoom={reservationRoomNumbers(blockingBooking).find((roomCode) => crossBookedRoomCodes(crossBookLinks, room.code).includes(roomCode)) ?? ""}
+                      onClick={() => onBookingClick(blockingBooking)}
+                    />
+                  ) : null}
                 </div>
               </td>
             );
@@ -263,6 +285,30 @@ function availabilityAcrossTypes(roomList: Room[], reservations: Reservation[], 
   return groupRooms(roomList).reduce((sum, group) => sum + roomTypeAvailability(group.type, date, group.rooms.length, reservations, blocks), 0);
 }
 
+function crossBookBlockedRoomsOnDate(
+  roomList: Room[],
+  reservations: Reservation[],
+  links: CrossBookLink[],
+  date: string,
+  dayUse: boolean
+) {
+  const roomCodes = new Set(roomList.map((room) => room.code));
+  const bookedRooms = new Set<string>();
+
+  reservations.forEach((booking) => {
+    if (!bookingMatchesCell(booking, date, "Front Desk", dayUse)) return;
+    reservationRoomNumbers(booking).forEach((roomCode) => bookedRooms.add(roomCode));
+  });
+
+  const blockedRooms = new Set<string>();
+  bookedRooms.forEach((roomCode) => {
+    crossBookedRoomCodes(links, roomCode).forEach((linkedRoom) => {
+      if (roomCodes.has(linkedRoom) && !bookedRooms.has(linkedRoom)) blockedRooms.add(linkedRoom);
+    });
+  });
+  return blockedRooms;
+}
+
 function BookingPill({ booking, onClick }: { booking: Reservation; onClick: () => void }) {
   const icon = (booking.bookingSource ?? booking.source) === "Travel Agent" ? "TA" : "A";
 
@@ -275,6 +321,20 @@ function BookingPill({ booking, onClick }: { booking: Reservation; onClick: () =
     >
       <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-orange-500 text-[10px] text-white">{icon}</span>
       <span className="truncate">{booking.guest}</span>
+    </button>
+  );
+}
+
+function CrossBookPill({ booking, linkedRoom, onClick }: { booking: Reservation; linkedRoom: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex h-7 max-w-[132px] items-center gap-1 overflow-hidden rounded bg-amber-500 px-1.5 text-left text-xs font-semibold text-white shadow-sm"
+      title={`Unavailable because linked room ${linkedRoom} is booked under ${booking.resNo}`}
+    >
+      <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-amber-700 text-[9px] text-white">CB</span>
+      <span className="truncate">Room {linkedRoom}</span>
     </button>
   );
 }
