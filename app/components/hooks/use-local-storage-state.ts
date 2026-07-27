@@ -72,6 +72,16 @@ export function hasLocalStorageState(key: string) {
   }
 }
 
+export function writeLocalStorageValue<T>(key: string, value: T) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+    window.dispatchEvent(new CustomEvent(localStorageSyncEvent, { detail: { key, value } }));
+  } catch {
+    // API data remains available to the current caller if browser storage is unavailable.
+  }
+}
+
 export function useLocalStorageState<T>(
   key: string,
   initialValue: T | (() => T),

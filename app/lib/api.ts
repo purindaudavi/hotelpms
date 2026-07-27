@@ -6,8 +6,8 @@ export const api = axios.create({
   timeout: 15_000
 });
 
-export function getApiErrorMessage(error: unknown) {
-  if (!axios.isAxiosError(error)) return "Email could not be sent.";
+export function getApiErrorMessage(error: unknown, fallback = "Email could not be sent.") {
+  if (!axios.isAxiosError(error)) return fallback;
   const data = error.response?.data as { message?: unknown } | undefined;
-  return typeof data?.message === "string" ? data.message : "Email could not be sent.";
+  return typeof data?.message === "string" ? data.message : fallback;
 }

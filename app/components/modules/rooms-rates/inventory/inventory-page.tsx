@@ -4,7 +4,7 @@ import type { Dispatch, SetStateAction } from "react";
 import { Fragment, FormEvent, useMemo, useState } from "react";
 import { useSessionState } from "@/app/components/hooks/use-session-state";
 import { ChevronLeft, ChevronRight, RefreshCw, Save } from "lucide-react";
-import { currencyOptions, inventoryStartDate, rateCodeOptions } from "../constants";
+import { currencyOptions, rateCodeOptions } from "../constants";
 import type { InventoryCellMap, RatePlan, RoomTypeRecord, RoomsRatesModuleProps } from "../types";
 import { addDays, availabilityFor, buildInventoryCells, dateLabel, makeInventoryKey, weekdayLabel } from "../utils";
 import { RatePlanDrawer } from "../components/rate-plan-drawer";
@@ -14,6 +14,7 @@ import { businessBlockStorageKey, isBusinessBlockArray, migrateBusinessBlockReco
 import { initialBusinessBlocks } from "../../reservation/constants";
 import type { BusinessBlock } from "../../reservation/types";
 import { property } from "@/app/data/pms-data";
+import { getPlanRate } from "../../front-desk/rate-plans";
 
 type InventoryPageProps = RoomsRatesModuleProps & {
   roomTypes: RoomTypeRecord[];
@@ -31,12 +32,18 @@ export function InventoryPage({ propertyId, roomTypes, ratePlans, setRatePlans, 
   const [option, setOption] = useState("All Inventory");
   const [roomsFilter, setRoomsFilter] = useState("All Rooms");
   const [ratesFilter, setRatesFilter] = useState("All Rates");
-  const [startDate, setStartDate] = useState(inventoryStartDate);
+  const [startDate, setStartDate] = useState(property.systemDate);
   const [gridDays, setGridDays] = useState(12);
   const dates = useMemo(() => Array.from({ length: gridDays }, (_, index) => addDays(startDate, index)), [gridDays, startDate]);
   const inventoryKey = `staypilot:${propertyId}:rooms-rates:inventory`;
-  const [savedCells, setSavedCells] = useSessionState<InventoryCellMap>(`${inventoryKey}:saved-cells`, () => buildInventoryCells(ratePlans, dates));
-  const [cells, setCells] = useSessionState<InventoryCellMap>(`${inventoryKey}:draft-cells`, () => buildInventoryCells(ratePlans, dates));
+  const [savedCells, setSavedCells] = useLocalStorageState<InventoryCellMap>(
+    `${inventoryKey}:saved-cells`,
+    () => buildInventoryCells(ratePlans, roomTypes, dates)
+  );
+  const [cells, setCells] = useSessionState<InventoryCellMap>(
+    `${inventoryKey}:draft-cells`,
+    () => ({ ...buildInventoryCells(ratePlans, roomTypes, dates), ...savedCells })
+  );
   const [createOpen, setCreateOpen] = useState(false);
   const [activeAction, setActiveAction] = useState<InventoryAction>("");
   const dirty = JSON.stringify(cells) !== JSON.stringify(savedCells);
@@ -47,35 +54,40 @@ export function InventoryPage({ propertyId, roomTypes, ratePlans, setRatePlans, 
       ratePlans.filter((plan) => {
         if (currency !== "All Currencies" && plan.currency !== currency) return false;
         if (rateCode !== "All Rate Codes" && plan.code !== rateCode) return false;
-        if (ratesFilter !== "All Rates" && plan.status !== ratesFilter) return false;
+        if (ratesFilter === "Active" && !plan.active) return false;
+        if (ratesFilter === "Disabled" && plan.active) return false;
         if (option === "Locked Only" && !plan.locked) return false;
         return true;
       }),
     [currency, option, rateCode, ratePlans, ratesFilter]
   );
 
-  function setCellValue(planId: string, date: string, value: number) {
-    setCells((current) => ({ ...current, [makeInventoryKey(planId, date)]: value }));
+  function setCellValue(planId: string, roomTypeId: string, date: string, value: number) {
+    setCells((current) => ({ ...current, [makeInventoryKey(planId, roomTypeId, date)]: value }));
   }
 
-  function currentCellValue(plan: RatePlan, date: string) {
-    const key = makeInventoryKey(plan.id, date);
-    return cells[key] ?? plan.defaultRate;
+  function currentCellValue(plan: RatePlan, roomType: RoomTypeRecord, date: string) {
+    const key = makeInventoryKey(plan.id, roomType.id, date);
+    return cells[key] ?? savedCells[key] ?? getPlanRate(plan, roomType.id);
   }
 
   function saveRate(plan: RatePlan) {
     setRatePlans((current) => (current.some((item) => item.id === plan.id) ? current.map((item) => (item.id === plan.id ? plan : item)) : [plan, ...current]));
     setCells((current) => {
       const next = { ...current };
-      dates.forEach((date) => {
-        next[makeInventoryKey(plan.id, date)] = plan.defaultRate;
+      roomTypes.forEach((roomType) => {
+        dates.forEach((date) => {
+          next[makeInventoryKey(plan.id, roomType.id, date)] = getPlanRate(plan, roomType.id);
+        });
       });
       return next;
     });
     setSavedCells((current) => {
       const next = { ...current };
-      dates.forEach((date) => {
-        next[makeInventoryKey(plan.id, date)] = plan.defaultRate;
+      roomTypes.forEach((roomType) => {
+        dates.forEach((date) => {
+          next[makeInventoryKey(plan.id, roomType.id, date)] = getPlanRate(plan, roomType.id);
+        });
       });
       return next;
     });
@@ -95,12 +107,16 @@ export function InventoryPage({ propertyId, roomTypes, ratePlans, setRatePlans, 
 
   function applyBulkRate(value: number) {
     const visiblePlanIds = new Set(filteredPlans.map((plan) => plan.id));
+    const visibleRoomTypeIds = new Set(filteredRoomTypes.map((roomType) => roomType.id));
     setCells((current) => {
       const next = { ...current };
       ratePlans.forEach((plan) => {
         if (!visiblePlanIds.has(plan.id) || plan.locked) return;
-        dates.forEach((date) => {
-          next[makeInventoryKey(plan.id, date)] = value;
+        roomTypes.forEach((roomType) => {
+          if (!visibleRoomTypeIds.has(roomType.id)) return;
+          dates.forEach((date) => {
+            next[makeInventoryKey(plan.id, roomType.id, date)] = value;
+          });
         });
       });
       return next;
@@ -168,7 +184,7 @@ export function InventoryPage({ propertyId, roomTypes, ratePlans, setRatePlans, 
               <ChevronLeft className="h-4 w-4" />
             </ToolbarButton>
             <div className="rounded-md border border-line px-4 py-3 text-sm font-semibold">
-              {dateLabel(startDate)} 2026 - {dateLabel(addDays(startDate, gridDays - 1))} 2026
+              {startDate} - {addDays(startDate, gridDays - 1)}
             </div>
             <ToolbarButton onClick={() => setStartDate(addDays(startDate, gridDays))}>
               <ChevronRight className="h-4 w-4" />
@@ -206,7 +222,7 @@ export function InventoryPage({ propertyId, roomTypes, ratePlans, setRatePlans, 
             </thead>
             <tbody>
               {filteredRoomTypes.map((roomType) => {
-                const plans = filteredPlans.filter((plan) => plan.roomType === roomType.name);
+                const plans = filteredPlans;
                 if (!plans.length) return null;
                 return (
                   <Fragment key={roomType.id}>
@@ -222,18 +238,19 @@ export function InventoryPage({ propertyId, roomTypes, ratePlans, setRatePlans, 
                       ))}
                     </tr>
                     {plans.map((plan) => (
-                      <tr key={plan.id}>
+                      <tr key={`${roomType.id}-${plan.id}`}>
                         <td className="sticky left-0 z-10 border border-line bg-white px-3 py-3">
-                          <p className="font-semibold text-slate-600">{plan.title}</p>
-                          <p className="text-xs text-slate-500">RO ({plan.currency}) - {plan.sellMode === "Per Person" ? "2" : "1"} - {plan.code}</p>
+                          <p className="font-semibold text-slate-600">{plan.name}</p>
+                          <p className="text-xs text-slate-500">{plan.mealPlan} ({plan.currency}) - {plan.code}</p>
                         </td>
                         {dates.map((date) => (
                           <td key={date} className="border border-line px-2 py-2 text-center">
                             <input
                               type="number"
-                              value={currentCellValue(plan, date)}
-                              disabled={plan.locked || plan.status === "Disabled"}
-                              onChange={(event) => setCellValue(plan.id, date, Number(event.target.value))}
+                              min={0}
+                              value={currentCellValue(plan, roomType, date)}
+                              disabled={plan.locked || !plan.active}
+                              onChange={(event) => setCellValue(plan.id, roomType.id, date, Number(event.target.value))}
                               className="h-10 w-24 rounded-md border border-transparent bg-transparent text-center outline-none focus:border-slate-300 focus:bg-white disabled:text-slate-400"
                             />
                           </td>
@@ -248,7 +265,17 @@ export function InventoryPage({ propertyId, roomTypes, ratePlans, setRatePlans, 
         </div>
       </Panel>
 
-      {createOpen ? <RatePlanDrawer mode="create" ratePlan={null} roomTypes={roomTypes} onClose={() => setCreateOpen(false)} onSave={saveRate} /> : null}
+      {createOpen ? (
+        <RatePlanDrawer
+          mode="create"
+          propertyId={propertyId}
+          ratePlan={null}
+          ratePlans={ratePlans}
+          roomTypes={roomTypes}
+          onClose={() => setCreateOpen(false)}
+          onSave={saveRate}
+        />
+      ) : null}
       {activeAction ? (
         <InventoryActionDrawer
           action={activeAction}

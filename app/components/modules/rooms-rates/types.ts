@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from "react";
 import type { FinancialTransaction, Reservation, Room } from "@/app/data/pms-data";
+export type { RatePlan } from "../front-desk/types";
 
 export type RoomsRatesModuleProps = {
   activePath: string;
@@ -13,6 +14,12 @@ export type RoomsRatesModuleProps = {
   setToast: (message: string) => void;
 };
 
+export type RoomTypeImage = {
+  id: string;
+  name: string;
+  dataUrl: string;
+};
+
 export type RoomTypeRecord = {
   id: string;
   name: string;
@@ -23,39 +30,8 @@ export type RoomTypeRecord = {
   description: string;
   baseRate: number;
   imageGradient: string;
-  imageNames: string[];
+  images: RoomTypeImage[];
   active: boolean;
 };
 
-export type RatePlan = {
-  id: string;
-  code: "FIT" | "IBE" | "TA" | "OTA" | string;
-  roomType: string;
-  mealPlan: string;
-  currency: "LKR" | "USD" | string;
-  resident: boolean;
-  title: string;
-  validFrom: string;
-  validTo: string;
-  sellMode: "Per Room" | "Per Person";
-  rateMode: "Manual" | "Auto" | "N/A";
-  defaultRate: number;
-  status: "Active" | "Disabled";
-  locked: boolean;
-};
-
 export type InventoryCellMap = Record<string, number>;
-
-export type RateHunterHotel = {
-  id: string;
-  name: string;
-  score: number;
-  distance: string;
-  myRate: number;
-  competitorRate: number;
-  roomType: string;
-  mealPlan: string;
-  rateCode: string;
-  originalCurrency: string;
-  favorite: boolean;
-};

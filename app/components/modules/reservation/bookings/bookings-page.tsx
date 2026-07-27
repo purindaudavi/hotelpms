@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { Download, Eye, Pencil, Plus, RefreshCw, Share2 } from "lucide-react";
 import { useLocalStorageState } from "@/app/components/hooks/use-local-storage-state";
-import { roomTypes, type Reservation } from "@/app/data/pms-data";
+import { type Reservation } from "@/app/data/pms-data";
 import {
   allocationMetrics,
   appendBusinessBlockLog,
@@ -35,7 +35,7 @@ import { BusinessBlockDetailDrawer } from "./business-block-detail-drawer";
 
 export function BookingsPage(props: ReservationModuleProps) {
   const { propertyId, reservations, setReservations, roomList, setRoomList, setToast } = props;
-  const { businessDate, homeCurrency, ratePlans, setRatePlans } = useReservationEditorResources(propertyId);
+  const { businessDate, homeCurrency, roomTypes, ratePlans, setRatePlans } = useReservationEditorResources(propertyId);
   const reservationActions = useReservationActions({ propertyId, businessDate, reservations, setReservations, roomList, setRoomList, ratePlans, setToast });
   const [blocks, setBlocks] = useLocalStorageState<BusinessBlock[]>(businessBlockStorageKey(propertyId), initialBusinessBlocks, isBusinessBlockArray, (records) => migrateBusinessBlockRecords(records, propertyId, homeCurrency, businessDate));
   const [blockLogs, setBlockLogs] = useLocalStorageState<BusinessBlockLogEntry[]>(businessBlockLogStorageKey(propertyId), [], isBusinessBlockLogArray);
@@ -139,7 +139,7 @@ export function BookingsPage(props: ReservationModuleProps) {
     {tab === "reservations" ? <ReservationsTable rows={visibleRows} onOpen={(id) => setSelectedBookingId(id)} /> : <BusinessBlocksTable blocks={filteredBlocks} reservations={reservations} businessDate={businessDate} onOpen={(id) => setSelectedBlockId(id)} onEdit={(id) => { setEditingBlockId(id); setBlockFormOpen(true); }} onStatus={(block, status) => changeBlockStatus(block, status)} onRelease={releaseBlock} />}
     {tab === "reservations" ? <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-500"><div className="flex items-center gap-3">Show<SelectInput value={rowsPerPage} onChange={(event) => { setRowsPerPage(Number(event.target.value)); setPage(1); }} className="w-24">{[10, 25, 50].map((size) => <option key={size}>{size}</option>)}</SelectInput>per page</div><div className="flex items-center gap-3"><button disabled={page === 1} onClick={() => setPage((value) => value - 1)} className="rounded border px-4 py-2 disabled:opacity-50">Previous</button><span className="rounded bg-slate-950 px-4 py-2 font-semibold text-white">Page {page} of {totalPages}</span><button disabled={page === totalPages} onClick={() => setPage((value) => value + 1)} className="rounded border px-4 py-2 disabled:opacity-50">Next</button></div></div> : null}
 
-    {reservationModalOpen ? <ReservationEditor propertyId={propertyId} booking={editingBooking} initialForm={reservationPrefill} reservations={reservations} roomList={roomList} ratePlans={ratePlans} setRatePlans={setRatePlans} homeCurrency={homeCurrency} defaultDate={businessDate} onClose={closeReservationEditor} onSave={saveReservation} onDelete={removeReservation} setToast={setToast} /> : null}
+    {reservationModalOpen ? <ReservationEditor propertyId={propertyId} booking={editingBooking} initialForm={reservationPrefill} reservations={reservations} roomList={roomList} roomTypes={roomTypes} ratePlans={ratePlans} setRatePlans={setRatePlans} homeCurrency={homeCurrency} defaultDate={businessDate} onClose={closeReservationEditor} onSave={saveReservation} onDelete={removeReservation} setToast={setToast} /> : null}
     {selectedBooking ? <ReservationDetailDrawer key={selectedBooking.id} propertyId={propertyId} booking={selectedBooking} onClose={() => setSelectedBookingId(null)} onEdit={openReservationEditor} onRetryEmail={() => reservationActions.deliverEmail(selectedBooking).then(() => undefined)} onUpdateReservation={(booking) => setReservations((current) => current.map((item) => item.id === booking.id ? booking : item))} setToast={setToast} /> : null}
     {blockFormOpen ? <BusinessBlockForm propertyId={propertyId} businessDate={businessDate} homeCurrency={homeCurrency} ratePlans={ratePlans} block={editingBlock} reservations={reservations} onClose={() => { setBlockFormOpen(false); setEditingBlockId(null); }} onSave={saveBlock} /> : null}
     {selectedBlock ? <BusinessBlockDetailDrawer block={selectedBlock} reservations={reservations} logs={blockLogs} onClose={() => setSelectedBlockId(null)} onEdit={() => { setEditingBlockId(selectedBlock.id); setBlockFormOpen(true); }} onStatus={(status) => changeBlockStatus(selectedBlock, status)} onRelease={() => releaseBlock(selectedBlock)} onCreateReservation={(allocation) => createReservationFromBlock(selectedBlock, allocation)} onOpenReservation={(id) => { setSelectedBlockId(null); setSelectedBookingId(id); }} setToast={setToast} /> : null}

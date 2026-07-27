@@ -35,7 +35,9 @@ import { isReservationArray, isRoomArray, isTransactionArray } from "@/app/lib/p
 import { readPropertyHomeCurrency } from "@/app/lib/property-repository";
 import { migrateReservationRecords, reservationStorageKey } from "@/app/lib/reservation-repository";
 import { ModuleContent } from "@/app/components/module-pages";
-import { useLocalStorageState } from "@/app/components/hooks/use-local-storage-state";
+import { useLocalStorageState, writeLocalStorageValue } from "@/app/components/hooks/use-local-storage-state";
+import { roomTypeStorageKey } from "@/app/components/modules/rooms-rates/constants";
+import { getRoomCatalog } from "@/app/lib/rooms-api";
 
 type WorkspaceProps = {
   propertyId: string;
@@ -58,7 +60,7 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
   );
   const [roomList, setRoomList] = useLocalStorageState<Room[]>(roomKey, seedRooms, isRoomArray);
   const [transactions, setTransactions] = useLocalStorageState<FinancialTransaction[]>(transactionKey, seedTransactions, isTransactionArray);
-  const dataSource = "local";
+  const [dataSource, setDataSource] = useState("connecting");
   const [expanded, setExpanded] = useState(() => new Set(navigation.map((item) => item.title)));
 
   useEffect(() => {
@@ -66,6 +68,27 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
     const timeout = window.setTimeout(() => setToast(""), 2600);
     return () => window.clearTimeout(timeout);
   }, [toast]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getRoomCatalog(propertyId)
+      .then((catalog) => {
+        if (cancelled) return;
+        setRoomList(catalog.rooms);
+        writeLocalStorageValue(roomTypeStorageKey(propertyId), catalog.roomTypes);
+        setDataSource("MongoDB");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setDataSource("local cache");
+        setToast("Room API unavailable; using cached room data");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [propertyId, setRoomList]);
 
   const pageTitle = useMemo(() => getActiveTitle(activePath), [activePath]);
 

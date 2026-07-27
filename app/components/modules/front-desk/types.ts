@@ -72,6 +72,13 @@ export type RatePlan = {
   roomTypeRates: Record<string, number>;
   refundable: boolean;
   cancellationPolicy: string;
+  code: "FIT" | "IBE" | "TA" | "OTA" | string;
+  resident: boolean;
+  validFrom: string;
+  validTo: string;
+  sellMode: "Per Room" | "Per Person";
+  rateMode: "Manual" | "Auto";
+  locked: boolean;
   active: boolean;
   isCustom: boolean;
   createdAt: string;

@@ -1,5 +1,5 @@
 import { roomTypes } from "@/app/data/pms-data";
-import type { RateHunterHotel, RatePlan, RoomTypeRecord } from "./types";
+import type { RoomTypeRecord } from "./types";
 
 export const roomRatesSystemDate = "2026-06-03";
 export const inventoryStartDate = "2026-06-16";
@@ -44,87 +44,32 @@ export const initialRoomTypes: RoomTypeRecord[] = roomTypes.map((type, index) =>
   description: `${type.name} configured for transit stays with private bathroom and front-desk managed availability.`,
   baseRate: type.baseRate,
   imageGradient: roomTypeImageGradients[index % roomTypeImageGradients.length] ?? type.imageGradient,
-  imageNames: [`${type.name.toLowerCase().replaceAll(" ", "-")}.jpg`],
+  images: [],
   active: true
 }));
 
-const rateCodes = ["FIT", "IBE", "TA", "OTA"] as const;
-const currencies = ["LKR", "USD"] as const;
+export function roomTypeStorageKey(propertyId: string) {
+  return `staypilot:${propertyId}:rooms-rates:room-types`;
+}
 
-export const initialRatePlans: RatePlan[] = initialRoomTypes.flatMap((roomType) =>
-  currencies.flatMap((currency) =>
-    rateCodes.map((code, index) => {
-      const resident = code === "IBE" && currency === "LKR" && index % 2 === 1;
-      const defaultRate =
-        currency === "USD"
-          ? code === "OTA"
-            ? 31
-            : 20
-          : code === "TA"
-            ? Math.round(roomType.baseRate * 0.92)
-            : Math.round(roomType.baseRate * (roomType.name.includes("Twin") ? 0.57 : 0.45));
-      const title = `${code} - ${roomType.name} - Room Only - ${currency}${resident ? " - Resident" : ""}`;
-      return {
-        id: `${roomType.id}-${code.toLowerCase()}-${currency.toLowerCase()}-${resident ? "resident" : "standard"}`,
-        code,
-        roomType: roomType.name,
-        mealPlan: "Room Only",
-        currency,
-        resident,
-        title,
-        validFrom: "2026-05-21",
-        validTo: "2026-11-16",
-        sellMode: "Per Room",
-        rateMode: "N/A",
-        defaultRate,
-        status: "Active",
-        locked: false
-      };
-    })
-  )
-);
+export function isRoomTypeRecordArray(value: unknown): value is RoomTypeRecord[] {
+  return Array.isArray(value) && value.every((item) => {
+    if (!item || typeof item !== "object") return false;
+    const record = item as Partial<RoomTypeRecord>;
+    return typeof record.id === "string" && typeof record.name === "string" && Array.isArray(record.rooms);
+  });
+}
 
-export const initialRateHunterHotels: RateHunterHotel[] = [
-  {
-    id: "olinia",
-    name: "Olinia Airport Hotel",
-    score: 8.4,
-    distance: "2.1 km",
-    myRate: 19.5,
-    competitorRate: 51,
-    roomType: "Deluxe Double Room",
-    mealPlan: "Room Only",
-    rateCode: "FIT",
-    originalCurrency: "LKR (6,500.00)",
-    favorite: false
-  },
-  {
-    id: "sera86",
-    name: "Sera 86 Airport Transit Stay",
-    score: 8.8,
-    distance: "1.4 km",
-    myRate: 21.25,
-    competitorRate: 43,
-    roomType: "Deluxe Twin Room",
-    mealPlan: "Room Only",
-    rateCode: "OTA",
-    originalCurrency: "LKR (7,500.00)",
-    favorite: false
-  },
-  {
-    id: "lagoon",
-    name: "Lagoon Airport Residence",
-    score: 7.9,
-    distance: "4.8 km",
-    myRate: 31,
-    competitorRate: 62,
-    roomType: "Deluxe Family Room",
-    mealPlan: "Room Only",
-    rateCode: "IBE",
-    originalCurrency: "USD",
-    favorite: false
-  }
-];
+export function normalizeRoomTypeRecords(records: RoomTypeRecord[]) {
+  return records.map((record) => ({
+    ...record,
+    rooms: Array.isArray(record.rooms) ? record.rooms : [],
+    amenities: Array.isArray(record.amenities) ? record.amenities : [],
+    images: Array.isArray(record.images) ? record.images.filter((image) =>
+      Boolean(image && typeof image.id === "string" && typeof image.name === "string" && typeof image.dataUrl === "string")
+    ) : []
+  }));
+}
 
 export const currencyOptions = ["All Currencies", "LKR", "USD"];
 export const rateCodeOptions = ["All Rate Codes", "FIT", "IBE", "TA", "OTA"];

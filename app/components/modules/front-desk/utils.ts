@@ -1,6 +1,7 @@
-import { Reservation, Room, roomTypes } from "@/app/data/pms-data";
+import { Reservation, Room } from "@/app/data/pms-data";
 import { createUuid } from "@/app/lib/record-ids";
 import { DeskColumn, DeskTab, RatePlan, ReservationForm, ReservationRoomDraft } from "./types";
+import type { RoomTypeRecord } from "../rooms-rates/types";
 
 const inactiveStatuses = new Set(["Cancelled", "No Show", "Blocked"]);
 
@@ -61,16 +62,18 @@ export function cellClass(column: DeskColumn, dayUse: boolean, base: string) {
   return `${base}${dayUse ? " bg-emerald-50/75" : column.active ? " bg-teal-100/70" : ""}`;
 }
 
-export function bookingToForm(booking: Reservation | null, defaultDate: string, propertyId: string, ratePlans: RatePlan[], homeCurrency: string): ReservationForm {
+export function bookingToForm(booking: Reservation | null, defaultDate: string, propertyId: string, ratePlans: RatePlan[], homeCurrency: string, roomTypes: RoomTypeRecord[]): ReservationForm {
   const plan = ratePlans.find((item) => item.id === booking?.ratePlanId) ?? ratePlans[0];
   const checkIn = booking?.checkIn ?? defaultDate;
   const checkOut = booking?.checkOut ?? addDays(defaultDate, 1);
   const isDayRoom = booking?.isDayRoom ?? checkIn === checkOut;
   const now = new Date().toISOString();
-  const legacyType = roomTypes.find((item) => item.name === booking?.roomType) ?? roomTypes[0];
+  const legacyType = roomTypes.find((item) => item.name === booking?.roomType) ?? roomTypes.find((item) => item.active) ?? roomTypes[0];
+  if (!legacyType) throw new Error("At least one room type must be configured before creating reservations.");
+  const legacyRoomNumber = booking?.room && booking.room !== "-" ? booking.room : "";
   const roomLines: ReservationRoomDraft[] = booking?.reservationRooms?.map(({ propertyId: _propertyId, reservationId: _reservationId, ...line }) => line) ?? [{
     id: createUuid(), roomTypeId: legacyType.id, roomType: booking?.roomType ?? legacyType.name,
-    roomId: booking?.room ?? legacyType.rooms[0], roomNumber: booking?.room ?? legacyType.rooms[0],
+    roomId: legacyRoomNumber, roomNumber: legacyRoomNumber,
     occupancy: "Double", bedType: "Bed Type", adults: booking?.adults ?? 2, children: booking?.children ?? 0,
     ratePlanId: plan?.id ?? "", ratePlanName: booking?.ratePlanName ?? plan?.name ?? "",
     mealPlan: booking?.mealPlan ?? plan?.mealPlan ?? "Room Only", currency: booking?.currency ?? plan?.currency ?? homeCurrency,
