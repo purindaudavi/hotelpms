@@ -30,6 +30,9 @@ export type ReservationForm = {
   title: string;
   bookingSource: string;
   bookingReference: string;
+  travelAgentId: string;
+  travelAgentName: string;
+  travelAgentCommission: number;
   tourNumber: string;
   groupName: string;
   status: ReservationStatus;

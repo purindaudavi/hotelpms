@@ -38,7 +38,7 @@ export function useReservationEmailDelivery({ setReservations, setToast, log }: 
     }
 
     inFlight.current.add(requestKey);
-    setToast("Sending email…");
+    setToast("Sending email...");
 
     try {
       const result = await sendReservationEmail(booking, category, options);
@@ -51,9 +51,9 @@ export function useReservationEmailDelivery({ setReservations, setToast, log }: 
       const label = categoryLabel(category);
       log(
         booking.id,
-        result.ok ? `${label} email sent` : `${label} email failed`,
+        result.ok ? `${label} email accepted by SMTP` : `${label} email failed`,
         result.ok
-          ? `${label} email sent to ${(options.to ?? booking.email).trim()}.`
+          ? `${label} email accepted for ${(options.to ?? booking.email).trim()}. Message ID: ${result.messageId || "not returned"}. Inbox delivery is pending.`
           : `${label} email could not be sent to ${(options.to ?? booking.email).trim() || "the guest"}.`
       );
       setToast(toastMessage(context, result, label));
@@ -83,7 +83,7 @@ export function useReservationEmailDelivery({ setReservations, setToast, log }: 
 function updateEmailState(booking: Reservation, result: EmailResult): Reservation {
   const now = new Date().toISOString();
   return result.ok
-    ? { ...booking, emailStatus: "sent", emailSentAt: result.sentAt, emailFailureMessage: undefined, updatedAt: now }
+    ? { ...booking, emailStatus: "accepted", emailSentAt: result.sentAt, emailFailureMessage: undefined, updatedAt: now }
     : { ...booking, emailStatus: "failed", emailFailureMessage: result.failureMessage, updatedAt: now };
 }
 
@@ -93,9 +93,9 @@ function categoryLabel(category: EmailCategory) {
 
 function toastMessage(context: DeliveryContext, result: EmailResult, label: string) {
   if (result.ok) {
-    if (context === "creation") return `Reservation saved and ${label} email sent.`;
-    if (context === "status") return `Status updated and ${label} email sent.`;
-    return `${label} email sent successfully.`;
+    if (context === "creation") return `Reservation saved; ${label} email accepted by the mail server. Inbox delivery is pending.`;
+    if (context === "status") return `Status updated; ${label} email accepted by the mail server. Inbox delivery is pending.`;
+    return `${label} email accepted by the mail server. Inbox delivery is pending.`;
   }
 
   if (context === "creation") return "Reservation saved, but the email could not be sent.";

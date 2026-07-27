@@ -7,6 +7,12 @@ import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { initialTravelAgents } from "../constants";
 import type { ReservationModuleProps, TravelAgent, TravelAgentMetric } from "../types";
 import {
+  calculateTravelAgentPerformance,
+  isTravelAgentArray,
+  travelAgentStorageKey,
+  type TravelAgentPerformance
+} from "@/app/lib/travel-agent-repository";
+import {
   DetailGrid,
   Drawer,
   Field,
@@ -21,30 +27,35 @@ import {
 
 const agentColors = ["#81c995", "#726bd9", "#60c7e6", "#ff6b6b", "#f59e0b", "#14b8a6"];
 
-export function TravelAgentsPage({ propertyId, setToast }: ReservationModuleProps) {
-  const [agents, setAgents] = useSessionState(`staypilot:${propertyId}:reservation:travel-agents`, initialTravelAgents);
+export function TravelAgentsPage({ propertyId, reservations, setToast }: ReservationModuleProps) {
+  const [agents, setAgents] = useSessionState(travelAgentStorageKey(propertyId), initialTravelAgents, isTravelAgentArray);
   const [metric, setMetric] = useState<TravelAgentMetric>("revenue");
   const [query, setQuery] = useState("");
   const [editingAgent, setEditingAgent] = useState<TravelAgent | null>(null);
-  const [detailsAgent, setDetailsAgent] = useState<TravelAgent | null>(null);
+  const [detailsAgent, setDetailsAgent] = useState<TravelAgentPerformance | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+
+  const performanceAgents = useMemo(
+    () => agents.map((agent) => calculateTravelAgentPerformance(agent, reservations)),
+    [agents, reservations]
+  );
 
   const visibleAgents = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    if (!needle) return agents;
-    return agents.filter((agent) => [agent.name, agent.email, agent.phone, agent.code].join(" ").toLowerCase().includes(needle));
-  }, [agents, query]);
+    if (!needle) return performanceAgents;
+    return performanceAgents.filter((agent) => [agent.name, agent.email, agent.phone, agent.code].join(" ").toLowerCase().includes(needle));
+  }, [performanceAgents, query]);
 
   const chartRows = useMemo(
     () =>
-      agents
+      performanceAgents
         .filter((agent) => agent[metric] > 0)
         .map((agent) => ({
           name: agent.name,
           value: agent[metric],
           currency: agent.currency
         })),
-    [agents, metric]
+    [metric, performanceAgents]
   );
 
   function saveAgent(agent: TravelAgent) {
@@ -82,7 +93,7 @@ export function TravelAgentsPage({ propertyId, setToast }: ReservationModuleProp
                   <Tooltip
                     formatter={(value) => {
                       const numericValue = Array.isArray(value) ? Number(value[0] ?? 0) : Number(value ?? 0);
-                      return metric === "revenue" ? [`USD ${numericValue.toFixed(2)}`, "Revenue"] : [numericValue, "Room Nights"];
+                      return metric === "revenue" ? [numericValue.toFixed(2), "Revenue"] : [numericValue, "Room Nights"];
                     }}
                   />
                 </PieChart>
@@ -95,7 +106,7 @@ export function TravelAgentsPage({ propertyId, setToast }: ReservationModuleProp
                       <span className="h-3 w-3 rounded-full" style={{ backgroundColor: agentColors[index % agentColors.length] }} />
                       {row.name}
                     </span>
-                    <span>{metric === "revenue" ? row.value.toFixed(2) : row.value}</span>
+                    <span>{metric === "revenue" ? `${row.currency} ${row.value.toFixed(2)}` : row.value}</span>
                   </div>
                 ))}
               </div>
@@ -103,26 +114,31 @@ export function TravelAgentsPage({ propertyId, setToast }: ReservationModuleProp
           </Panel>
 
           <Panel title="Agent Statistics" bodyClassName="p-0">
-            <table className="w-full text-left text-sm">
+            <div className="overflow-x-auto"><table className="min-w-[1050px] w-full text-left text-sm">
               <thead className="bg-slate-50 text-slate-500">
                 <tr>
-                  {["Channel", "Currency", "Revenue", "Reservations", "Room Nights"].map((heading) => (
+                  {["Channel", "Currency", "Gross Revenue", "Commission", "Net Revenue", "Reservations", "Room Nights", "ADR"].map((heading) => (
                     <th key={heading} className="px-5 py-3 font-semibold">{heading}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {agents.filter((agent) => agent.revenue > 0 || agent.roomNights > 0).map((agent) => (
+                {performanceAgents.filter((agent) => agent.revenue > 0 || agent.roomNights > 0).map((agent) => (
                   <tr key={agent.id} className="border-t border-line">
                     <td className="px-5 py-3">{agent.name}</td>
                     <td className="px-5 py-3">{agent.currency}</td>
                     <td className="px-5 py-3">{agent.revenue.toFixed(2)}</td>
+                    <td className="px-5 py-3">{agent.commissionAmount.toFixed(2)}</td>
+                    <td className="px-5 py-3">{agent.netRevenue.toFixed(2)}</td>
                     <td className="px-5 py-3">{agent.reservations}</td>
                     <td className="px-5 py-3">{agent.roomNights}</td>
+                    <td className="px-5 py-3">{agent.averageDailyRate.toFixed(2)}</td>
                   </tr>
                 ))}
+                {!performanceAgents.some((agent) => agent.revenue > 0 || agent.roomNights > 0) ? <tr><td colSpan={8} className="px-5 py-8 text-center text-slate-500">No qualifying travel-agent reservations yet.</td></tr> : null}
               </tbody>
-            </table>
+            </table></div>
+            <p className="border-t border-line px-5 py-3 text-xs text-slate-500">Calculated from Confirmed, Checked-in and Checked-out reservations. Tentative, Cancelled, No Show and Blocked reservations are excluded. Revenue assumes the agent and reservation use the same currency.</p>
           </Panel>
         </div>
 
@@ -144,7 +160,7 @@ export function TravelAgentsPage({ propertyId, setToast }: ReservationModuleProp
                   <p className="truncate text-sm text-slate-500">{agent.email || "N/A"} <span className="px-2">|</span> {agent.phone || "N/A"}</p>
                 </button>
                 <div className="flex items-center gap-4 text-slate-700">
-                  <button type="button" title="Edit agent" onClick={() => setEditingAgent(agent)} className="hover:text-slate-950">
+                  <button type="button" title="Edit agent" onClick={() => setEditingAgent(agents.find((item) => item.id === agent.id) ?? null)} className="hover:text-slate-950">
                     <Edit3 className="h-5 w-5" />
                   </button>
                   <button type="button" title="View performance" onClick={() => setDetailsAgent(agent)} className="hover:text-slate-950">
@@ -268,7 +284,15 @@ function AgentFormDrawer({
                 <TextInput value={form.phone} onChange={(event) => update("phone", event.target.value)} placeholder="+1 (555) 123-4567" />
               </Field>
               <Field label="Commission">
-                <TextInput type="number" min={0} value={form.commission} onChange={(event) => update("commission", Number(event.target.value))} />
+                <TextInput type="number" min={0} max={100} value={form.commission} onChange={(event) => update("commission", Number(event.target.value))} />
+              </Field>
+              <Field label="Currency">
+                <SelectInput value={form.currency} onChange={(event) => update("currency", event.target.value)}>
+                  <option>USD</option>
+                  <option>LKR</option>
+                  <option>EUR</option>
+                  <option>GBP</option>
+                </SelectInput>
               </Field>
               <Field label="Address">
                 <TextInput value={form.address} onChange={(event) => update("address", event.target.value)} placeholder="123 Main St, Springfield" />
@@ -311,7 +335,7 @@ function AgentFormDrawer({
   );
 }
 
-function AgentDetailsDrawer({ agent, onClose }: { agent: TravelAgent; onClose: () => void }) {
+function AgentDetailsDrawer({ agent, onClose }: { agent: TravelAgentPerformance; onClose: () => void }) {
   return (
     <Drawer title="Travel Agent Details" onClose={onClose} width="max-w-xl">
       <div className="space-y-5">
@@ -348,14 +372,16 @@ function AgentDetailsDrawer({ agent, onClose }: { agent: TravelAgent; onClose: (
 
         <DetailsSection title="Performance" icon={<BarChart3 className="h-5 w-5" />}>
           <div className="grid gap-3 sm:grid-cols-2">
-            <MetricCard icon={<WalletCards className="h-4 w-4 text-emerald-600" />} label="Revenue" value={`${agent.currency} ${agent.revenue.toFixed(2)}`} />
+            <MetricCard icon={<WalletCards className="h-4 w-4 text-emerald-600" />} label="Gross Revenue" value={`${agent.currency} ${agent.revenue.toFixed(2)}`} />
+            <MetricCard icon={<WalletCards className="h-4 w-4 text-amber-600" />} label="Commission" value={`${agent.currency} ${agent.commissionAmount.toFixed(2)}`} />
+            <MetricCard icon={<WalletCards className="h-4 w-4 text-teal-600" />} label="Net Revenue" value={`${agent.currency} ${agent.netRevenue.toFixed(2)}`} />
             <MetricCard icon={<MapPin className="h-4 w-4 text-blue-600" />} label="Room Nights" value={agent.roomNights} />
             <MetricCard icon={<BarChart3 className="h-4 w-4 text-violet-600" />} label="Average Daily Rate" value={`${agent.currency} ${agent.averageDailyRate.toFixed(2)}`} />
             <MetricCard icon={<Phone className="h-4 w-4 text-orange-600" />} label="Reservations" value={agent.reservations} />
           </div>
           <div className="mt-4 flex items-center justify-between border-t border-line pt-4 text-sm">
             <span className="text-slate-500">Status</span>
-            <span className="rounded-full bg-slate-950 px-3 py-1 text-xs font-bold text-white">CONFIRMED</span>
+            <span className="rounded-full bg-slate-950 px-3 py-1 text-xs font-bold text-white">FROM RESERVATIONS</span>
           </div>
         </DetailsSection>
       </div>

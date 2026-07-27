@@ -1,5 +1,5 @@
 import { property, type Reservation } from "@/app/data/pms-data";
-import type { BusinessBlock, CrossBookLink, EventBooking, GuestProfile, TravelAgent } from "./types";
+import type { BusinessBlock, CrossBookLink, EventBooking, TravelAgent } from "./types";
 
 export const reservationSystemDate = property.systemDate;
 
@@ -520,15 +520,6 @@ export const initialTravelAgents: TravelAgent[] = [
     roomNights: 0,
     averageDailyRate: 0
   }
-];
-
-export const initialGuestProfiles: GuestProfile[] = [
-  { id: "guest-001", passport: "N/A", name: "alex", phone: "0703333333", country: "Argentina", email: "aaa.55@gmail.com", linkedReservationIds: [] },
-  { id: "guest-002", passport: "N/A", name: "alex", phone: "0703333333", country: "Argentina", email: "aaa.55@gmail.com", linkedReservationIds: [] },
-  { id: "guest-003", passport: "N/A", name: "ASIRI NIRMAL PERERA", phone: "+94703551339", country: "Sri Lanka", email: "asiri.business@gmail.com", linkedReservationIds: [] },
-  { id: "guest-004", passport: "N/A", name: "ASIRI NIRMAL PERERA", phone: "+94703551339", country: "Sri Lanka", email: "asiri.business@gmail.com", linkedReservationIds: [] },
-  { id: "guest-005", passport: "N/A", name: "Manujaya Geewinda", phone: "94 712339174", country: "Sri Lanka", email: "N/A", linkedReservationIds: [] },
-  { id: "guest-006", passport: "N/A", name: "Muhammad Murtaza", phone: "92 3312625105", country: "Afghanistan", email: "ronakahotel1@gmail.com", linkedReservationIds: ["1052711009"] }
 ];
 
 export const venueOptions = ["All venues", "Meeting Room", "Restaurant", "Rooftop", "Lobby Lounge"];

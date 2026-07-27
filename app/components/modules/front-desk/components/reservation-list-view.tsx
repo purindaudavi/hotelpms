@@ -30,7 +30,7 @@ export function ReservationListView({ tab, reservations, businessDate, onBooking
       .filter((booking) => reservationMatchesTab(booking, tab, businessDate))
       .filter((booking) => {
         if (!query) return true;
-        return [booking.resNo, booking.bookingReference ?? booking.bookingRef, booking.guest, booking.roomType, booking.bookingSource ?? booking.source, booking.room].some((value) => value.toLowerCase().includes(query));
+        return [booking.resNo, booking.bookingReference ?? booking.bookingRef, booking.guest, booking.roomType, booking.bookingSource ?? booking.source, booking.travelAgentName ?? "", booking.room].some((value) => value.toLowerCase().includes(query));
       })
       .sort((a, b) => a.checkIn.localeCompare(b.checkIn) || a.guest.localeCompare(b.guest));
   }, [businessDate, reservations, search, tab]);
@@ -40,7 +40,7 @@ export function ReservationListView({ tab, reservations, businessDate, onBooking
 
   function downloadCsv() {
     const header = ["Booking ID", "Guest", "Room Type", "Stay", "Status", "Booking Source", "Created On"];
-    const body = rows.map((booking) => [booking.resNo, booking.guest, booking.roomType, stayLabel(booking), booking.status, booking.bookingSource ?? booking.source, booking.createdAt ?? booking.reservationDate]);
+    const body = rows.map((booking) => [booking.resNo, booking.guest, booking.roomType, stayLabel(booking), booking.status, booking.travelAgentName || booking.bookingSource || booking.source, booking.createdAt ?? booking.reservationDate]);
     const csv = [header, ...body].map((line) => line.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -102,7 +102,7 @@ export function ReservationListView({ tab, reservations, businessDate, onBooking
                         {booking.status.toLowerCase()}
                       </span>
                     </td>
-                    <td className="px-3 py-4 text-ink">{booking.bookingSource ?? booking.source}</td>
+                    <td className="px-3 py-4 text-ink">{booking.travelAgentName || booking.bookingSource || booking.source}</td>
                     <td className="px-3 py-4 text-ink">{booking.createdAt ? new Date(booking.createdAt).toLocaleString() : booking.reservationDate}</td>
                   </tr>
                 ))}

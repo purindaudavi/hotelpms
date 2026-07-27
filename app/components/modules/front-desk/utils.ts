@@ -81,7 +81,10 @@ export function bookingToForm(booking: Reservation | null, defaultDate: string, 
   return {
     id: booking?.id, businessBlockId: booking?.businessBlockId, businessBlockAllocationId: booking?.businessBlockAllocationId,
     title: booking?.guestTitle ?? "Select", bookingSource: booking?.bookingSource ?? booking?.source ?? "Direct",
-    bookingReference: booking?.bookingReference ?? booking?.bookingRef ?? "", tourNumber: booking?.tourNumber ?? "", groupName: booking?.groupName ?? "",
+    bookingReference: booking?.bookingReference ?? booking?.bookingRef ?? "",
+    travelAgentId: booking?.travelAgentId ?? "", travelAgentName: booking?.travelAgentName ?? "",
+    travelAgentCommission: Number(booking?.travelAgentCommission ?? 0),
+    tourNumber: booking?.tourNumber ?? "", groupName: booking?.groupName ?? "",
     status: booking?.status ?? "Confirmed", checkIn, checkOut, nights: isDayRoom ? 0 : Math.max(daysBetween(checkIn, checkOut), 1), isDayRoom,
     ratePlanId: booking?.ratePlanId ?? plan?.id ?? "", currency: booking?.currency ?? plan?.currency ?? homeCurrency,
     mealPlan: booking?.mealPlan ?? plan?.mealPlan ?? "Room Only", refundable: booking?.refundable ?? plan?.refundable ?? true,
@@ -89,7 +92,7 @@ export function bookingToForm(booking: Reservation | null, defaultDate: string, 
     guest: booking?.guest ?? "", phone: booking?.phone === "-" ? "" : booking?.phone ?? "", email: booking?.email === "-" ? "" : booking?.email ?? "",
     country: booking?.country ?? "Select Country", reservationRemarks: booking?.reservationRemarks ?? "",
     guestRemarks: booking?.guestRemarks ?? "", internalRemarks: booking?.internalRemarks ?? "",
-    checkInNow: booking?.status === "Checked-in", sendEmail: booking?.emailStatus === "pending" || booking?.emailStatus === "sent"
+    checkInNow: booking?.status === "Checked-in", sendEmail: booking?.emailStatus === "pending" || booking?.emailStatus === "accepted" || booking?.emailStatus === "sent"
   };
 }
 
@@ -122,6 +125,9 @@ export function formToReservation(
   return {
     ...existing, id, propertyId, resNo: existing?.resNo ?? `RES-${id.slice(0, 8).toUpperCase()}`,
     bookingRef: bookingReference, bookingReference, bookingSource: form.bookingSource, source: form.bookingSource,
+    travelAgentId: form.bookingSource === "Travel Agent" ? form.travelAgentId : "",
+    travelAgentName: form.bookingSource === "Travel Agent" ? form.travelAgentName : "",
+    travelAgentCommission: form.bookingSource === "Travel Agent" ? form.travelAgentCommission : 0,
     tourNumber: form.bookingSource === "Direct" ? "" : form.tourNumber.trim(), groupName: form.bookingSource === "Direct" ? "" : form.groupName.trim(),
     reservationDate: existing?.reservationDate ?? businessDate ?? now.slice(0, 10), checkIn: form.checkIn, checkOut: form.isDayRoom ? form.checkIn : form.checkOut,
     rooms: lines.length, status: form.checkInNow ? "Checked-in" : form.status, guestTitle: form.title, guest: form.guest.trim(),

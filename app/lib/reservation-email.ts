@@ -11,8 +11,17 @@ export type EmailOptions = {
 };
 
 export type EmailResult =
-  | { ok: true; category: EmailCategory; sentAt: string }
+  | { ok: true; category: EmailCategory; sentAt: string; smtpStatus: "accepted" | "queued"; messageId: string; smtpResponse: string }
   | { ok: false; category: EmailCategory; reason: "invalid-email" | "delivery"; failureMessage: string };
+
+type MailApiResponse = {
+  message: string;
+  delivery?: {
+    status: "accepted" | "queued" | "rejected";
+    messageId?: string;
+    response?: string;
+  };
+};
 
 export const statusEmailCategory: Partial<Record<ReservationStatus, EmailCategory>> = {
   Confirmed: "confirmation",
@@ -51,8 +60,19 @@ export async function sendReservationEmail(
   }
 
   try {
-    await api.post(endpoints[category], buildPayload(booking, category, { ...options, to }));
-    return { ok: true, category, sentAt: new Date().toISOString() };
+    const response = await api.post<MailApiResponse>(endpoints[category], buildPayload(booking, category, { ...options, to }));
+    const delivery = response.data.delivery;
+    if (delivery?.status === "rejected") {
+      return { ok: false, category, reason: "delivery", failureMessage: delivery.response || "The SMTP server rejected the recipient." };
+    }
+    return {
+      ok: true,
+      category,
+      sentAt: new Date().toISOString(),
+      smtpStatus: delivery?.status === "queued" ? "queued" : "accepted",
+      messageId: delivery?.messageId ?? "",
+      smtpResponse: delivery?.response ?? response.data.message
+    };
   } catch (error) {
     return { ok: false, category, reason: "delivery", failureMessage: getApiErrorMessage(error) };
   }
@@ -111,7 +131,7 @@ function buildPayload(booking: Reservation, category: EmailCategory, options: Em
       originalcheckin: booking.checkIn,
       originalcheckout: booking.checkOut,
       rooms,
-      bookingsource: booking.bookingSource || booking.source || "Direct",
+      bookingsource: booking.travelAgentName || booking.bookingSource || booking.source || "Direct",
       payment
     },
     reminder: {

@@ -114,16 +114,6 @@ export type TravelAgent = {
 
 export type TravelAgentMetric = "revenue" | "roomNights";
 
-export type GuestProfile = {
-  id: string;
-  passport: string;
-  name: string;
-  phone: string;
-  country: string;
-  email: string;
-  linkedReservationIds: string[];
-};
-
 export type ReservationFormState = {
   id?: string;
   resNo: string;

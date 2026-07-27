@@ -67,6 +67,9 @@ export function searchReservation(booking: Reservation, query: string) {
     booking.email,
     booking.country,
     booking.source,
+    booking.bookingSource,
+    booking.bookingReference,
+    booking.travelAgentName,
     booking.status,
     booking.room,
     booking.roomType

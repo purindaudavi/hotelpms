@@ -10,8 +10,8 @@ import { IconButton } from "./controls";
 import { InputField, SelectField, TextAreaField } from "./form-fields";
 import { useLocalStorageState } from "@/app/components/hooks/use-local-storage-state";
 import { businessBlockStorageKey, isBusinessBlockArray, migrateBusinessBlockRecords, roomTypeAvailability } from "@/app/lib/business-block-repository";
-import { initialBusinessBlocks, initialCrossBookLinks } from "../../reservation/constants";
-import type { BusinessBlock } from "../../reservation/types";
+import { initialBusinessBlocks, initialCrossBookLinks, initialTravelAgents } from "../../reservation/constants";
+import type { BusinessBlock, CrossBookLink, TravelAgent } from "../../reservation/types";
 import {
   crossBookedRoomCodes,
   crossBookLinksStorageKey,
@@ -19,7 +19,7 @@ import {
   normalizeCrossBookLinks,
   roomsAreCrossBooked
 } from "@/app/lib/cross-booking";
-import type { CrossBookLink } from "../../reservation/types";
+import { isTravelAgentArray, travelAgentStorageKey } from "@/app/lib/travel-agent-repository";
 
 type SaveResult = { ok: true } | { ok: false; error: string };
 
@@ -47,6 +47,7 @@ export function ReservationEditor(props: ReservationEditorProps) {
     isCrossBookLinkArray,
     normalizeCrossBookLinks
   );
+  const [travelAgents] = useLocalStorageState<TravelAgent[]>(travelAgentStorageKey(propertyId), initialTravelAgents, isTravelAgentArray);
   const [form, setForm] = useState(() => {
     const initial = initialForm ? structuredClone(initialForm) : bookingToForm(booking, defaultDate, propertyId, ratePlans, homeCurrency);
     if (booking) return initial;
@@ -76,6 +77,9 @@ export function ReservationEditor(props: ReservationEditorProps) {
       const next = { ...current, [key]: value };
       if (key === "bookingSource" && value === "Direct") {
         next.bookingReference = ""; next.tourNumber = ""; next.groupName = "";
+      }
+      if (key === "bookingSource" && value !== "Travel Agent") {
+        next.travelAgentId = ""; next.travelAgentName = ""; next.travelAgentCommission = 0;
       }
       if (key === "status" && value !== "Checked-in") next.checkInNow = false;
       if (key === "checkIn" || key === "nights" || key === "isDayRoom") {
@@ -117,6 +121,16 @@ export function ReservationEditor(props: ReservationEditorProps) {
       && !form.roomLines.some((other) => other.id !== line.id && (
         other.roomNumber === room.code || roomsAreCrossBooked(crossBookLinks, other.roomNumber, room.code)
       )));
+  }
+
+  function selectTravelAgent(agentId: string) {
+    const agent = travelAgents.find((item) => item.id === agentId);
+    setForm((current) => ({
+      ...current,
+      travelAgentId: agent?.id ?? "",
+      travelAgentName: agent?.name ?? "",
+      travelAgentCommission: agent?.commission ?? 0
+    }));
   }
 
   function changeRoomType(line: ReservationRoomDraft, typeName: string) {
@@ -164,6 +178,8 @@ export function ReservationEditor(props: ReservationEditorProps) {
   function validate() {
     if (!form.guest.trim()) return "Guest name is required.";
     if (form.bookingSource !== "Direct" && !form.bookingReference.trim()) return "Booking reference is required for external booking sources.";
+    if (form.bookingSource === "Travel Agent" && !form.travelAgentId) return "Select a travel agent for this reservation.";
+    if (form.bookingSource === "Travel Agent" && !travelAgents.some((agent) => agent.id === form.travelAgentId)) return "The selected travel agent no longer exists.";
     if (!form.isDayRoom && form.checkOut <= form.checkIn) return "Check-out must be after check-in.";
     if (!form.roomLines.length) return "Add at least one room.";
     if (new Set(form.roomLines.map((line) => line.roomNumber)).size !== form.roomLines.length) return "The same physical room cannot be assigned twice.";
@@ -230,7 +246,29 @@ export function ReservationEditor(props: ReservationEditorProps) {
           {form.businessBlockId ? <div className="mb-3 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-800">Linked Business Block reservation. Saving updates pickup and remaining counts automatically.</div> : null}
           {error ? <div role="alert" className="mb-3 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
           <section className="rounded-md bg-slate-50 p-3"><div className="grid gap-3 lg:grid-cols-4">
-            <SelectField label="Booking Source" value={form.bookingSource} onChange={(value) => update("bookingSource", value)} options={["Direct", "Agoda", "Expedia", "Booking.com", "Travel Agent"]} />
+            <SelectField
+              label="Booking Source"
+              value={form.bookingSource}
+              onChange={(value) => update("bookingSource", value)}
+              options={[
+                "Direct",
+                "Travel Agent",
+                ...(!["Direct", "Travel Agent"].includes(form.bookingSource) ? [form.bookingSource] : [])
+              ]}
+            />
+            {form.bookingSource === "Travel Agent" ? (
+              <SelectField
+                label="Travel Agent *"
+                value={form.travelAgentId}
+                onChange={selectTravelAgent}
+                options={[
+                  { value: "", label: "Select travel agent" },
+                  ...travelAgents
+                    .filter((agent) => agent.status === "Active" || agent.id === form.travelAgentId)
+                    .map((agent) => ({ value: agent.id, label: `${agent.name} (${agent.code}) · ${agent.commission}%` }))
+                ]}
+              />
+            ) : null}
             <InputField label={`Booking Ref.${form.bookingSource === "Direct" ? "" : " *"}`} value={form.bookingReference} onChange={(value) => update("bookingReference", value)} placeholder={form.bookingSource === "Direct" ? "Not required for direct bookings" : "Required external reference"} disabled={form.bookingSource === "Direct"} />
             <InputField label="Tour No" value={form.tourNumber} onChange={(value) => update("tourNumber", value)} placeholder="Tour No" disabled={form.bookingSource === "Direct"} />
             <InputField label="Group Name" value={form.groupName} onChange={(value) => update("groupName", value)} placeholder="Group Name" disabled={form.bookingSource === "Direct"} />
@@ -238,7 +276,7 @@ export function ReservationEditor(props: ReservationEditorProps) {
             <div className="grid gap-1"><label className="text-sm font-semibold">Check-in</label><div className="flex items-center gap-2"><input value={form.checkIn} onChange={(e) => update("checkIn", e.target.value)} type="date" className="focus-ring h-11 min-w-0 flex-1 rounded-md border border-line bg-white px-3 text-sm" /><label className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={form.isDayRoom} onChange={(e) => update("isDayRoom", e.target.checked)} />Day room</label></div></div>
             <InputField label="Nights" value={String(form.nights)} onChange={(value) => update("nights", Number(value))} type="number" disabled={form.isDayRoom} />
             <InputField label="Check-out" value={form.checkOut} onChange={(value) => update("checkOut", value)} type="date" disabled={form.isDayRoom} />
-          </div></section>
+          </div>{form.bookingSource === "Travel Agent" && form.travelAgentId ? <p className="mt-2 text-xs text-slate-500">Performance will be credited to {form.travelAgentName}. Commission saved for this reservation: {form.travelAgentCommission}%.</p> : null}</section>
 
           <section className="mt-4 rounded-md bg-slate-50 p-3">
             <div className="grid gap-4 lg:grid-cols-[1.1fr_1fr_1.2fr]"><div className="flex gap-2"><SelectField label="Rate Plan" value={form.ratePlanId} onChange={selectRatePlan} options={ratePlans.filter((p) => p.active).map((p) => ({ value: p.id, label: p.name }))} /><button type="button" aria-label="Create rate plan" className="mt-7 grid h-11 w-11 place-items-center rounded-md border border-line bg-white" onClick={() => setRateDialogOpen(true)}><Plus className="h-4 w-4" /></button></div>

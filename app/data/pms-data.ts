@@ -68,7 +68,7 @@ export type ReservationStatus =
   | "No Show"
   | "Blocked";
 
-export type ReservationEmailStatus = "not_requested" | "pending" | "sent" | "failed";
+export type ReservationEmailStatus = "not_requested" | "pending" | "accepted" | "sent" | "failed";
 
 export type ReservationRoom = {
   id: string;
@@ -122,6 +122,9 @@ export type Reservation = {
   bookingRef: string;
   bookingSource?: string;
   bookingReference?: string;
+  travelAgentId?: string;
+  travelAgentName?: string;
+  travelAgentCommission?: number;
   tourNumber?: string;
   groupName?: string;
   reservationDate: string;
