@@ -4,6 +4,7 @@ import type { Dispatch, SetStateAction } from "react";
 import type { Reservation, Room } from "@/app/data/pms-data";
 import { useLocalStorageState } from "@/app/components/hooks/use-local-storage-state";
 import { currentSessionUser } from "@/app/lib/current-user";
+import { getGuestApiErrorMessage, syncReservationGuest } from "@/app/lib/guest-api";
 import { deleteReservation, saveReservationRecord } from "@/app/lib/reservation-repository";
 import { statusEmailCategory } from "@/app/lib/reservation-email";
 import {
@@ -96,6 +97,16 @@ export function useReservationActions(options: UseReservationActionsOptions) {
     }
     if (existing?.status === "Checked-in" && booking.status === "Checked-out") log(booking.id, "Checked out", `Guest checked out from ${reservationRoomNumbers(existing).join(", ")}.`);
     if (existing && existing.status !== "Cancelled" && booking.status === "Cancelled") log(booking.id, "Reservation cancelled", `Reservation ${booking.resNo} was cancelled.`);
+    let guestSyncWarning = "";
+    try {
+      const guestSync = await syncReservationGuest(propertyId, booking, existing);
+      if (!guestSync.synced) {
+        guestSyncWarning = `Guest profile was not synchronized because ${guestSync.reason}.`;
+      }
+    } catch (error) {
+      guestSyncWarning = `Guest profile synchronization failed: ${getGuestApiErrorMessage(error)}`;
+    }
+
     const statusChanged = Boolean(existing && existing.status !== booking.status);
     const emailCategory = !existing
       ? booking.status === "Checked-in"
@@ -110,8 +121,11 @@ export function useReservationActions(options: UseReservationActionsOptions) {
     if (emailCategory) {
       const delivery = await emailDelivery.deliver(booking, emailCategory, existing ? "status" : "creation");
       booking = delivery.booking;
-    } else {
-      setToast(`Reservation ${existing ? "updated" : "created"} locally`);
+    }
+    if (guestSyncWarning) {
+      setToast(`Reservation ${existing ? "updated" : "created"}. ${guestSyncWarning}`);
+    } else if (!emailCategory) {
+      setToast(`Reservation ${existing ? "updated" : "created"}; guest profile synchronized`);
     }
     return { ok: true, reservation: booking };
   }
