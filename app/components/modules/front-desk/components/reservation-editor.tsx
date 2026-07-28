@@ -135,15 +135,41 @@ export function ReservationEditor(props: ReservationEditorProps) {
     setForm((current) => ({ ...current, roomLines: current.roomLines.map((line) => line.id === id ? { ...line, ...patch } : line) }));
   }
 
-  function availableRooms(line: ReservationRoomDraft) {
-    return roomList.filter((room) => room.type === line.roomType && room.status !== "Out of Order" && room.status !== "Maintenance"
-      && (room.status === "Available" || Boolean(booking && line.roomNumber === room.code))
-      && (!form.checkInNow || room.housekeeping === "Clean" || line.roomNumber === room.code)
-      && (!roomHasOverlap(reservations, room.code, form.checkIn, form.isDayRoom ? addDays(form.checkIn, 1) : form.checkOut, booking?.id) || line.roomNumber === room.code)
-      && (!crossBookConflict(room.code, form.checkIn, form.isDayRoom ? addDays(form.checkIn, 1) : form.checkOut) || line.roomNumber === room.code)
-      && !form.roomLines.some((other) => other.id !== line.id && (
-        other.roomNumber === room.code || roomsAreCrossBooked(crossBookLinks, other.roomNumber, room.code)
-      )));
+  function roomOptions(line: ReservationRoomDraft) {
+    const checkOut = form.isDayRoom ? addDays(form.checkIn, 1) : form.checkOut;
+    return roomList
+      .filter((room) => room.type === line.roomType)
+      .map((room) => {
+        const currentAssignment = line.roomNumber === room.code;
+        let unavailableReason = "";
+
+        if (!currentAssignment && (room.status === "Out of Order" || room.status === "Maintenance")) {
+          unavailableReason = room.status;
+        } else if (!currentAssignment && room.status !== "Available") {
+          unavailableReason = room.status;
+        } else if (!currentAssignment && form.checkInNow && room.housekeeping !== "Clean") {
+          unavailableReason = `${room.housekeeping.toLowerCase()} housekeeping`;
+        } else if (!currentAssignment && roomHasOverlap(reservations, room.code, form.checkIn, checkOut, booking?.id)) {
+          unavailableReason = "reserved for these dates";
+        } else if (!currentAssignment && crossBookConflict(room.code, form.checkIn, checkOut)) {
+          unavailableReason = "linked room is reserved";
+        } else if (!currentAssignment && form.roomLines.some((other) => other.id !== line.id && (
+          other.roomNumber === room.code || roomsAreCrossBooked(crossBookLinks, other.roomNumber, room.code)
+        ))) {
+          unavailableReason = "already selected";
+        }
+
+        return { room, currentAssignment, unavailableReason };
+      });
+  }
+
+  function preservesRemovedRoomType(roomTypeName: string) {
+    if (!booking || form.checkIn !== booking.checkIn || (form.isDayRoom ? form.checkIn : form.checkOut) !== booking.checkOut) return false;
+    const currentLines = form.roomLines.filter((line) => line.roomType === roomTypeName);
+    const savedLines = booking.reservationRooms?.filter((line) => line.roomType === roomTypeName) ?? [];
+    return currentLines.length === savedLines.length && currentLines.every((line) =>
+      savedLines.some((savedLine) => savedLine.id === line.id)
+    );
   }
 
   function selectTravelAgent(agentId: string) {
@@ -210,7 +236,12 @@ export function ReservationEditor(props: ReservationEditorProps) {
       const dates = stayDates(form.checkIn, form.isDayRoom ? addDays(form.checkIn, 1) : form.checkOut);
       const counts = form.roomLines.reduce<Record<string, number>>((result, line) => ({ ...result, [line.roomType]: (result[line.roomType] || 0) + 1 }), {});
       for (const [roomTypeName, requested] of Object.entries(counts)) {
-        const capacity = roomTypes.find((type) => type.name === roomTypeName)?.rooms.length || 0;
+        const configuredType = roomTypes.find((type) => type.name === roomTypeName);
+        if (!configuredType) {
+          if (preservesRemovedRoomType(roomTypeName)) continue;
+          return `${roomTypeName} is no longer configured. Select an active room type before changing this reservation's stay or rooms.`;
+        }
+        const capacity = configuredType.rooms.length;
         for (const date of dates) {
           const available = roomTypeAvailability(roomTypeName, date, capacity, reservations.filter((item) => item.id !== booking?.id), businessBlocks);
           if (requested > available) return `${roomTypeName} has only ${available} sellable room(s) remaining on ${date} after active Business Block holds.`;
@@ -226,7 +257,11 @@ export function ReservationEditor(props: ReservationEditorProps) {
       }
       const room = roomList.find((item) => item.code === line.roomNumber);
       const savedOnExisting = Boolean(booking && (booking.reservationRooms?.some((item) => item.roomNumber === line.roomNumber) || booking.room === line.roomNumber));
-      if (!room || (!savedOnExisting && room.status !== "Available")) return `Room ${line.roomNumber} is not operationally available.`;
+      if (!room) {
+        if (savedOnExisting) continue;
+        return `Room ${line.roomNumber} is no longer configured. Select a current physical room.`;
+      }
+      if (!savedOnExisting && room.status !== "Available") return `Room ${line.roomNumber} is not operationally available.`;
       if (physicalRoomRequired && !savedOnExisting && room.housekeeping !== "Clean") return `Room ${line.roomNumber} must be clean before check-in.`;
       if (line.isFoc && !line.focReason.trim()) return `Enter a complimentary reason for room ${line.roomNumber}.`;
       if (roomHasOverlap(reservations, line.roomNumber, form.checkIn, form.isDayRoom ? addDays(form.checkIn, 1) : form.checkOut, booking?.id)) return `Room ${line.roomNumber} overlaps another active reservation.`;
@@ -308,9 +343,9 @@ export function ReservationEditor(props: ReservationEditorProps) {
             <p className="mt-2 text-xs text-slate-500">Selecting a rate plan fills currency, meal plan, cancellation terms and room rates. Edited values are treated as overrides.</p>
             <div className="mt-1 flex gap-3 text-xs text-amber-600">{selectedPlan && form.currency !== selectedPlan.currency ? <span>Currency: Custom override</span> : null}{selectedPlan && form.mealPlan !== selectedPlan.mealPlan ? <span>Meal plan: Custom override</span> : null}</div>
             <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[1120px] text-sm"><thead><tr className="text-left text-slate-500">{["Room Type", "Room No", "Occupancy", "Bed", "Adult", "Child", "Rate", "Complimentary (FOC)", "Edit", ""].map((head, index) => <th key={`${head}-${index}`} className="px-2 py-2">{head}</th>)}</tr></thead>
-              <tbody>{form.roomLines.map((line) => { const editable = editingLineId === line.id; const candidates = availableRooms(line); const planRate = selectedPlan ? planRateFor(selectedPlan, line.roomTypeId) : line.originalNightlyRate; return <tr key={line.id} className="border-t border-line">
-                <td className="px-2 py-2"><select disabled={!editable} value={line.roomType} onChange={(e) => changeRoomType(line, e.target.value)} className="h-10 w-full rounded-md border border-line bg-white px-2 disabled:bg-slate-100">{roomTypes.map((type) => <option key={type.id}>{type.name}</option>)}</select></td>
-                <td className="px-2 py-2"><select disabled={!editable} value={line.roomNumber} onChange={(e) => { const room = roomList.find((item) => item.code === e.target.value); updateRoomLine(line.id, { roomNumber: e.target.value, roomId: room?.id ?? "" }); }} className="h-10 w-full rounded-md border border-line bg-white px-2 disabled:bg-slate-100"><option value="">Select</option>{candidates.map((room) => <option key={room.id} value={room.code}>{room.code}</option>)}</select></td>
+              <tbody>{form.roomLines.map((line) => { const editable = editingLineId === line.id; const options = roomOptions(line); const archivedType = !roomTypes.some((type) => type.name === line.roomType); const archivedRoom = Boolean(line.roomNumber && !options.some(({ room }) => room.code === line.roomNumber)); const planRate = selectedPlan ? planRateFor(selectedPlan, line.roomTypeId) : line.originalNightlyRate; return <tr key={line.id} className="border-t border-line">
+                <td className="px-2 py-2"><select disabled={!editable} value={line.roomType} onChange={(e) => changeRoomType(line, e.target.value)} className="h-10 w-full rounded-md border border-line bg-white px-2 disabled:bg-slate-100">{archivedType ? <option value={line.roomType}>{line.roomType} (archived)</option> : null}{roomTypes.filter((type) => type.active || type.name === line.roomType).map((type) => <option key={type.id} value={type.name}>{type.name}{type.active ? "" : " (disabled)"}</option>)}</select></td>
+                <td className="px-2 py-2"><select disabled={!editable} value={line.roomNumber} onChange={(e) => { const room = roomList.find((item) => item.code === e.target.value); updateRoomLine(line.id, { roomNumber: e.target.value, roomId: room?.id ?? "" }); }} className="h-10 w-full rounded-md border border-line bg-white px-2 disabled:bg-slate-100"><option value="">Select</option>{archivedRoom ? <option value={line.roomNumber}>{line.roomNumber} — archived assignment</option> : null}{options.map(({ room, currentAssignment, unavailableReason }) => <option key={room.id} value={room.code} disabled={Boolean(unavailableReason)}>{room.code} — {currentAssignment ? "Current assignment" : unavailableReason || "Available"}</option>)}</select></td>
                 <td className="px-2 py-2"><select disabled={!editable} value={line.occupancy} onChange={(e) => updateRoomLine(line.id, { occupancy: e.target.value })} className="h-10 rounded-md border border-line bg-white px-2 disabled:bg-slate-100">{["Single", "Double", "Triple", "Family"].map((v) => <option key={v}>{v}</option>)}</select></td>
                 <td className="px-2 py-2"><select disabled={!editable} value={line.bedType} onChange={(e) => updateRoomLine(line.id, { bedType: e.target.value })} className="h-10 rounded-md border border-line bg-white px-2 disabled:bg-slate-100">{["Bed Type", "King Bed", "Twin Bed", "Queen Bed"].map((v) => <option key={v}>{v}</option>)}</select></td>
                 <td className="px-2 py-2"><input disabled={!editable} type="number" min="1" value={line.adults} onChange={(e) => updateRoomLine(line.id, { adults: Number(e.target.value) })} className="h-10 w-16 rounded-md border border-line px-2 disabled:bg-slate-100" /></td>

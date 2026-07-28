@@ -3,7 +3,7 @@ import { createUuid } from "@/app/lib/record-ids";
 import { DeskColumn, DeskTab, RatePlan, ReservationForm, ReservationRoomDraft } from "./types";
 import type { RoomTypeRecord } from "../rooms-rates/types";
 
-const inactiveStatuses = new Set(["Cancelled", "No Show", "Blocked"]);
+const inactiveStatuses = new Set(["Cancelled", "No Show", "Blocked", "Checked-out"]);
 
 export function buildDeskColumns({ dayUse, dayUseDate, gridDays, gridStartDate, businessDate }: {
   dayUse: boolean; dayUseDate: string; gridDays: number; gridStartDate: string; businessDate: string;

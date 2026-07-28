@@ -6,13 +6,15 @@ export function HkButton({
   onClick,
   variant = "secondary",
   className = "",
-  type = "button"
+  type = "button",
+  disabled = false
 }: {
   children: ReactNode;
   onClick?: () => void;
   variant?: "secondary" | "primary" | "purple" | "green";
   className?: string;
   type?: "button" | "submit";
+  disabled?: boolean;
 }) {
   const styles = {
     secondary: "border border-line bg-white text-ink hover:bg-slate-50",
@@ -22,7 +24,7 @@ export function HkButton({
   };
 
   return (
-    <button type={type} onClick={onClick} className={`inline-flex h-11 items-center justify-center gap-2 rounded-md px-4 text-sm font-semibold transition ${styles[variant]} ${className}`}>
+    <button type={type} onClick={onClick} disabled={disabled} className={`inline-flex h-11 items-center justify-center gap-2 rounded-md px-4 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${styles[variant]} ${className}`}>
       {children}
     </button>
   );

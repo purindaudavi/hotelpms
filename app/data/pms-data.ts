@@ -229,6 +229,19 @@ export type Employee = {
 
 export const appName = "StayPilot";
 
+export function currentPropertyDate(date = new Date()) {
+  const dateParts = new Intl.DateTimeFormat("en", {
+    timeZone: "Asia/Colombo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(date);
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
+    dateParts.find((part) => part.type === type)?.value ?? "";
+
+  return `${value("year")}-${value("month")}-${value("day")}`;
+}
+
 export const property = {
   id: "demo",
   name: "Ronaka Airport Transit Hotel",
@@ -240,7 +253,7 @@ export const property = {
   currency: "LKR",
   rooms: 14,
   starCategory: 3,
-  systemDate: "2026-06-18",
+  systemDate: currentPropertyDate(),
   email: "reservations@staypilot.demo",
   phone: "+94 70 355 1340"
 };

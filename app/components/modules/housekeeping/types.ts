@@ -45,7 +45,7 @@ export type HousekeepingReservation = {
   guest: string;
   room: string;
   roomType: string;
-  status: "checked-in" | "checked-out" | "tentative" | "cancelled" | "no-show" | "blocked";
+  status: "confirmed" | "checked-in" | "checked-out" | "tentative" | "cancelled" | "no-show" | "blocked";
   stayFrom: string;
   stayTo: string;
   nights: number;

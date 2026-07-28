@@ -65,6 +65,7 @@ export function createBusinessBlockLog(propertyId: string, businessBlockId: stri
 export function appendBusinessBlockLog(records: BusinessBlockLogEntry[], entry: BusinessBlockLogEntry) { return records.some((item) => item.id === entry.id) ? records : [...records, entry]; }
 
 const pickedStatuses = new Set(["Confirmed", "Tentative", "Checked-in", "Checked-out", "Blocked"]);
+const inventoryStatuses = new Set(["Confirmed", "Tentative", "Checked-in", "Blocked"]);
 export function pickedUpForAllocation(allocation: BusinessBlockAllocation, reservations: Reservation[]) {
   return reservations.filter((reservation) => reservation.businessBlockId === allocation.businessBlockId && pickedStatuses.has(reservation.status))
     .flatMap((reservation) => reservation.reservationRooms ?? [])
@@ -86,7 +87,7 @@ export function businessBlockMetrics(block: BusinessBlock, reservations: Reserva
 }
 
 export function roomTypeAvailability(roomTypeName: string, date: string, capacity: number, reservations: Reservation[], blocks: BusinessBlock[], excludedBlockId?: string) {
-  const occupied = reservations.filter((reservation) => pickedStatuses.has(reservation.status) && date >= reservation.checkIn && (reservation.isDayRoom ? date === reservation.checkIn : date < reservation.checkOut))
+  const occupied = reservations.filter((reservation) => inventoryStatuses.has(reservation.status) && date >= reservation.checkIn && (reservation.isDayRoom ? date === reservation.checkIn : date < reservation.checkOut))
     .reduce((count, reservation) => count + (reservation.reservationRooms?.filter((room) => room.roomType === roomTypeName).length ?? (reservation.roomType === roomTypeName ? reservation.rooms : 0)), 0);
   const held = blocks.filter((block) => block.status === "Active" && block.id !== excludedBlockId && date >= block.checkIn && date < block.checkOut)
     .reduce((sum, block) => sum + block.allocations.filter((allocation) => allocation.roomTypeName === roomTypeName).reduce((allocationSum, allocation) => allocationSum + allocationMetrics(allocation, reservations).remaining, 0), 0);

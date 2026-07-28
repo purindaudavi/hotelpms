@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useSessionState } from "@/app/components/hooks/use-session-state";
 import { initialActivities, initialAttendantByRoom, initialAttendants } from "./constants";
 import { HousekeepingBoardPage } from "./board/housekeeping-board-page";
@@ -47,10 +47,42 @@ export function HousekeepingPage(props: HousekeepingModuleProps) {
   const [attendants, setAttendants] = useSessionState<HousekeepingAttendant[]>(`${keyPrefix}:attendants`, initialAttendants);
   const [activities, setActivities] = useSessionState<HousekeepingActivity[]>(`${keyPrefix}:activities`, initialActivities);
   const [showDayEnd, setShowDayEnd] = useSessionState(`${keyPrefix}:day-end-required`, true);
+  const effectiveRoomStatuses = useMemo(() => {
+    const stored = normalizeRoomStatuses(roomStatuses, normalizedStatuses);
+    return props.roomList.reduce<Record<string, HousekeepingStatus>>((statuses, room) => {
+      const roomStatus = normalizedStatuses[room.id];
+      const storedStatus = stored[room.id];
+      statuses[room.id] =
+        room.status === "Occupied"
+          ? "Occupied"
+          : roomStatus === "Dirty" || roomStatus === "WIP"
+            ? roomStatus
+            : storedStatus && storedStatus !== "Occupied"
+              ? storedStatus
+              : "Clean";
+      return statuses;
+    }, {});
+  }, [normalizedStatuses, props.roomList, roomStatuses]);
+
+  useEffect(() => {
+    setRoomStatuses((current) =>
+      recordsEqual(current, effectiveRoomStatuses) ? current : effectiveRoomStatuses
+    );
+    props.setRoomList((current) => {
+      let changed = false;
+      const next = current.map((room) => {
+        const housekeeping = effectiveRoomStatuses[room.id] ?? "Clean";
+        if (room.housekeeping === housekeeping) return room;
+        changed = true;
+        return { ...room, housekeeping };
+      });
+      return changed ? next : current;
+    });
+  }, [effectiveRoomStatuses, props.setRoomList, setRoomStatuses]);
 
   const shared = {
     ...props,
-    roomStatuses: normalizeRoomStatuses(roomStatuses, normalizedStatuses),
+    roomStatuses: effectiveRoomStatuses,
     setRoomStatuses,
     attendantByRoom: normalizeStringRecord(attendantByRoom, initialAttendantByRoom),
     setAttendantByRoom,
@@ -64,4 +96,14 @@ export function HousekeepingPage(props: HousekeepingModuleProps) {
 
   if (props.activePath.endsWith("information")) return <HousekeepingInformationPage {...shared} />;
   return <HousekeepingBoardPage {...shared} />;
+}
+
+function recordsEqual(
+  left: Record<string, HousekeepingStatus>,
+  right: Record<string, HousekeepingStatus>
+) {
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  return leftKeys.length === rightKeys.length &&
+    rightKeys.every((key) => left[key] === right[key]);
 }

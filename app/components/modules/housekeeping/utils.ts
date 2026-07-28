@@ -3,9 +3,16 @@ import type { HousekeepingActivity, HousekeepingReservation, HousekeepingStatus 
 
 export function initialRoomStatuses(rooms: Room[]) {
   return rooms.reduce<Record<string, HousekeepingStatus>>((acc, room) => {
-    acc[room.id] = room.status === "Occupied" ? "Occupied" : "Clean";
+    acc[room.id] = roomHousekeepingStatus(room);
     return acc;
   }, {});
+}
+
+export function roomHousekeepingStatus(room: Room): HousekeepingStatus {
+  if (room.status === "Occupied") return "Occupied";
+  if (room.housekeeping === "Dirty") return "Dirty";
+  if (room.housekeeping === "WIP") return "WIP";
+  return "Clean";
 }
 
 export function statusClass(status: HousekeepingStatus) {
@@ -25,6 +32,7 @@ export function statusPillClass(status: HousekeepingStatus) {
 export function reservationPillClass(status: HousekeepingReservation["status"]) {
   if (status === "checked-in") return "bg-emerald-400 text-white";
   if (status === "checked-out") return "bg-pink-300 text-white";
+  if (status === "confirmed") return "bg-blue-400 text-white";
   if (status === "tentative") return "bg-yellow-300 text-white";
   return "bg-slate-300 text-slate-700";
 }
@@ -42,5 +50,22 @@ export function groupActivities(activities: HousekeepingActivity[]) {
 }
 
 export function nowLabel() {
-  return "Jun 16, 9:41 PM";
+  return new Date().toISOString();
+}
+
+export function activityDateKey(value: string) {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return "";
+  const date = new Date(timestamp);
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 10);
+}
+
+export function formatActivityTime(value: string) {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return value;
+  return new Intl.DateTimeFormat("en-LK", {
+    dateStyle: "medium",
+    timeStyle: "short"
+  }).format(new Date(timestamp));
 }
