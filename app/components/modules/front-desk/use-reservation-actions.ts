@@ -1,19 +1,18 @@
 "use client";
 
 import type { Dispatch, SetStateAction } from "react";
-import type { Reservation, Room } from "@/app/data/pms-data";
-import { useLocalStorageState } from "@/app/components/hooks/use-local-storage-state";
-import { currentSessionUser } from "@/app/lib/current-user";
-import { getGuestApiErrorMessage, syncReservationGuest } from "@/app/lib/guest-api";
-import { deleteReservation, saveReservationRecord } from "@/app/lib/reservation-repository";
-import { statusEmailCategory } from "@/app/lib/reservation-email";
+import type { Reservation, ReservationStatus, Room } from "@/app/data/pms-data";
 import {
-  appendReservationLog,
-  createReservationLogEntry,
-  isReservationLogArray,
-  reservationChanges,
-  reservationLogStorageKey
-} from "@/app/lib/reservation-activity-repository";
+  archiveReservation,
+  createReservation,
+  createReservationFromBusinessBlock,
+  getBookingsApiErrorMessage,
+  transitionReservation,
+  updateReservation
+} from "@/app/lib/bookings-api";
+import { currentSessionUser } from "@/app/lib/current-user";
+import { saveReservationRecord } from "@/app/lib/reservation-repository";
+import { statusEmailCategory } from "@/app/lib/reservation-email";
 import type { RatePlan, ReservationForm } from "./types";
 import { formToReservation, reservationRoomNumbers } from "./utils";
 import { useReservationEmailDelivery } from "./use-reservation-email-delivery";
@@ -37,19 +36,17 @@ export type ReservationSaveResult =
 
 export function useReservationActions(options: UseReservationActionsOptions) {
   const { propertyId, businessDate, reservations, setReservations, roomList, setRoomList, ratePlans, setToast } = options;
-  const [, setReservationLogs] = useLocalStorageState(reservationLogStorageKey(propertyId), [], isReservationLogArray);
-
-  function log(reservationId: string, action: string, description: string, changes?: Record<string, { from: unknown; to: unknown }>) {
-    const entry = createReservationLogEntry({ propertyId, reservationId, action, description, changes, createdBy: currentSessionUser.name });
-    setReservationLogs((current) => appendReservationLog(current, entry));
-  }
-
-  const emailDelivery = useReservationEmailDelivery({ setReservations, setToast, log });
+  const emailDelivery = useReservationEmailDelivery({
+    setReservations,
+    setToast,
+    log: () => undefined
+  });
 
   async function saveReservation(form: ReservationForm): Promise<ReservationSaveResult> {
     const existing = reservations.find((booking) => booking.id === form.id);
+    const wantsImmediateCheckIn = form.checkInNow && form.status !== "Checked-out";
 
-    if (form.checkInNow) {
+    if (wantsImmediateCheckIn) {
       if (invalidCheckInStatuses.has(form.status)) return { ok: false, error: `A ${form.status} reservation cannot be checked in.` };
       if (form.checkIn > businessDate || (form.isDayRoom ? form.checkIn !== businessDate : form.checkOut <= businessDate)) {
         return { ok: false, error: "The business date is outside this reservation's stay dates." };
@@ -64,83 +61,80 @@ export function useReservationActions(options: UseReservationActionsOptions) {
       }
     }
 
-    let booking = formToReservation(form, propertyId, ratePlans, existing, businessDate, currentSessionUser.name);
-    if (form.checkInNow) {
-      const now = new Date().toISOString();
-      booking = {
-        ...booking,
-        status: "Checked-in",
-        checkedInAt: existing?.checkedInAt ?? now,
-        checkedInBy: existing?.checkedInBy ?? currentSessionUser.name
-      };
+    const draft = formToReservation(form, propertyId, ratePlans, existing, businessDate, currentSessionUser.name);
+    const desiredStatus: ReservationStatus = wantsImmediateCheckIn ? "Checked-in" : form.status;
 
-      const assigned = new Set(reservationRoomNumbers(booking));
-      const previouslyAssigned = new Set(existing ? reservationRoomNumbers(existing) : []);
-      setRoomList((current) => current.map((room) => {
-        if (assigned.has(room.code)) return { ...room, status: "Occupied", housekeeping: "Occupied" };
-        if (previouslyAssigned.has(room.code)) return { ...room, status: "Available", housekeeping: "Dirty" };
-        return room;
-      }));
-    } else if (existing?.status === "Checked-in" && booking.status !== "Checked-in") {
-      const previouslyAssigned = new Set(reservationRoomNumbers(existing));
-      setRoomList((current) => current.map((room) => previouslyAssigned.has(room.code)
-        ? { ...room, status: "Available", housekeeping: "Dirty" }
-        : room));
-    }
-
-    setReservations((current) => saveReservationRecord(current, booking));
-    const changes = existing ? reservationChanges(existing, booking) : undefined;
-    log(booking.id, existing ? "Reservation updated" : "Reservation created",
-      existing ? `Reservation ${booking.resNo} was updated.` : `Reservation ${booking.resNo} was created.`, changes);
-    if (form.checkInNow && existing?.status !== "Checked-in") {
-      log(booking.id, "Checked in", `Guest checked in to room${booking.rooms === 1 ? "" : "s"} ${reservationRoomNumbers(booking).join(", ")}.`);
-    }
-    if (existing?.status === "Checked-in" && booking.status === "Checked-out") log(booking.id, "Checked out", `Guest checked out from ${reservationRoomNumbers(existing).join(", ")}.`);
-    if (existing && existing.status !== "Cancelled" && booking.status === "Cancelled") log(booking.id, "Reservation cancelled", `Reservation ${booking.resNo} was cancelled.`);
-    let guestSyncWarning = "";
     try {
-      const guestSync = await syncReservationGuest(propertyId, booking, existing);
-      if (!guestSync.synced) {
-        guestSyncWarning = `Guest profile was not synchronized because ${guestSync.reason}.`;
+      let booking: Reservation;
+      if (!existing) {
+        const createDraft = {
+          ...draft,
+          status: desiredStatus === "Checked-in" ? "Confirmed" as const : desiredStatus
+        };
+        booking = form.businessBlockId && form.businessBlockAllocationId
+          ? await createReservationFromBusinessBlock(
+              propertyId,
+              form.businessBlockId,
+              form.businessBlockAllocationId,
+              createDraft
+            )
+          : await createReservation(propertyId, createDraft);
+      } else {
+        booking = await updateReservation(propertyId, { ...draft, status: existing.status });
       }
+
+      booking = await applyReservationStatus(
+        propertyId,
+        booking,
+        desiredStatus,
+        businessDate,
+        draft.reservationRemarks
+      );
+      updateRoomState(existing, booking, setRoomList);
+      setReservations((current) => saveReservationRecord(current, booking));
+
+      const statusChanged = Boolean(existing && existing.status !== booking.status);
+      const emailCategory = !existing
+        ? booking.status === "Checked-in"
+          ? "check-in"
+          : form.sendEmail
+            ? "confirmation"
+            : undefined
+        : statusChanged
+          ? statusEmailCategory[booking.status]
+          : undefined;
+
+      if (emailCategory) {
+        booking = (await emailDelivery.deliver(
+          booking,
+          emailCategory,
+          existing ? "status" : "creation"
+        )).booking;
+      } else {
+        setToast(`Reservation ${existing ? "updated" : "created"} in MongoDB`);
+      }
+      return { ok: true, reservation: booking };
     } catch (error) {
-      guestSyncWarning = `Guest profile synchronization failed: ${getGuestApiErrorMessage(error)}`;
+      return { ok: false, error: getBookingsApiErrorMessage(error) };
     }
-
-    const statusChanged = Boolean(existing && existing.status !== booking.status);
-    const emailCategory = !existing
-      ? booking.status === "Checked-in"
-        ? "check-in"
-        : form.sendEmail
-          ? "confirmation"
-          : undefined
-      : statusChanged
-        ? statusEmailCategory[booking.status]
-        : undefined;
-
-    if (emailCategory) {
-      const delivery = await emailDelivery.deliver(booking, emailCategory, existing ? "status" : "creation");
-      booking = delivery.booking;
-    }
-    if (guestSyncWarning) {
-      setToast(`Reservation ${existing ? "updated" : "created"}. ${guestSyncWarning}`);
-    } else if (!emailCategory) {
-      setToast(`Reservation ${existing ? "updated" : "created"}; guest profile synchronized`);
-    }
-    return { ok: true, reservation: booking };
   }
 
-  function removeReservation(bookingId: string) {
+  async function removeReservation(bookingId: string) {
     const existing = reservations.find((booking) => booking.id === bookingId);
-    if (existing?.status === "Checked-in") {
-      const assigned = new Set(reservationRoomNumbers(existing));
-      setRoomList((current) => current.map((room) => assigned.has(room.code)
-        ? { ...room, status: "Available", housekeeping: "Dirty" }
-        : room));
+    try {
+      await archiveReservation(propertyId, bookingId);
+      if (existing?.status === "Checked-in") {
+        const assigned = new Set(reservationRoomNumbers(existing));
+        setRoomList((current) => current.map((room) => assigned.has(room.code)
+          ? { ...room, status: "Available", housekeeping: "Dirty" }
+          : room));
+      }
+      setReservations((current) => current.filter((booking) => booking.id !== bookingId));
+      setToast("Reservation archived in MongoDB");
+    } catch (error) {
+      setToast(getBookingsApiErrorMessage(error));
+      throw error;
     }
-    setReservations((current) => deleteReservation(current, bookingId));
-    if (existing) log(existing.id, "Reservation deleted", `Reservation ${existing.resNo} was removed from the prototype reservation list.`);
-    setToast("Reservation removed from the shared local PMS source");
   }
 
   return {
@@ -148,6 +142,72 @@ export function useReservationActions(options: UseReservationActionsOptions) {
     removeReservation,
     deliverEmail: emailDelivery.retry,
     sendManualEmail: emailDelivery.sendManual,
-    log
+    log: () => undefined
   };
+}
+
+async function applyReservationStatus(
+  propertyId: string,
+  booking: Reservation,
+  desiredStatus: ReservationStatus,
+  businessDate: string,
+  cancellationReason = ""
+) {
+  if (booking.status === desiredStatus) return booking;
+
+  let current = booking;
+  if (current.status === "Tentative" && desiredStatus === "Checked-in") {
+    current = await transitionReservation(propertyId, current.id, "confirm");
+  }
+
+  if (current.status === "Tentative" && desiredStatus === "Confirmed") {
+    return transitionReservation(propertyId, current.id, "confirm");
+  }
+  if (current.status === "Confirmed" && desiredStatus === "Checked-in") {
+    return transitionReservation(propertyId, current.id, "check-in", { businessDate });
+  }
+  if (current.status === "Checked-in" && desiredStatus === "Checked-out") {
+    return transitionReservation(propertyId, current.id, "check-out");
+  }
+  if (
+    desiredStatus === "Cancelled" &&
+    ["Tentative", "Confirmed", "Blocked"].includes(current.status)
+  ) {
+    return transitionReservation(propertyId, current.id, "cancel", {
+      reason: cancellationReason?.trim() || "Cancelled from StayPilot"
+    });
+  }
+  if (current.status === "Confirmed" && desiredStatus === "No Show") {
+    return transitionReservation(propertyId, current.id, "no-show");
+  }
+
+  throw new Error(`Status cannot change directly from ${current.status} to ${desiredStatus}.`);
+}
+
+function updateRoomState(
+  previous: Reservation | undefined,
+  next: Reservation,
+  setRoomList: Dispatch<SetStateAction<Room[]>>
+) {
+  const assigned = new Set(reservationRoomNumbers(next));
+  const previouslyAssigned = new Set(previous ? reservationRoomNumbers(previous) : []);
+
+  if (next.status === "Checked-in") {
+    setRoomList((current) => current.map((room) => {
+      if (assigned.has(room.code)) {
+        return { ...room, status: "Occupied", housekeeping: "Occupied" };
+      }
+      if (previouslyAssigned.has(room.code)) {
+        return { ...room, status: "Available", housekeeping: "Dirty" };
+      }
+      return room;
+    }));
+    return;
+  }
+
+  if (previous?.status === "Checked-in") {
+    setRoomList((current) => current.map((room) => previouslyAssigned.has(room.code)
+      ? { ...room, status: "Available", housekeeping: "Dirty" }
+      : room));
+  }
 }

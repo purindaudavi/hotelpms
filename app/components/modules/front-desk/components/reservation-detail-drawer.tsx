@@ -1,20 +1,16 @@
 "use client";
 
-import { type ChangeEvent, useMemo, useRef, useState } from "react";
+import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { BedDouble, ClipboardList, Paperclip, UserRound, X } from "lucide-react";
-import { useLocalStorageState } from "@/app/components/hooks/use-local-storage-state";
 import type { Reservation, ReservationRoom, ReservationStatus } from "@/app/data/pms-data";
-import { currentSessionUser } from "@/app/lib/current-user";
-import { createUuid } from "@/app/lib/record-ids";
 import {
-  appendReservationLog,
-  createReservationLogEntry,
-  isReservationAttachmentArray,
-  isReservationLogArray,
-  logsForReservation,
-  readReservationAttachmentMetadata,
-  reservationAttachmentStorageKey,
-  reservationLogStorageKey,
+  deleteReservationAttachment,
+  getBookingsApiErrorMessage,
+  getReservationDetails,
+  replaceReservationOccupants,
+  uploadReservationAttachment
+} from "@/app/lib/bookings-api";
+import {
   type ReservationAttachmentMetadata,
   type ReservationLogEntry
 } from "@/app/lib/reservation-activity-repository";
@@ -45,25 +41,35 @@ export function ReservationDetailDrawer(props: ReservationDetailDrawerProps) {
   const [activeTab, setActiveTab] = useState<DetailTab>("Overview");
   const [documentCategory, setDocumentCategory] = useState("Voucher");
   const [attachmentDescription, setAttachmentDescription] = useState("");
-  const [attachments, setAttachments] = useLocalStorageState<ReservationAttachmentMetadata[]>(
-    reservationAttachmentStorageKey(propertyId),
-    () => readReservationAttachmentMetadata(propertyId, booking.id),
-    isReservationAttachmentArray
-  );
-  const [logs, setLogs] = useLocalStorageState<ReservationLogEntry[]>(reservationLogStorageKey(propertyId), [], isReservationLogArray);
+  const [attachments, setAttachments] = useState<Array<ReservationAttachmentMetadata & { fileUrl?: string }>>([]);
+  const [logs, setLogs] = useState<ReservationLogEntry[]>([]);
+  const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const currency = booking.currency || "Currency unavailable";
   const paid = Math.min(booking.total, booking.paid);
   const remaining = Math.max(booking.total - paid, 0);
   const rooms = useMemo(() => reservationRooms(booking), [booking]);
   const reservationAttachments = attachments.filter((item) => item.reservationId === booking.id);
-  const reservationLogs = logsForReservation(logs, booking.id);
+  const reservationLogs = logs.filter((item) => item.reservationId === booking.id)
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
   const statusClass = statusPillClass[booking.status as ReservationStatus] ?? "bg-slate-400";
 
-  function appendLog(action: string, description: string) {
-    const entry = createReservationLogEntry({ propertyId, reservationId: booking.id, action, description, createdBy: currentSessionUser.name });
-    setLogs((current) => appendReservationLog(current, entry));
-  }
+  useEffect(() => {
+    let cancelled = false;
+    getReservationDetails(propertyId, booking.id)
+      .then((details) => {
+        if (cancelled) return;
+        setAttachments(details.attachments);
+        setLogs(details.logs);
+        onUpdateReservation(details.reservation);
+      })
+      .catch((error) => {
+        if (!cancelled) setToast(getBookingsApiErrorMessage(error));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [booking.id, propertyId]);
 
   async function copyReference() {
     const reference = booking.bookingReference || booking.bookingRef;
@@ -72,31 +78,57 @@ export function ReservationDetailDrawer(props: ReservationDetailDrawerProps) {
     catch { setToast("Clipboard access is unavailable"); }
   }
 
-  function handleAttachmentSelected(event: ChangeEvent<HTMLInputElement>) {
+  async function handleAttachmentSelected(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
     if (!files.length) return;
-    // File objects and Base64 contents are intentionally never persisted.
-    const added: ReservationAttachmentMetadata[] = files.map((file) => ({
-      id: createUuid(), propertyId, reservationId: booking.id, fileName: file.name,
-      fileType: file.type || file.name.split(".").pop()?.toUpperCase() || "FILE", fileSize: file.size,
-      documentCategory, description: attachmentDescription.trim(), uploadedBy: currentSessionUser.name, uploadedAt: new Date().toISOString()
-    }));
-    setAttachments((current) => [...added, ...current]);
-    added.forEach((item) => appendLog("Attachment added", `${item.documentCategory} metadata added for ${item.fileName}.`));
     event.currentTarget.value = "";
-    setAttachmentDescription("");
-    setToast(`${files.length} attachment metadata record${files.length === 1 ? "" : "s"} added locally`);
+    setUploading(true);
+    try {
+      const added: Array<ReservationAttachmentMetadata & { fileUrl: string }> = [];
+      for (const file of files) {
+        added.push(await uploadReservationAttachment(
+          propertyId,
+          booking.id,
+          file,
+          documentCategory,
+          attachmentDescription.trim()
+        ));
+      }
+      setAttachments((current) => [...added, ...current]);
+      setAttachmentDescription("");
+      const details = await getReservationDetails(propertyId, booking.id);
+      setLogs(details.logs);
+      setToast(`${files.length} attachment${files.length === 1 ? "" : "s"} uploaded to MongoDB storage`);
+    } catch (error) {
+      setToast(getBookingsApiErrorMessage(error));
+    } finally {
+      setUploading(false);
+    }
   }
 
-  function deleteAttachment(attachment: ReservationAttachmentMetadata) {
-    if (!window.confirm(`Remove attachment metadata for ${attachment.fileName}?`)) return;
-    setAttachments((current) => current.filter((item) => item.id !== attachment.id));
-    appendLog("Attachment deleted", `Attachment metadata removed for ${attachment.fileName}.`);
+  async function deleteAttachment(attachment: ReservationAttachmentMetadata) {
+    if (!window.confirm(`Remove ${attachment.fileName}?`)) return;
+    try {
+      await deleteReservationAttachment(propertyId, booking.id, attachment.id);
+      setAttachments((current) => current.filter((item) => item.id !== attachment.id));
+      const details = await getReservationDetails(propertyId, booking.id);
+      setLogs(details.logs);
+      setToast("Attachment removed from MongoDB storage");
+    } catch (error) {
+      setToast(getBookingsApiErrorMessage(error));
+    }
   }
 
-  function updateRoomingList(next: Reservation, action: string, description: string) {
-    onUpdateReservation(next);
-    appendLog(action, description);
+  async function updateRoomingList(next: Reservation, _action: string, _description: string) {
+    try {
+      const saved = await replaceReservationOccupants(propertyId, next);
+      onUpdateReservation(saved);
+      const details = await getReservationDetails(propertyId, booking.id);
+      setLogs(details.logs);
+      setToast("Rooming list saved to MongoDB");
+    } catch (error) {
+      setToast(getBookingsApiErrorMessage(error));
+    }
   }
 
   return <div className="fixed inset-0 z-50 bg-black/40">
@@ -130,12 +162,12 @@ export function ReservationDetailDrawer(props: ReservationDetailDrawerProps) {
           <p className="mb-3 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">Upload supporting reservation documents such as OTA or travel-agent vouchers, payment receipts, company authorization letters, rooming lists and signed forms. Do not upload card numbers, CVV codes or unnecessary sensitive information.</p>
           <label className="mb-3 grid gap-1 text-sm font-semibold">Document category<select value={documentCategory} onChange={(event) => setDocumentCategory(event.target.value)} className="h-10 rounded-md border border-line bg-white px-3 font-normal"><option>Voucher</option><option>Payment receipt</option><option>Authorization letter</option><option>Rooming list</option><option>Signed form</option><option>Other</option></select></label>
           <label className="mb-3 grid gap-1 text-sm font-semibold">Description<textarea value={attachmentDescription} onChange={(event) => setAttachmentDescription(event.target.value)} rows={3} placeholder="Describe the document and why it belongs to this reservation" className="rounded-md border border-line bg-white px-3 py-2 font-normal" /></label>
-          <input ref={fileInputRef} type="file" multiple onChange={handleAttachmentSelected} className="hidden" /><button type="button" onClick={() => fileInputRef.current?.click()} className="rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white">Choose files</button>
-          <p className="mt-2 text-xs text-slate-500">Only metadata is stored locally. Actual file contents require Supabase Storage later and are never stored as Base64 in localStorage.</p>
-          <div className="mt-4 space-y-2">{reservationAttachments.map((attachment) => <div key={attachment.id} className="flex items-start justify-between gap-4 rounded-md border border-line p-3 text-sm"><div><p className="font-semibold">{attachment.fileName}</p><p className="text-xs text-slate-500">{attachment.documentCategory} · {attachment.fileType} · {formatFileSize(attachment.fileSize)} · {formatTimestamp(attachment.uploadedAt)} · {attachment.uploadedBy}</p><p className="mt-2 whitespace-pre-wrap text-slate-600">{attachment.description?.trim() || "No attachment description"}</p></div><button type="button" className="shrink-0 text-xs font-semibold text-red-600" onClick={() => deleteAttachment(attachment)}>Remove</button></div>)}{!reservationAttachments.length ? <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-500">No attachment metadata</p> : null}</div>
+          <input ref={fileInputRef} type="file" multiple onChange={(event) => void handleAttachmentSelected(event)} className="hidden" /><button type="button" disabled={uploading} onClick={() => fileInputRef.current?.click()} className="rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">{uploading ? "Uploading..." : "Choose files"}</button>
+          <p className="mt-2 text-xs text-slate-500">Files are stored by the booking backend in MongoDB GridFS with their reservation metadata.</p>
+          <div className="mt-4 space-y-2">{reservationAttachments.map((attachment) => <div key={attachment.id} className="flex items-start justify-between gap-4 rounded-md border border-line p-3 text-sm"><div>{attachment.fileUrl ? <a href={attachment.fileUrl} target="_blank" rel="noreferrer" className="font-semibold text-blue-700 underline">{attachment.fileName}</a> : <p className="font-semibold">{attachment.fileName}</p>}<p className="text-xs text-slate-500">{attachment.documentCategory} · {attachment.fileType} · {formatFileSize(attachment.fileSize)} · {formatTimestamp(attachment.uploadedAt)} · {attachment.uploadedBy}</p><p className="mt-2 whitespace-pre-wrap text-slate-600">{attachment.description?.trim() || "No attachment description"}</p></div><button type="button" className="shrink-0 text-xs font-semibold text-red-600" onClick={() => void deleteAttachment(attachment)}>Remove</button></div>)}{!reservationAttachments.length ? <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-500">No attachments</p> : null}</div>
         </DetailSection> : null}
 
-        {activeTab === "Log" ? <DetailSection title="Append-only Prototype Log" icon={<ClipboardList className="h-4 w-4" />}><p className="mb-3 text-xs text-slate-500">This localStorage timeline is append-only in the UI, but it is not production audit immutability.</p><div className="space-y-3">{reservationLogs.map((entry) => <article key={entry.id} className="rounded-md border border-line p-3 text-sm"><div className="flex justify-between gap-3"><b>{entry.action}</b><time className="text-xs text-slate-500">{formatTimestamp(entry.createdAt)}</time></div><p className="mt-2 text-slate-600">{entry.description}</p><p className="mt-2 text-xs text-slate-500">By {entry.createdBy}</p>{entry.changes && Object.keys(entry.changes).length ? <dl className="mt-2 rounded bg-slate-50 p-2 text-xs">{Object.entries(entry.changes).map(([field, change]) => <div key={field} className="mt-1"><b>{field}:</b> {displayChange(change.from)} → {displayChange(change.to)}</div>)}</dl> : null}</article>)}</div>{!reservationLogs.length ? <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-500">No log entries yet</p> : null}</DetailSection> : null}
+        {activeTab === "Log" ? <DetailSection title="MongoDB Audit Log" icon={<ClipboardList className="h-4 w-4" />}><p className="mb-3 text-xs text-slate-500">Lifecycle and record changes are written by the backend and loaded from MongoDB.</p><div className="space-y-3">{reservationLogs.map((entry) => <article key={entry.id} className="rounded-md border border-line p-3 text-sm"><div className="flex justify-between gap-3"><b>{entry.action}</b><time className="text-xs text-slate-500">{formatTimestamp(entry.createdAt)}</time></div><p className="mt-2 text-slate-600">{entry.description}</p><p className="mt-2 text-xs text-slate-500">By {entry.createdBy}</p>{entry.changes && Object.keys(entry.changes).length ? <dl className="mt-2 rounded bg-slate-50 p-2 text-xs">{Object.entries(entry.changes).map(([field, change]) => <div key={field} className="mt-1"><b>{field}:</b> {displayChange(change.from)} → {displayChange(change.to)}</div>)}</dl> : null}</article>)}</div>{!reservationLogs.length ? <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-500">No log entries yet</p> : null}</DetailSection> : null}
       </div>
     </aside>
   </div>;

@@ -1,32 +1,27 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Download, Eye, Pencil, Plus, RefreshCw, Share2 } from "lucide-react";
-import { useLocalStorageState } from "@/app/components/hooks/use-local-storage-state";
 import { type Reservation } from "@/app/data/pms-data";
 import {
   allocationMetrics,
-  appendBusinessBlockLog,
-  businessBlockLogStorageKey,
   businessBlockMetrics,
-  businessBlockStorageKey,
-  createBusinessBlock,
-  createBusinessBlockLog,
-  isBusinessBlockArray,
-  isBusinessBlockLogArray,
-  migrateBusinessBlockRecords,
-  releaseRemainingAllocations,
-  updateBusinessBlock,
   validateBlockActivation
 } from "@/app/lib/business-block-repository";
-import { currentSessionUser } from "@/app/lib/current-user";
+import {
+  createBusinessBlock,
+  getBookingsApiErrorMessage,
+  getBusinessBlockDetails,
+  getBusinessBlocks,
+  transitionBusinessBlock,
+  updateBusinessBlock
+} from "@/app/lib/bookings-api";
 import { createUuid } from "@/app/lib/record-ids";
 import { ReservationDetailDrawer } from "../../front-desk/components/reservation-detail-drawer";
 import { ReservationEditor } from "../../front-desk/components/reservation-editor";
 import type { ReservationForm } from "../../front-desk/types";
 import { useReservationActions } from "../../front-desk/use-reservation-actions";
 import { useReservationEditorResources } from "../../front-desk/use-reservation-editor-resources";
-import { initialBusinessBlocks } from "../constants";
 import type { BookingTab, BusinessBlock, BusinessBlockAllocation, BusinessBlockLogEntry, BusinessBlockStatus, ReservationModuleProps } from "../types";
 import { copyToClipboard, dateInRange, exportCsv, searchReservation } from "../utils";
 import { EmptyState, Field, Panel, ReservationPageFrame, SearchBox, SegmentedTabs, SelectInput, StatusPill, TextInput, ToolbarButton } from "../components/reservation-ui";
@@ -37,8 +32,8 @@ export function BookingsPage(props: ReservationModuleProps) {
   const { propertyId, reservations, setReservations, roomList, setRoomList, setToast } = props;
   const { businessDate, homeCurrency, roomTypes, ratePlans, setRatePlans } = useReservationEditorResources(propertyId);
   const reservationActions = useReservationActions({ propertyId, businessDate, reservations, setReservations, roomList, setRoomList, ratePlans, setToast });
-  const [blocks, setBlocks] = useLocalStorageState<BusinessBlock[]>(businessBlockStorageKey(propertyId), initialBusinessBlocks, isBusinessBlockArray, (records) => migrateBusinessBlockRecords(records, propertyId, homeCurrency, businessDate));
-  const [blockLogs, setBlockLogs] = useLocalStorageState<BusinessBlockLogEntry[]>(businessBlockLogStorageKey(propertyId), [], isBusinessBlockLogArray);
+  const [blocks, setBlocks] = useState<BusinessBlock[]>([]);
+  const [blockLogs, setBlockLogs] = useState<BusinessBlockLogEntry[]>([]);
   const [tab, setTab] = useState<BookingTab>("reservations");
   const [query, setQuery] = useState("");
   const [dateFilter, setDateFilter] = useState<"checkIn" | "checkOut" | "reservationDate">("checkIn");
@@ -56,6 +51,20 @@ export function BookingsPage(props: ReservationModuleProps) {
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [blockFormOpen, setBlockFormOpen] = useState(false);
 
+  useEffect(() => {
+    let cancelled = false;
+    getBusinessBlocks(propertyId)
+      .then((records) => {
+        if (!cancelled) setBlocks(records);
+      })
+      .catch((error) => {
+        if (!cancelled) setToast(getBookingsApiErrorMessage(error));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [propertyId, setToast]);
+
   const editingBooking = reservations.find((booking) => booking.id === editingBookingId) ?? null;
   const selectedBooking = reservations.find((booking) => booking.id === selectedBookingId) ?? null;
   const editingBlock = blocks.find((block) => block.id === editingBlockId) ?? null;
@@ -72,10 +81,28 @@ export function BookingsPage(props: ReservationModuleProps) {
   const totalPages = Math.max(1, Math.ceil(filteredReservations.length / rowsPerPage));
   const visibleRows = filteredReservations.slice((page - 1) * rowsPerPage, page * rowsPerPage);
 
-  function appendBlockLog(blockId: string, action: string, description: string) {
-    const entry = createBusinessBlockLog(propertyId, blockId, action, description, currentSessionUser.name);
-    setBlockLogs((current) => appendBusinessBlockLog(current, entry));
-  }
+  useEffect(() => {
+    if (!selectedBlockId) return;
+    let cancelled = false;
+    getBusinessBlockDetails(propertyId, selectedBlockId)
+      .then((details) => {
+        if (cancelled) return;
+        setBlocks((current) => current.map((block) =>
+          block.id === details.businessBlock.id ? details.businessBlock : block
+        ));
+        setBlockLogs((current) => [
+          ...current.filter((entry) => entry.businessBlockId !== selectedBlockId),
+          ...details.logs
+        ]);
+      })
+      .catch((error) => {
+        if (!cancelled) setToast(getBookingsApiErrorMessage(error));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [propertyId, selectedBlockId, setToast]);
+
   function resetFilters() { setQuery(""); setDateFrom(""); setDateTo(""); setStatusFilter("All"); setShowAll(true); setPage(1); setToast("Booking filters reset"); }
   function openReservationEditor(booking: Reservation | null = null) { setEditingBookingId(booking?.id ?? null); setReservationPrefill(null); setSelectedBookingId(null); setReservationModalOpen(true); }
   function closeReservationEditor() { setReservationModalOpen(false); setEditingBookingId(null); setReservationPrefill(null); }
@@ -91,37 +118,67 @@ export function BookingsPage(props: ReservationModuleProps) {
     }
     const result = await reservationActions.saveReservation(form);
     if (!result.ok) return result;
-    if (form.businessBlockId) appendBlockLog(form.businessBlockId, form.id ? "Linked reservation updated" : "Reservation linked", `${result.reservation.resNo} is linked to this block.`);
+    if (form.businessBlockId) {
+      const refreshed = await getBusinessBlockDetails(propertyId, form.businessBlockId);
+      setBlocks((current) => current.map((block) => block.id === refreshed.businessBlock.id ? refreshed.businessBlock : block));
+      setBlockLogs((current) => [
+        ...current.filter((entry) => entry.businessBlockId !== form.businessBlockId),
+        ...refreshed.logs
+      ]);
+    }
     closeReservationEditor(); setSelectedBookingId(result.reservation.id); return { ok: true as const };
   }
-  function removeReservation(bookingId: string) { const booking = reservations.find((item) => item.id === bookingId); reservationActions.removeReservation(bookingId); if (booking?.businessBlockId) appendBlockLog(booking.businessBlockId, "Linked reservation removed", `${booking.resNo} was removed; its picked-up rooms returned to Remaining.`); setSelectedBookingId(null); closeReservationEditor(); }
+  async function removeReservation(bookingId: string) {
+    await reservationActions.removeReservation(bookingId);
+    setSelectedBookingId(null);
+    closeReservationEditor();
+  }
 
-  function saveBlock(block: BusinessBlock) {
+  async function saveBlock(block: BusinessBlock) {
     const existing = blocks.find((item) => item.id === block.id);
-    let savedBlock = block;
-    if ((block.status === "Released" || block.status === "Cancelled") && existing?.status !== block.status) {
-      savedBlock = { ...releaseRemainingAllocations(block, reservations), status: block.status };
-    }
-    if (savedBlock.status === "Active") {
-      const error = validateBlockActivation(savedBlock, blocks, reservations, Object.fromEntries(roomTypes.map((type) => [type.name, type.rooms.length])));
+    if (block.status === "Active") {
+      const error = validateBlockActivation(block, blocks, reservations, Object.fromEntries(roomTypes.map((type) => [type.name, type.rooms.length])));
       if (error) return error;
     }
     try {
-      setBlocks((current) => existing ? updateBusinessBlock(current, savedBlock) : createBusinessBlock(current, savedBlock));
-      appendBlockLog(savedBlock.id, existing ? "Block edited" : "Block created", existing ? `${savedBlock.blockNumber} details and allocations were updated.` : `${savedBlock.blockNumber} was created as ${savedBlock.status}.`);
-      if (existing && existing.status !== savedBlock.status) appendBlockLog(savedBlock.id, "Status changed", `${existing.status} changed to ${savedBlock.status}.`);
-      if (existing && JSON.stringify(existing.allocations) !== JSON.stringify(savedBlock.allocations)) appendBlockLog(savedBlock.id, "Allocations changed", "Room-type allocation details were added, edited or removed.");
-      setBlockFormOpen(false); setEditingBlockId(null); setSelectedBlockId(savedBlock.id); setToast(`Business block ${existing ? "updated" : "created"} locally`);
-    } catch (error) { return error instanceof Error ? error.message : "Business block could not be saved."; }
+      let savedBlock = existing
+        ? await updateBusinessBlock(propertyId, { ...block, status: existing.status })
+        : await createBusinessBlock(propertyId, { ...block, status: "Tentative" });
+      if (savedBlock.status !== block.status) {
+        savedBlock = await changeBlockStatusRequest(savedBlock, block.status);
+      }
+      setBlocks((current) => [
+        ...current.filter((item) => item.id !== savedBlock.id),
+        savedBlock
+      ]);
+      setBlockFormOpen(false);
+      setEditingBlockId(null);
+      setSelectedBlockId(savedBlock.id);
+      setToast(`Business block ${existing ? "updated" : "created"} in MongoDB`);
+    } catch (error) {
+      return getBookingsApiErrorMessage(error);
+    }
   }
-  function changeBlockStatus(block: BusinessBlock, status: BusinessBlockStatus) {
+  async function changeBlockStatus(block: BusinessBlock, status: BusinessBlockStatus) {
     if (status === "Active") { const error = validateBlockActivation(block, blocks, reservations, Object.fromEntries(roomTypes.map((type) => [type.name, type.rooms.length]))); if (error) { setToast(error); return; } }
     if (status === "Cancelled" && !window.confirm("Cancel this block? Linked reservations will remain unchanged.")) return;
-    let next = { ...block, status, updatedAt: new Date().toISOString() };
-    if (status === "Released" || status === "Cancelled") { const released = releaseRemainingAllocations(block, reservations); next = { ...released, status }; }
-    setBlocks((current) => updateBusinessBlock(current, next)); appendBlockLog(block.id, "Status changed", `${block.status} changed to ${status}.${status === "Released" || status === "Cancelled" ? " Unpicked rooms returned to normal availability; linked reservations were kept." : ""}`); setToast(`Business block changed to ${status}`);
+    try {
+      const next = await changeBlockStatusRequest(block, status);
+      setBlocks((current) => current.map((item) => item.id === next.id ? next : item));
+      setToast(`Business block changed to ${status}`);
+    } catch (error) {
+      setToast(getBookingsApiErrorMessage(error));
+    }
   }
-  function releaseBlock(block: BusinessBlock) { if (!window.confirm("Release all unpicked rooms? Linked reservations will remain unchanged.")) return; changeBlockStatus(block, "Released"); }
+  function changeBlockStatusRequest(block: BusinessBlock, status: BusinessBlockStatus) {
+    if (block.status === status) return Promise.resolve(block);
+    if (status === "Active") return transitionBusinessBlock(propertyId, block.id, "activate");
+    if (status === "Released") return transitionBusinessBlock(propertyId, block.id, "release");
+    if (status === "Cancelled") return transitionBusinessBlock(propertyId, block.id, "cancel", "Cancelled from StayPilot");
+    if (status === "Completed") return transitionBusinessBlock(propertyId, block.id, "complete");
+    return Promise.reject(new Error(`Status cannot change from ${block.status} to ${status}.`));
+  }
+  function releaseBlock(block: BusinessBlock) { if (!window.confirm("Release all unpicked rooms? Linked reservations will remain unchanged.")) return; void changeBlockStatus(block, "Released"); }
   function createReservationFromBlock(block: BusinessBlock, allocation: BusinessBlockAllocation) {
     const metrics = allocationMetrics(allocation, reservations); if (block.status !== "Active" || metrics.remaining < 1) { setToast("This allocation has no rooms available for pickup"); return; }
     const now = new Date().toISOString(); const type = roomTypes.find((item) => item.id === allocation.roomTypeId) ?? roomTypes[0];
@@ -139,9 +196,9 @@ export function BookingsPage(props: ReservationModuleProps) {
     {tab === "reservations" ? <ReservationsTable rows={visibleRows} onOpen={(id) => setSelectedBookingId(id)} /> : <BusinessBlocksTable blocks={filteredBlocks} reservations={reservations} businessDate={businessDate} onOpen={(id) => setSelectedBlockId(id)} onEdit={(id) => { setEditingBlockId(id); setBlockFormOpen(true); }} onStatus={(block, status) => changeBlockStatus(block, status)} onRelease={releaseBlock} />}
     {tab === "reservations" ? <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-500"><div className="flex items-center gap-3">Show<SelectInput value={rowsPerPage} onChange={(event) => { setRowsPerPage(Number(event.target.value)); setPage(1); }} className="w-24">{[10, 25, 50].map((size) => <option key={size}>{size}</option>)}</SelectInput>per page</div><div className="flex items-center gap-3"><button disabled={page === 1} onClick={() => setPage((value) => value - 1)} className="rounded border px-4 py-2 disabled:opacity-50">Previous</button><span className="rounded bg-slate-950 px-4 py-2 font-semibold text-white">Page {page} of {totalPages}</span><button disabled={page === totalPages} onClick={() => setPage((value) => value + 1)} className="rounded border px-4 py-2 disabled:opacity-50">Next</button></div></div> : null}
 
-    {reservationModalOpen ? <ReservationEditor propertyId={propertyId} booking={editingBooking} initialForm={reservationPrefill} reservations={reservations} roomList={roomList} roomTypes={roomTypes} ratePlans={ratePlans} setRatePlans={setRatePlans} homeCurrency={homeCurrency} defaultDate={businessDate} onClose={closeReservationEditor} onSave={saveReservation} onDelete={removeReservation} setToast={setToast} /> : null}
+    {reservationModalOpen ? <ReservationEditor propertyId={propertyId} booking={editingBooking} initialForm={reservationPrefill} reservations={reservations} roomList={roomList} roomTypes={roomTypes} businessBlocks={blocks} ratePlans={ratePlans} setRatePlans={setRatePlans} homeCurrency={homeCurrency} defaultDate={businessDate} onClose={closeReservationEditor} onSave={saveReservation} onDelete={removeReservation} setToast={setToast} /> : null}
     {selectedBooking ? <ReservationDetailDrawer key={selectedBooking.id} propertyId={propertyId} booking={selectedBooking} onClose={() => setSelectedBookingId(null)} onEdit={openReservationEditor} onRetryEmail={() => reservationActions.deliverEmail(selectedBooking).then(() => undefined)} onUpdateReservation={(booking) => setReservations((current) => current.map((item) => item.id === booking.id ? booking : item))} setToast={setToast} /> : null}
-    {blockFormOpen ? <BusinessBlockForm propertyId={propertyId} businessDate={businessDate} homeCurrency={homeCurrency} ratePlans={ratePlans} block={editingBlock} reservations={reservations} onClose={() => { setBlockFormOpen(false); setEditingBlockId(null); }} onSave={saveBlock} /> : null}
+    {blockFormOpen ? <BusinessBlockForm propertyId={propertyId} businessDate={businessDate} homeCurrency={homeCurrency} ratePlans={ratePlans} roomTypes={roomTypes} block={editingBlock} reservations={reservations} onClose={() => { setBlockFormOpen(false); setEditingBlockId(null); }} onSave={saveBlock} /> : null}
     {selectedBlock ? <BusinessBlockDetailDrawer block={selectedBlock} reservations={reservations} logs={blockLogs} onClose={() => setSelectedBlockId(null)} onEdit={() => { setEditingBlockId(selectedBlock.id); setBlockFormOpen(true); }} onStatus={(status) => changeBlockStatus(selectedBlock, status)} onRelease={() => releaseBlock(selectedBlock)} onCreateReservation={(allocation) => createReservationFromBlock(selectedBlock, allocation)} onOpenReservation={(id) => { setSelectedBlockId(null); setSelectedBookingId(id); }} setToast={setToast} /> : null}
   </ReservationPageFrame>;
 }

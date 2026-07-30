@@ -38,6 +38,7 @@ import { ModuleContent } from "@/app/components/module-pages";
 import { useLocalStorageState, writeLocalStorageValue } from "@/app/components/hooks/use-local-storage-state";
 import { roomTypeStorageKey } from "@/app/components/modules/rooms-rates/constants";
 import { getRoomCatalog } from "@/app/lib/rooms-api";
+import { getReservations } from "@/app/lib/bookings-api";
 
 type WorkspaceProps = {
   propertyId: string;
@@ -72,10 +73,11 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
   useEffect(() => {
     let cancelled = false;
 
-    getRoomCatalog(propertyId)
-      .then((catalog) => {
+    Promise.all([getRoomCatalog(propertyId), getReservations(propertyId)])
+      .then(([catalog, savedReservations]) => {
         if (cancelled) return;
         setRoomList(catalog.rooms);
+        setReservations(savedReservations);
         writeLocalStorageValue(roomTypeStorageKey(propertyId), catalog.roomTypes);
         setDataSource("MongoDB");
       })
@@ -88,7 +90,7 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
     return () => {
       cancelled = true;
     };
-  }, [propertyId, setRoomList]);
+  }, [propertyId, setReservations, setRoomList]);
 
   const pageTitle = useMemo(() => getActiveTitle(activePath), [activePath]);
 

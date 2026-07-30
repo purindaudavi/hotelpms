@@ -9,8 +9,8 @@ import { RatePlan, ReservationForm, ReservationRoomDraft } from "../types";
 import { IconButton } from "./controls";
 import { InputField, SelectField, TextAreaField } from "./form-fields";
 import { useLocalStorageState } from "@/app/components/hooks/use-local-storage-state";
-import { businessBlockStorageKey, isBusinessBlockArray, migrateBusinessBlockRecords, roomTypeAvailability } from "@/app/lib/business-block-repository";
-import { initialBusinessBlocks, initialCrossBookLinks, initialTravelAgents } from "../../reservation/constants";
+import { roomTypeAvailability } from "@/app/lib/business-block-repository";
+import { initialCrossBookLinks, initialTravelAgents } from "../../reservation/constants";
 import type { BusinessBlock, CrossBookLink, TravelAgent } from "../../reservation/types";
 import {
   crossBookedRoomCodes,
@@ -32,18 +32,19 @@ type ReservationEditorProps = {
   reservations: Reservation[];
   roomList: Room[];
   roomTypes: RoomTypeRecord[];
+  businessBlocks: BusinessBlock[];
   ratePlans: RatePlan[];
   setRatePlans: React.Dispatch<React.SetStateAction<RatePlan[]>>;
   homeCurrency: string;
   defaultDate: string;
   onClose: () => void;
   onSave: (form: ReservationForm) => Promise<SaveResult>;
-  onDelete: (bookingId: string) => void;
+  onDelete: (bookingId: string) => Promise<void>;
   setToast: (message: string) => void;
 };
 
 export function ReservationEditor(props: ReservationEditorProps) {
-  const { propertyId, booking, initialForm, reservations, roomList, roomTypes, ratePlans, setRatePlans, homeCurrency, defaultDate, onClose, onSave, onDelete, setToast } = props;
+  const { propertyId, booking, initialForm, reservations, roomList, roomTypes, businessBlocks, ratePlans, setRatePlans, homeCurrency, defaultDate, onClose, onSave, onDelete, setToast } = props;
   const [crossBookLinks] = useLocalStorageState<CrossBookLink[]>(
     crossBookLinksStorageKey(propertyId),
     initialCrossBookLinks,
@@ -54,7 +55,6 @@ export function ReservationEditor(props: ReservationEditorProps) {
   const [form, setForm] = useState(() => {
     return initialForm ? structuredClone(initialForm) : bookingToForm(booking, defaultDate, propertyId, ratePlans, homeCurrency, roomTypes);
   });
-  const [businessBlocks] = useLocalStorageState<BusinessBlock[]>(businessBlockStorageKey(propertyId), initialBusinessBlocks, isBusinessBlockArray, (records) => migrateBusinessBlockRecords(records, propertyId, homeCurrency, defaultDate));
   const [inventoryRates] = useLocalStorageState<InventoryCellMap>(
     `staypilot:${propertyId}:rooms-rates:inventory:saved-cells`,
     {}
@@ -367,7 +367,7 @@ export function ReservationEditor(props: ReservationEditorProps) {
           </div>
         </div>
 
-        <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-6 py-4"><label className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={form.checkInNow} onChange={(e) => update("checkInNow", e.target.checked)} />Check in guest immediately</label><label className={`flex items-center gap-2 text-sm ${isValidEmail(form.email) ? "text-slate-600" : "text-slate-400"}`}><input type="checkbox" disabled={!isValidEmail(form.email)} checked={form.sendEmail} onChange={(e) => update("sendEmail", e.target.checked)} />Send confirmation email to guest</label><div className="flex gap-2">{booking ? <button type="button" className="rounded-md border border-red-200 px-4 text-sm text-red-600" onClick={() => { if (window.confirm("Delete this reservation?")) onDelete(booking.id); }}>Delete</button> : null}<button type="submit" disabled={saving} className="h-12 rounded-md bg-ink px-8 text-sm font-semibold text-white disabled:opacity-60">{saving ? "Saving..." : booking ? "Update" : "Reserve"}</button></div></footer>
+        <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-6 py-4"><label className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={form.checkInNow} onChange={(e) => update("checkInNow", e.target.checked)} />Check in guest immediately</label><label className={`flex items-center gap-2 text-sm ${isValidEmail(form.email) ? "text-slate-600" : "text-slate-400"}`}><input type="checkbox" disabled={!isValidEmail(form.email)} checked={form.sendEmail} onChange={(e) => update("sendEmail", e.target.checked)} />Send confirmation email to guest</label><div className="flex gap-2">{booking ? <button type="button" disabled={saving} className="rounded-md border border-red-200 px-4 text-sm text-red-600 disabled:opacity-60" onClick={() => { if (window.confirm("Delete this reservation?")) void onDelete(booking.id); }}>Delete</button> : null}<button type="submit" disabled={saving} className="h-12 rounded-md bg-ink px-8 text-sm font-semibold text-white disabled:opacity-60">{saving ? "Saving..." : booking ? "Update" : "Reserve"}</button></div></footer>
       </form>
       {rateDialogOpen ? <RatePlanDialog propertyId={propertyId} homeCurrency={homeCurrency} defaultDate={defaultDate} roomTypes={roomTypes} onClose={() => setRateDialogOpen(false)} onCreate={(plan) => { setRatePlans((current) => [...current, plan]); if (plan.active) applyRatePlan(plan); setRateDialogOpen(false); }} /> : null}
     </div>
