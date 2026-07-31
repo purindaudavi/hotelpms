@@ -11,16 +11,14 @@ import { DeskTab, FrontDeskProps, ReservationForm } from "./types";
 import { addDays, buildDeskColumns, longDate } from "./utils";
 import { useReservationActions } from "./use-reservation-actions";
 import { useReservationEditorResources } from "./use-reservation-editor-resources";
-import { useLocalStorageState } from "@/app/components/hooks/use-local-storage-state";
+import { useCrossBookingLinks } from "@/app/components/hooks/use-cross-booking-links";
 import { getBookingsApiErrorMessage, getBusinessBlocks } from "@/app/lib/bookings-api";
-import { crossBookLinksStorageKey, isCrossBookLinkArray, normalizeCrossBookLinks } from "@/app/lib/cross-booking";
-import { initialCrossBookLinks } from "../reservation/constants";
-import type { BusinessBlock, CrossBookLink } from "../reservation/types";
+import type { BusinessBlock } from "../reservation/types";
 
 export function FrontDeskPage({ propertyId, reservations, setReservations, roomList, setRoomList, setToast }: FrontDeskProps) {
   const { businessDate, homeCurrency, roomTypes, ratePlans, setRatePlans } = useReservationEditorResources(propertyId);
   const [businessBlocks, setBusinessBlocks] = useState<BusinessBlock[]>([]);
-  const [crossBookLinks] = useLocalStorageState<CrossBookLink[]>(crossBookLinksStorageKey(propertyId), initialCrossBookLinks, isCrossBookLinkArray, normalizeCrossBookLinks);
+  const { links: crossBookLinks, error: crossBookingError } = useCrossBookingLinks(propertyId);
   const [tab, setTab] = useState<DeskTab>("Front Desk");
   const [sourceFilter, setSourceFilter] = useState("All");
   const [gridDays, setGridDays] = useState(15);
@@ -44,6 +42,10 @@ export function FrontDeskPage({ propertyId, reservations, setReservations, roomL
       cancelled = true;
     };
   }, [propertyId, setToast]);
+
+  useEffect(() => {
+    if (crossBookingError) setToast(crossBookingError);
+  }, [crossBookingError, setToast]);
 
   const selectedBooking = reservations.find((booking) => booking.id === selectedBookingId) ?? null;
   const sources = useMemo(() => ["All", ...Array.from(new Set(reservations.map((booking) => booking.bookingSource ?? booking.source)))], [reservations]);

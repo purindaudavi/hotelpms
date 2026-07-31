@@ -1,30 +1,61 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSessionState } from "@/app/components/hooks/use-session-state";
 import { Link2, RefreshCw } from "lucide-react";
-import { initialCrossBookLinks } from "../constants";
-import type { CrossBookLink, ReservationModuleProps } from "../types";
+import type { ReservationModuleProps } from "../types";
 import { Panel, ReservationPageFrame, SearchBox, ToolbarButton } from "../components/reservation-ui";
+import { crossBookedRoomCodes } from "@/app/lib/cross-booking";
 import {
-  crossBookedRoomCodes,
-  crossBookLinksStorageKey,
-  isCrossBookLinkArray,
-  normalizeCrossBookLinks,
-  toggleCrossBookPair
-} from "@/app/lib/cross-booking";
+  createCrossBooking,
+  crossBookingRecordsToLinks,
+  deleteCrossBooking,
+  findCrossBookingRecord,
+  getCrossBookingApiErrorMessage,
+  listCrossBookings,
+  type CrossBookingRecord
+} from "@/app/lib/cross-booking-api";
 
 export function CrossBookingPage({ propertyId, roomList, setToast }: ReservationModuleProps) {
   const keyPrefix = `staypilot:${propertyId}:reservation:cross-booking`;
-  const [links, setLinks] = useSessionState<CrossBookLink[]>(
-    crossBookLinksStorageKey(propertyId),
-    initialCrossBookLinks,
-    isCrossBookLinkArray,
-    normalizeCrossBookLinks
-  );
-  const [primaryRoom, setPrimaryRoom] = useSessionState(`${keyPrefix}:primary-room`, initialCrossBookLinks[0]?.primaryRoom ?? roomList[0]?.code ?? "02");
+  const [records, setRecords] = useState<CrossBookingRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [reload, setReload] = useState(0);
+  const [savingPair, setSavingPair] = useState("");
+  const [primaryRoom, setPrimaryRoom] = useSessionState(`${keyPrefix}:primary-room`, roomList[0]?.code ?? "");
   const [primarySearch, setPrimarySearch] = useState("");
   const [crossSearch, setCrossSearch] = useState("");
+  const links = useMemo(() => crossBookingRecordsToLinks(records), [records]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError("");
+
+    listCrossBookings(propertyId)
+      .then((items) => {
+        if (!cancelled) setRecords(items);
+      })
+      .catch((requestError) => {
+        if (cancelled) return;
+        setRecords([]);
+        setError(getCrossBookingApiErrorMessage(requestError));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [propertyId, reload]);
+
+  useEffect(() => {
+    if (roomList.length > 0 && !roomList.some((room) => room.code === primaryRoom)) {
+      setPrimaryRoom(roomList[0].code);
+    }
+  }, [primaryRoom, roomList, setPrimaryRoom]);
 
   const linkedRooms = crossBookedRoomCodes(links, primaryRoom);
   const primaryRooms = useMemo(
@@ -48,15 +79,41 @@ export function CrossBookingPage({ propertyId, roomList, setToast }: Reservation
     setPrimaryRoom(code);
   }
 
-  function toggleBlockedRoom(code: string) {
-    setLinks((current) => toggleCrossBookPair(current, primaryRoom, code));
-    setToast(`Cross-book relationship updated for rooms ${primaryRoom} and ${code}`);
+  async function toggleBlockedRoom(code: string) {
+    const primary = roomList.find((room) => room.code === primaryRoom);
+    const target = roomList.find((room) => room.code === code);
+    if (!primary || !target) {
+      setError("Both physical rooms must exist before they can be cross-booked.");
+      return;
+    }
+
+    const pairKey = [primary.id, target.id].sort().join(":");
+    setSavingPair(pairKey);
+    setError("");
+
+    try {
+      const existing = findCrossBookingRecord(records, primary.id, target.id);
+      if (existing) {
+        await deleteCrossBooking(propertyId, existing._id);
+        setRecords((current) => current.filter((record) => record._id !== existing._id));
+        setToast(`Rooms ${primaryRoom} and ${code} are no longer cross-booked`);
+      } else {
+        const created = await createCrossBooking(propertyId, primary.id, target.id);
+        setRecords((current) => [created, ...current]);
+        setToast(`Rooms ${primaryRoom} and ${code} are now cross-booked`);
+      }
+    } catch (requestError) {
+      setError(getCrossBookingApiErrorMessage(requestError));
+    } finally {
+      setSavingPair("");
+    }
   }
 
   function refresh() {
     setPrimarySearch("");
     setCrossSearch("");
-    setToast("Cross-booking view refreshed; saved links were kept");
+    setReload((value) => value + 1);
+    setToast("Refreshing cross-booking relationships from MongoDB");
   }
 
   return (
@@ -71,10 +128,12 @@ export function CrossBookingPage({ propertyId, roomList, setToast }: Reservation
             Link rooms only when they share inventory and cannot be sold for overlapping stay dates. The relationship works in both directions.
           </p>
         </div>
-        <ToolbarButton icon={<RefreshCw className="h-4 w-4" />} onClick={refresh}>
+        <ToolbarButton icon={<RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />} onClick={refresh} disabled={loading}>
           Refresh
         </ToolbarButton>
       </div>
+
+      {error ? <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
 
       <div className="grid gap-5 xl:grid-cols-2">
         <Panel title="Primary rooms" subtitle="Choose one primary room to configure cross-book links.">
@@ -89,6 +148,7 @@ export function CrossBookingPage({ propertyId, roomList, setToast }: Reservation
                 code={room.code}
                 type={room.type}
                 onClick={() => setPrimary(room.code)}
+                disabled={loading || Boolean(savingPair)}
               />
             ))}
           </div>
@@ -111,6 +171,7 @@ export function CrossBookingPage({ propertyId, roomList, setToast }: Reservation
                 code={room.code}
                 type={room.type}
                 onClick={() => toggleBlockedRoom(room.code)}
+                disabled={loading || Boolean(savingPair)}
               />
             ))}
           </div>
@@ -120,14 +181,15 @@ export function CrossBookingPage({ propertyId, roomList, setToast }: Reservation
   );
 }
 
-function RoomCard({ checked, code, type, onClick }: { checked: boolean; code: string; type: string; onClick: () => void }) {
+function RoomCard({ checked, code, type, onClick, disabled = false }: { checked: boolean; code: string; type: string; onClick: () => void; disabled?: boolean }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       className={`flex min-h-16 items-start gap-3 rounded-lg border p-4 text-left transition ${
         checked ? "border-slate-950 bg-slate-100" : "border-line bg-white hover:border-slate-300"
-      }`}
+      } disabled:cursor-not-allowed disabled:opacity-60`}
     >
       <span className={`mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded border ${checked ? "border-slate-950 bg-slate-950" : "border-slate-400 bg-white"}`}>
         {checked ? <span className="h-2 w-2 rounded-sm bg-white" /> : null}

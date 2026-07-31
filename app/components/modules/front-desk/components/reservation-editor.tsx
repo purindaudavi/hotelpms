@@ -9,16 +9,11 @@ import { RatePlan, ReservationForm, ReservationRoomDraft } from "../types";
 import { IconButton } from "./controls";
 import { InputField, SelectField, TextAreaField } from "./form-fields";
 import { useLocalStorageState } from "@/app/components/hooks/use-local-storage-state";
+import { useCrossBookingLinks } from "@/app/components/hooks/use-cross-booking-links";
 import { roomTypeAvailability } from "@/app/lib/business-block-repository";
-import { initialCrossBookLinks, initialTravelAgents } from "../../reservation/constants";
-import type { BusinessBlock, CrossBookLink, TravelAgent } from "../../reservation/types";
-import {
-  crossBookedRoomCodes,
-  crossBookLinksStorageKey,
-  isCrossBookLinkArray,
-  normalizeCrossBookLinks,
-  roomsAreCrossBooked
-} from "@/app/lib/cross-booking";
+import { initialTravelAgents } from "../../reservation/constants";
+import type { BusinessBlock, TravelAgent } from "../../reservation/types";
+import { crossBookedRoomCodes, roomsAreCrossBooked } from "@/app/lib/cross-booking";
 import { isTravelAgentArray, travelAgentStorageKey } from "@/app/lib/travel-agent-repository";
 import type { InventoryCellMap, RoomTypeRecord } from "../../rooms-rates/types";
 import { makeInventoryKey } from "../../rooms-rates/utils";
@@ -45,12 +40,7 @@ type ReservationEditorProps = {
 
 export function ReservationEditor(props: ReservationEditorProps) {
   const { propertyId, booking, initialForm, reservations, roomList, roomTypes, businessBlocks, ratePlans, setRatePlans, homeCurrency, defaultDate, onClose, onSave, onDelete, setToast } = props;
-  const [crossBookLinks] = useLocalStorageState<CrossBookLink[]>(
-    crossBookLinksStorageKey(propertyId),
-    initialCrossBookLinks,
-    isCrossBookLinkArray,
-    normalizeCrossBookLinks
-  );
+  const { links: crossBookLinks } = useCrossBookingLinks(propertyId);
   const [travelAgents] = useLocalStorageState<TravelAgent[]>(travelAgentStorageKey(propertyId), initialTravelAgents, isTravelAgentArray);
   const [form, setForm] = useState(() => {
     return initialForm ? structuredClone(initialForm) : bookingToForm(booking, defaultDate, propertyId, ratePlans, homeCurrency, roomTypes);

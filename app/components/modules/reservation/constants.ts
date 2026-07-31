@@ -1,5 +1,5 @@
 import { property, type Reservation } from "@/app/data/pms-data";
-import type { BusinessBlock, CrossBookLink, TravelAgent } from "./types";
+import type { BusinessBlock, TravelAgent } from "./types";
 
 export const reservationSystemDate = property.systemDate;
 
@@ -303,8 +303,6 @@ export const initialBusinessBlocks: BusinessBlock[] = [
     updatedAt: "2026-06-02T09:00:00.000Z"
   }
 ];
-
-export const initialCrossBookLinks: CrossBookLink[] = [];
 
 export const initialTravelAgents: TravelAgent[] = [
   {
