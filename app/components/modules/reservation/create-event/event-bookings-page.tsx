@@ -1,18 +1,23 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
-import { useSessionState } from "@/app/components/hooks/use-session-state";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { CalendarPlus, ChevronLeft, ChevronRight, Grid3X3, List, RefreshCw } from "lucide-react";
-import { initialEvents, reservationSystemDate, venueOptions } from "../constants";
+import {
+  createEvent,
+  deleteEvent as deleteEventRequest,
+  getEventApiErrorMessage,
+  listEvents,
+  updateEvent
+} from "@/app/lib/event-api";
+import { reservationSystemDate, venueOptions } from "../constants";
 import type { EventBooking, ReservationModuleProps } from "../types";
-import { addDays, dateLabel, weekdayLabel } from "../utils";
+import { addDays, dateLabel, formatShortDate, weekdayLabel } from "../utils";
 import {
   Field,
   IconButton,
   Modal,
   Panel,
   ReservationPageFrame,
-  SegmentedTabs,
   SelectInput,
   TextInput,
   ToolbarButton
@@ -21,14 +26,17 @@ import {
 const hours = Array.from({ length: 24 }, (_, index) => index);
 
 export function EventBookingsPage({ propertyId, setToast }: ReservationModuleProps) {
-  const [events, setEvents] = useSessionState<EventBooking[]>(`staypilot:${propertyId}:reservation:events`, initialEvents);
-  const [weekStart, setWeekStart] = useState("2026-05-31");
+  const [events, setEvents] = useState<EventBooking[]>([]);
+  const [weekStart, setWeekStart] = useState(() => startOfWeek(reservationSystemDate));
   const [venue, setVenue] = useState("All venues");
   const [view, setView] = useState<"grid" | "list">("grid");
   const [createOpen, setCreateOpen] = useState(false);
   const [createDate, setCreateDate] = useState(reservationSystemDate);
   const [createHour, setCreateHour] = useState(10);
   const [editingEvent, setEditingEvent] = useState<EventBooking | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [reload, setReload] = useState(0);
 
   const days = useMemo(() => Array.from({ length: 7 }, (_, index) => addDays(weekStart, index)), [weekStart]);
   const visibleEvents = useMemo(() => {
@@ -36,13 +44,39 @@ export function EventBookingsPage({ propertyId, setToast }: ReservationModulePro
     return events.filter((event) => event.date >= weekStart && event.date <= rangeEnd && (venue === "All venues" || event.venue === venue));
   }, [events, venue, weekStart]);
 
-  function resetCalendar() {
-    setWeekStart("2026-05-31");
-    setVenue("All venues");
-    setToast("Event calendar refreshed");
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setLoadError("");
+
+    listEvents(propertyId, {
+      dateFrom: weekStart,
+      dateTo: addDays(weekStart, 6),
+      venue
+    })
+      .then((result) => {
+        if (!cancelled) setEvents(result.events);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setEvents([]);
+        setLoadError(getEventApiErrorMessage(error));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [propertyId, reload, venue, weekStart]);
+
+  function refreshCalendar() {
+    setReload((value) => value + 1);
+    setToast("Refreshing event bookings from MongoDB");
   }
 
-  function saveEvent(event: EventBooking) {
+  async function saveEvent(event: EventBooking) {
     if (event.end <= event.start) {
       return "End time must be later than start time.";
     }
@@ -59,15 +93,23 @@ export function EventBookingsPage({ propertyId, setToast }: ReservationModulePro
       return `${event.venue} is already booked from ${conflict.start} to ${conflict.end} for “${conflict.title}”.`;
     }
 
-    const isEditing = events.some((existing) => existing.id === event.id);
-    setEvents((current) => isEditing
-      ? current.map((existing) => existing.id === event.id ? event : existing)
-      : [event, ...current]
-    );
-    setCreateOpen(false);
-    setEditingEvent(null);
-    setToast(isEditing ? "Event booking updated" : "Event booking created");
-    return null;
+    const isEditing = editingEvent !== null;
+    try {
+      const savedEvent = isEditing
+        ? await updateEvent(propertyId, event)
+        : await createEvent(propertyId, event);
+
+      setEvents((current) => isEditing
+        ? current.map((existing) => existing.id === savedEvent.id ? savedEvent : existing)
+        : [savedEvent, ...current]
+      );
+      setCreateOpen(false);
+      setEditingEvent(null);
+      setToast(isEditing ? "Event booking updated in MongoDB" : "Event booking created in MongoDB");
+      return null;
+    } catch (error) {
+      return getEventApiErrorMessage(error);
+    }
   }
 
   function closeEventForm() {
@@ -75,12 +117,18 @@ export function EventBookingsPage({ propertyId, setToast }: ReservationModulePro
     setEditingEvent(null);
   }
 
-  function deleteEvent(event: EventBooking) {
+  async function deleteEvent(event: EventBooking) {
     if (!window.confirm(`Delete “${event.title}”? This action cannot be undone.`)) return;
 
-    setEvents((current) => current.filter((existing) => existing.id !== event.id));
-    closeEventForm();
-    setToast("Event booking deleted");
+    try {
+      await deleteEventRequest(propertyId, event.id);
+      setEvents((current) => current.filter((existing) => existing.id !== event.id));
+      closeEventForm();
+      setToast("Event booking deleted from MongoDB");
+      return null;
+    } catch (error) {
+      return getEventApiErrorMessage(error);
+    }
   }
 
   function editEvent(event: EventBooking) {
@@ -94,7 +142,7 @@ export function EventBookingsPage({ propertyId, setToast }: ReservationModulePro
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">Event bookings</h1>
-          <p className="mt-1 text-sm text-slate-500">System date: {dateLabel(reservationSystemDate)}, 2026</p>
+          <p className="mt-1 text-sm text-slate-500">System date: {formatShortDate(reservationSystemDate)}</p>
         </div>
 
         <div className="grid w-full gap-3 md:w-auto md:grid-cols-[auto_270px_auto_110px_250px_100px_130px_180px] md:items-end">
@@ -104,7 +152,7 @@ export function EventBookingsPage({ propertyId, setToast }: ReservationModulePro
                 <ChevronLeft className="h-4 w-4" />
               </IconButton>
               <div className="flex h-11 min-w-64 items-center justify-center rounded-md border border-line bg-white px-4 text-sm font-semibold">
-                {dateLabel(weekStart)}, 2026 - {dateLabel(addDays(weekStart, 14))}, 2026
+                {formatShortDate(weekStart)} - {formatShortDate(addDays(weekStart, 6))}
               </div>
               <IconButton label="Next range" onClick={() => setWeekStart(addDays(weekStart, 7))}>
                 <ChevronRight className="h-4 w-4" />
@@ -129,7 +177,11 @@ export function EventBookingsPage({ propertyId, setToast }: ReservationModulePro
               </IconButton>
             </div>
           </Field>
-          <ToolbarButton icon={<RefreshCw className="h-4 w-4" />} onClick={resetCalendar}>
+          <ToolbarButton
+            disabled={loading}
+            icon={<RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />}
+            onClick={refreshCalendar}
+          >
             Refresh
           </ToolbarButton>
           <ToolbarButton tone="purple" icon={<CalendarPlus className="h-4 w-4" />} onClick={() => {
@@ -142,6 +194,12 @@ export function EventBookingsPage({ propertyId, setToast }: ReservationModulePro
           </ToolbarButton>
         </div>
       </div>
+
+      {loadError ? (
+        <div role="alert" className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {loadError}
+        </div>
+      ) : null}
 
       {view === "grid" ? (
         <CalendarGrid days={days} events={visibleEvents} onEventClick={editEvent} onSlotClick={(date, hour) => {
@@ -402,8 +460,8 @@ function EventFormModal({
   initialHour: number;
   initialEvent: EventBooking | null;
   onClose: () => void;
-  onDelete: (event: EventBooking) => void;
-  onSave: (event: EventBooking) => string | null;
+  onDelete: (event: EventBooking) => Promise<string | null | undefined>;
+  onSave: (event: EventBooking) => Promise<string | null>;
 }) {
   const initialStart = `${String(initialHour).padStart(2, "0")}:00`;
   const initialEnd = initialHour === 23 ? "23:59" : `${String(initialHour + 1).padStart(2, "0")}:00`;
@@ -418,14 +476,34 @@ function EventFormModal({
     status: "Confirmed"
   });
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
 
   function update<K extends keyof EventBooking>(key: K, value: EventBooking[K]) {
     setEvent((current) => ({ ...current, [key]: value }));
   }
 
-  function submit(formEvent: FormEvent) {
+  async function submit(formEvent: FormEvent) {
     formEvent.preventDefault();
-    setError(onSave(event) ?? "");
+    setSaving(true);
+    setError("");
+    const requestError = await onSave(event);
+    if (requestError) {
+      setError(requestError);
+      setSaving(false);
+    }
+  }
+
+  async function removeEvent() {
+    if (!initialEvent) return;
+    setSaving(true);
+    setError("");
+    const requestError = await onDelete(initialEvent);
+    if (requestError === undefined) {
+      setSaving(false);
+    } else if (requestError) {
+      setError(requestError);
+      setSaving(false);
+    }
   }
 
   return (
@@ -468,21 +546,27 @@ function EventFormModal({
             {initialEvent ? (
               <button
                 type="button"
-                onClick={() => onDelete(initialEvent)}
-                className="inline-flex h-11 items-center justify-center rounded-md border border-red-600 bg-red-600 px-4 text-sm font-semibold text-white transition hover:bg-red-700"
+                onClick={removeEvent}
+                disabled={saving}
+                className="inline-flex h-11 items-center justify-center rounded-md border border-red-600 bg-red-600 px-4 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Delete event
+                {saving ? "Working..." : "Delete event"}
               </button>
             ) : null}
           </div>
           <div className="flex gap-2">
-            <ToolbarButton onClick={onClose}>Cancel</ToolbarButton>
-            <ToolbarButton type="submit" tone="purple">
-              {initialEvent ? "Save changes" : "Create event"}
+            <ToolbarButton disabled={saving} onClick={onClose}>Cancel</ToolbarButton>
+            <ToolbarButton disabled={saving} type="submit" tone="purple">
+              {saving ? "Saving..." : initialEvent ? "Save changes" : "Create event"}
             </ToolbarButton>
           </div>
         </div>
       </form>
     </Modal>
   );
+}
+
+function startOfWeek(value: string) {
+  const date = new Date(`${value}T00:00:00`);
+  return addDays(value, -date.getDay());
 }

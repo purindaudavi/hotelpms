@@ -1,5 +1,5 @@
 import { property, type Reservation } from "@/app/data/pms-data";
-import type { BusinessBlock, CrossBookLink, EventBooking, TravelAgent } from "./types";
+import type { BusinessBlock, CrossBookLink, TravelAgent } from "./types";
 
 export const reservationSystemDate = property.systemDate;
 
@@ -301,29 +301,6 @@ export const initialBusinessBlocks: BusinessBlock[] = [
     createdBy: "ASIRI PERERA",
     createdAt: "2026-06-02T09:00:00.000Z",
     updatedAt: "2026-06-02T09:00:00.000Z"
-  }
-];
-
-export const initialEvents: EventBooking[] = [
-  {
-    id: "event-001",
-    title: "Crew briefing",
-    venue: "Meeting Room",
-    date: "2026-06-03",
-    start: "09:00",
-    end: "10:30",
-    owner: "Asiri Perera",
-    status: "Confirmed"
-  },
-  {
-    id: "event-002",
-    title: "Transit dinner",
-    venue: "Restaurant",
-    date: "2026-06-05",
-    start: "19:00",
-    end: "21:00",
-    owner: "Front Desk",
-    status: "Tentative"
   }
 ];
 
