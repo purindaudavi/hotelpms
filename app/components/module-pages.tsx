@@ -47,7 +47,6 @@ import {
 import { appendActivity, upsertRecord } from "@/app/lib/supabase-data";
 import { DashboardPage as DashboardModulePage } from "@/app/components/modules/dashboard/dashboard-page";
 import { FrontDeskPage } from "@/app/components/modules/front-desk/front-desk-page";
-import { PosPage as PosModulePage } from "@/app/components/modules/pos/pos-page";
 import { ReservationPage as ReservationModulePage } from "@/app/components/modules/reservation/reservation-page";
 import { RoomsRatesPage as RoomsRatesModulePage } from "@/app/components/modules/rooms-rates/rooms-rates-page";
 import { HousekeepingPage as HousekeepingModulePage } from "@/app/components/modules/housekeeping/housekeeping-page";
@@ -110,7 +109,6 @@ export function ModuleContent(props: ModuleProps) {
   if (path === "front-desk") return <FrontDeskPage {...props} />;
   if (path.startsWith("reservation")) return <ReservationModulePage {...props} />;
   if (path.startsWith("rooms-rates")) return <RoomsRatesModulePage {...props} />;
-  if (path.startsWith("pos")) return <PosModulePage {...props} />;
   if (path.startsWith("housekeeping")) return <HousekeepingModulePage {...props} />;
   if (path.startsWith("financials")) return <FinancialsModulePage {...props} />;
   if (path === "reports") return <ReportsModulePage {...props} />;
@@ -819,7 +817,7 @@ function ProfitLossPage({ transactions }: ModuleProps) {
           headers={["Account", "This Month", "Last Month", "Variance"]}
           rows={[
             ["Room Revenue", currency(188500), currency(174200), "+8.2%"],
-            ["POS Revenue", currency(36200), currency(31100), "+16.4%"],
+            ["Food & Beverage Revenue", currency(36200), currency(31100), "+16.4%"],
             ["Housekeeping Supplies", currency(18200), currency(22100), "-17.6%"],
             ["Channel Fees", currency(14700), currency(13200), "+11.3%"]
           ]}

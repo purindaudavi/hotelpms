@@ -73,7 +73,7 @@ export default function LoginPage() {
             <div className="max-w-xl">
               <p className="mb-4 inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-sm text-white/85">
                 <ShieldCheck className="h-4 w-4" />
-                Front desk, bookings, POS, housekeeping, and channel operations
+                Front desk, bookings, housekeeping, financials, and channel operations
               </p>
               <h1 className="text-5xl font-semibold leading-tight">Run daily hotel operations from one focused console.</h1>
               <div className="mt-8 grid grid-cols-3 gap-3 text-sm">

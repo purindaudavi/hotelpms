@@ -1,9 +1,5 @@
-import { FinancialTransaction, Reservation, Room } from "@/app/data/pms-data";
-
 export type DashboardProps = {
-  reservations: Reservation[];
-  roomList: Room[];
-  transactions: FinancialTransaction[];
+  propertyId: string;
   setToast: (message: string) => void;
 };
 

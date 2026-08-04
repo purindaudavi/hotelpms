@@ -9,7 +9,6 @@ const permissions = [
   "Reservations",
   "Rooms & Rates",
   "Channels",
-  "POS",
   "Financials",
   "Settings",
   "Housekeeping",

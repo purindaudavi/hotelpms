@@ -200,7 +200,7 @@ export function ReservationEditor(props: ReservationEditorProps) {
   }
 
   function toggleFoc(line: ReservationRoomDraft, checked: boolean) {
-    if (checked && !window.confirm("Mark the accommodation charge as zero? Meals, minibar, POS, laundry and other extras remain chargeable. A reason is required and manager approval will be recorded.")) return;
+    if (checked && !window.confirm("Mark the accommodation charge as zero? Meals, minibar, laundry and other extras remain chargeable. A reason is required and manager approval will be recorded.")) return;
     updateRoomLine(line.id, checked
       ? { isFoc: true, originalNightlyRate: line.effectiveNightlyRate, effectiveNightlyRate: 0, focSelectedBy: "ASIRI PERERA", focSelectedAt: new Date().toISOString(), requiresManagerApproval: true }
       : { isFoc: false, effectiveNightlyRate: line.originalNightlyRate, focReason: "", focSelectedBy: undefined, focSelectedAt: undefined, requiresManagerApproval: false });

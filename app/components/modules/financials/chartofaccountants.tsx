@@ -33,7 +33,7 @@ const accountDetailTypes: Record<AccountType, string[]> = {
   "Current Asset": ["Accounts Receivable (A/R)", "Inventory", "Prepayments"],
   "Current Liability": ["Accounts Payable (A/P)", "Tax Payable", "Unearned Revenue"],
   Equity: ["Opening Balance Equity", "Owner Equity", "Retained Earnings"],
-  Income: ["Room Revenue", "POS Revenue", "Other Income"],
+  Income: ["Room Revenue", "Food & Beverage Revenue", "Other Income"],
   "Cost of Goods Sold": ["Food Cost", "Room Supplies", "Laundry Cost"],
   Expenses: ["Utilities", "Repairs and Maintenance", "OTA Commission", "Staff Cost"]
 };

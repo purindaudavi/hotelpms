@@ -22,7 +22,6 @@ import {
   LogOut,
   Mail,
   MapPin,
-  Monitor,
   Moon,
   Network,
   Plug,
@@ -33,7 +32,6 @@ import {
   Send,
   Settings,
   ShoppingBag,
-  ShoppingCart,
   Sparkles,
   Tags,
   TrendingUp,
@@ -42,7 +40,6 @@ import {
   UserCog,
   UserRound,
   Users,
-  Utensils,
   WalletCards
 } from "lucide-react";
 
@@ -285,16 +282,6 @@ export const navigation: NavGroup[] = [
       { title: "Rates", path: "rooms-rates/rates", icon: Tags },
       { title: "Inventory", path: "rooms-rates/inventory", icon: Boxes },
       { title: "Rate Hunter", path: "rooms-rates/rate-hunter", icon: Radar }
-    ]
-  },
-  {
-    title: "POS",
-    path: "pos/dashboard",
-    icon: Utensils,
-    children: [
-      { title: "Dashboard", path: "pos/dashboard", icon: LayoutDashboard },
-      { title: "POS order", path: "pos/order", icon: ShoppingCart },
-      { title: "Kot/Bot Monitor", path: "pos/kot-bot-monitor", icon: Monitor }
     ]
   },
   {
