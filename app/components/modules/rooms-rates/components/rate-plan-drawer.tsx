@@ -3,8 +3,7 @@
 import { FormEvent, useState } from "react";
 import { CalendarDays } from "lucide-react";
 import { property } from "@/app/data/pms-data";
-import { createUuid } from "@/app/lib/record-ids";
-import { currencyOptions, mealPlanOptions, rateCodeOptions } from "../constants";
+import { currencyOptions, mealPlanOptions } from "../constants";
 import type { RatePlan, RoomTypeRecord } from "../types";
 import { addDays } from "../utils";
 import { Drawer, Field, SelectInput, TextInput, ToolbarButton } from "./rooms-rates-ui";
@@ -24,15 +23,15 @@ export function RatePlanDrawer({
   ratePlans: RatePlan[];
   roomTypes: RoomTypeRecord[];
   onClose: () => void;
-  onSave: (plan: RatePlan) => void;
+  onSave: (plan: RatePlan) => Promise<void>;
 }) {
   const activeRoomTypes = roomTypes.filter((type) => type.active);
   const now = new Date().toISOString();
   const [form, setForm] = useState<RatePlan>(() => ratePlan ?? {
-    id: createUuid(),
+    id: "",
     propertyId,
     name: "",
-    code: "FIT",
+    code: "",
     currency: property.currency,
     mealPlan: "Room Only",
     baseRate: activeRoomTypes[0]?.baseRate ?? 0,
@@ -51,6 +50,7 @@ export function RatePlanDrawer({
     updatedAt: now
   });
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
   const editingLocked = mode === "edit" && Boolean(ratePlan?.locked) && form.locked;
 
   function update<K extends keyof RatePlan>(key: K, value: RatePlan[K]) {
@@ -64,12 +64,18 @@ export function RatePlanDrawer({
     }));
   }
 
-  function submit(event: FormEvent) {
+  async function submit(event: FormEvent) {
     event.preventDefault();
     const name = form.name.trim();
+    const code = form.code.trim().toUpperCase();
     if (!name) { setError("Rate plan name is required."); return; }
+    if (!code) { setError("Rate code is required."); return; }
     if (ratePlans.some((plan) => plan.id !== form.id && plan.name.toLowerCase() === name.toLowerCase())) {
       setError("A rate plan with this name already exists.");
+      return;
+    }
+    if (ratePlans.some((plan) => plan.id !== form.id && plan.code.toLowerCase() === code.toLowerCase())) {
+      setError("A rate plan with this code already exists.");
       return;
     }
     if (form.validTo < form.validFrom) { setError("End date must be on or after the start date."); return; }
@@ -79,20 +85,29 @@ export function RatePlanDrawer({
     }
     if (!form.cancellationPolicy.trim()) { setError("Cancellation policy is required."); return; }
 
-    onSave({
-      ...form,
-      propertyId,
-      name,
-      baseRate: Number(form.baseRate) || 0,
-      roomTypeRates: Object.fromEntries(activeRoomTypes.map((type) => [
-        type.id,
-        Number.isFinite(Number(form.roomTypeRates[type.id])) ? Number(form.roomTypeRates[type.id]) : Number(type.baseRate) || 0
-      ])),
-      sellMode: "Per Room",
-      rateMode: "Manual",
-      cancellationPolicy: form.cancellationPolicy.trim(),
-      updatedAt: new Date().toISOString()
-    });
+    setSaving(true);
+    setError("");
+    try {
+      await onSave({
+        ...form,
+        propertyId,
+        name,
+        code,
+        baseRate: Number(form.baseRate) || 0,
+        roomTypeRates: Object.fromEntries(activeRoomTypes.map((type) => [
+          type.id,
+          Number.isFinite(Number(form.roomTypeRates[type.id])) ? Number(form.roomTypeRates[type.id]) : Number(type.baseRate) || 0
+        ])),
+        sellMode: "Per Room",
+        rateMode: "Manual",
+        cancellationPolicy: form.cancellationPolicy.trim(),
+        updatedAt: new Date().toISOString()
+      });
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Rate plan could not be saved.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -111,9 +126,7 @@ export function RatePlanDrawer({
             <TextInput disabled={editingLocked} value={form.name} onChange={(event) => update("name", event.target.value)} placeholder="Example: Standard Room Only" />
           </Field>
           <Field label="Rate Code">
-            <SelectInput disabled={editingLocked} value={form.code} onChange={(event) => update("code", event.target.value)}>
-              {rateCodeOptions.filter((item) => item !== "All Rate Codes").map((code) => <option key={code}>{code}</option>)}
-            </SelectInput>
+            <TextInput disabled={editingLocked} value={form.code} onChange={(event) => update("code", event.target.value.toUpperCase())} placeholder="Example: BAR-BB" />
           </Field>
           <Field label="Meal Plan">
             <SelectInput disabled={editingLocked} value={form.mealPlan} onChange={(event) => update("mealPlan", event.target.value)}>
@@ -169,8 +182,8 @@ export function RatePlanDrawer({
         </section>
 
         <div className="flex justify-end gap-3 border-t border-line pt-5">
-          <ToolbarButton type="button" onClick={onClose}>Cancel</ToolbarButton>
-          <ToolbarButton type="submit" tone="dark" disabled={!activeRoomTypes.length}>Save Rate Plan</ToolbarButton>
+          <ToolbarButton type="button" onClick={onClose} disabled={saving}>Cancel</ToolbarButton>
+          <ToolbarButton type="submit" tone="dark" disabled={!activeRoomTypes.length || saving}>{saving ? "Saving..." : "Save Rate Plan"}</ToolbarButton>
         </div>
       </form>
     </Drawer>

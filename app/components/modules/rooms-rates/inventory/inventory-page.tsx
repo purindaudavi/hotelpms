@@ -1,15 +1,15 @@
 "use client";
 
 import type { Dispatch, SetStateAction } from "react";
-import { Fragment, FormEvent, useMemo, useState } from "react";
-import { useSessionState } from "@/app/components/hooks/use-session-state";
+import { Fragment, FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, RefreshCw, Save } from "lucide-react";
-import { currencyOptions, rateCodeOptions } from "../constants";
+import { currencyOptions } from "../constants";
 import type { InventoryCellMap, RatePlan, RoomTypeRecord, RoomsRatesModuleProps } from "../types";
 import { addDays, availabilityFor, buildInventoryCells, dateLabel, makeInventoryKey, weekdayLabel } from "../utils";
 import { RatePlanDrawer } from "../components/rate-plan-drawer";
 import { Drawer, Field, Panel, RoomsRatesFrame, SelectInput, TextInput, ToolbarButton } from "../components/rooms-rates-ui";
 import { useLocalStorageState } from "@/app/components/hooks/use-local-storage-state";
+import { createRatePlanRecord, getDailyRates, getRatesApiErrorMessage, saveDailyRates, type DailyRate } from "@/app/lib/rates-api";
 import { businessBlockStorageKey, isBusinessBlockArray, migrateBusinessBlockRecords } from "@/app/lib/business-block-repository";
 import { initialBusinessBlocks } from "../../reservation/constants";
 import type { BusinessBlock } from "../../reservation/types";
@@ -20,12 +20,15 @@ type InventoryPageProps = RoomsRatesModuleProps & {
   roomTypes: RoomTypeRecord[];
   ratePlans: RatePlan[];
   setRatePlans: Dispatch<SetStateAction<RatePlan[]>>;
+  ratesLoading: boolean;
+  ratesError: string;
+  refreshRatePlans: () => Promise<void>;
 };
 
 type InventoryAction = "" | "bulk" | "rules" | "logs" | "settings";
 type ActiveInventoryAction = Exclude<InventoryAction, "">;
 
-export function InventoryPage({ propertyId, roomTypes, ratePlans, setRatePlans, reservations, setToast }: InventoryPageProps) {
+export function InventoryPage({ propertyId, roomTypes, ratePlans, setRatePlans, ratesLoading, ratesError, refreshRatePlans, reservations, setToast }: InventoryPageProps) {
   const [businessBlocks] = useLocalStorageState<BusinessBlock[]>(businessBlockStorageKey(propertyId), initialBusinessBlocks, isBusinessBlockArray, (records) => migrateBusinessBlockRecords(records, propertyId, property.currency, property.systemDate));
   const [currency, setCurrency] = useState("All Currencies");
   const [rateCode, setRateCode] = useState("All Rate Codes");
@@ -35,18 +38,51 @@ export function InventoryPage({ propertyId, roomTypes, ratePlans, setRatePlans, 
   const [startDate, setStartDate] = useState(property.systemDate);
   const [gridDays, setGridDays] = useState(12);
   const dates = useMemo(() => Array.from({ length: gridDays }, (_, index) => addDays(startDate, index)), [gridDays, startDate]);
-  const inventoryKey = `staypilot:${propertyId}:rooms-rates:inventory`;
-  const [savedCells, setSavedCells] = useLocalStorageState<InventoryCellMap>(
-    `${inventoryKey}:saved-cells`,
-    () => buildInventoryCells(ratePlans, roomTypes, dates)
-  );
-  const [cells, setCells] = useSessionState<InventoryCellMap>(
-    `${inventoryKey}:draft-cells`,
-    () => ({ ...buildInventoryCells(ratePlans, roomTypes, dates), ...savedCells })
-  );
+  const [savedCells, setSavedCells] = useState<InventoryCellMap>({});
+  const [cells, setCells] = useState<InventoryCellMap>({});
+  const [dailyDetails, setDailyDetails] = useState<Record<string, DailyRate>>({});
+  const [loadingDaily, setLoadingDaily] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [dailyError, setDailyError] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [activeAction, setActiveAction] = useState<InventoryAction>("");
   const dirty = JSON.stringify(cells) !== JSON.stringify(savedCells);
+  const rateCodes = useMemo(() => ["All Rate Codes", ...Array.from(new Set(ratePlans.map((plan) => plan.code))).sort()], [ratePlans]);
+
+  const loadDailyRates = useCallback(async () => {
+    const base = buildInventoryCells(ratePlans, roomTypes, dates);
+    if (!ratePlans.length || !dates.length) {
+      setSavedCells(base);
+      setCells(base);
+      setDailyDetails({});
+      return;
+    }
+    setLoadingDaily(true);
+    setDailyError("");
+    try {
+      const records = (await Promise.all(ratePlans.map((plan) => getDailyRates(propertyId, plan.id, dates[0], dates[dates.length - 1])))).flat();
+      const next = { ...base };
+      const details: Record<string, DailyRate> = {};
+      records.forEach((record) => {
+        const key = makeInventoryKey(record.ratePlanId, record.roomTypeId, record.date);
+        next[key] = record.amount;
+        details[key] = record;
+      });
+      setSavedCells(next);
+      setCells(next);
+      setDailyDetails(details);
+    } catch (loadError) {
+      setDailyError(getRatesApiErrorMessage(loadError));
+      setSavedCells(base);
+      setCells(base);
+    } finally {
+      setLoadingDaily(false);
+    }
+  }, [dates, propertyId, ratePlans, roomTypes]);
+
+  useEffect(() => {
+    void loadDailyRates();
+  }, [loadDailyRates]);
 
   const filteredRoomTypes = useMemo(() => roomTypes.filter((type) => roomsFilter === "All Rooms" || type.name === roomsFilter), [roomTypes, roomsFilter]);
   const filteredPlans = useMemo(
@@ -71,33 +107,48 @@ export function InventoryPage({ propertyId, roomTypes, ratePlans, setRatePlans, 
     return cells[key] ?? savedCells[key] ?? getPlanRate(plan, roomType.id);
   }
 
-  function saveRate(plan: RatePlan) {
-    setRatePlans((current) => (current.some((item) => item.id === plan.id) ? current.map((item) => (item.id === plan.id ? plan : item)) : [plan, ...current]));
-    setCells((current) => {
-      const next = { ...current };
-      roomTypes.forEach((roomType) => {
-        dates.forEach((date) => {
-          next[makeInventoryKey(plan.id, roomType.id, date)] = getPlanRate(plan, roomType.id);
-        });
-      });
-      return next;
-    });
-    setSavedCells((current) => {
-      const next = { ...current };
-      roomTypes.forEach((roomType) => {
-        dates.forEach((date) => {
-          next[makeInventoryKey(plan.id, roomType.id, date)] = getPlanRate(plan, roomType.id);
-        });
-      });
-      return next;
-    });
-    setCreateOpen(false);
-    setToast("Rate created for inventory");
+  async function saveRate(plan: RatePlan) {
+    try {
+      const saved = await createRatePlanRecord(propertyId, plan);
+      setRatePlans((current) => [saved, ...current]);
+      setCreateOpen(false);
+      setToast("Rate plan created in MongoDB");
+    } catch (saveError) {
+      throw new Error(getRatesApiErrorMessage(saveError));
+    }
   }
 
-  function saveChanges() {
-    setSavedCells(cells);
-    setToast("Inventory changes saved");
+  async function saveChanges() {
+    const changedKeys = Object.keys(cells).filter((key) => cells[key] !== savedCells[key]);
+    if (!changedKeys.length) return;
+    setSaving(true);
+    setDailyError("");
+    try {
+      const grouped = new Map<string, Array<Omit<DailyRate, "id" | "propertyId" | "ratePlanId">>>();
+      changedKeys.forEach((key) => {
+        const [ratePlanId, roomTypeId, date] = key.split("::");
+        const existing = dailyDetails[key];
+        const entry = {
+          roomTypeId,
+          date,
+          amount: Number(cells[key]),
+          stopSell: existing?.stopSell ?? false,
+          minimumStay: existing?.minimumStay ?? 1,
+          maximumStay: existing?.maximumStay ?? null,
+          closedToArrival: existing?.closedToArrival ?? false,
+          closedToDeparture: existing?.closedToDeparture ?? false,
+          notes: existing?.notes ?? ""
+        };
+        grouped.set(ratePlanId, [...(grouped.get(ratePlanId) ?? []), entry]);
+      });
+      await Promise.all(Array.from(grouped, ([ratePlanId, updates]) => saveDailyRates(propertyId, ratePlanId, updates)));
+      await loadDailyRates();
+      setToast("Daily rates saved in MongoDB");
+    } catch (saveError) {
+      setDailyError(getRatesApiErrorMessage(saveError));
+    } finally {
+      setSaving(false);
+    }
   }
 
   function resetChanges() {
@@ -134,7 +185,7 @@ export function InventoryPage({ propertyId, roomTypes, ratePlans, setRatePlans, 
           ))}
         </SelectInput>
         <SelectInput value={rateCode} onChange={(event) => setRateCode(event.target.value)}>
-          {rateCodeOptions.map((item) => (
+          {rateCodes.map((item) => (
             <option key={item}>{item}</option>
           ))}
         </SelectInput>
@@ -155,16 +206,19 @@ export function InventoryPage({ propertyId, roomTypes, ratePlans, setRatePlans, 
           <option>Active</option>
           <option>Disabled</option>
         </SelectInput>
-        <ToolbarButton tone="dark" icon={<Save className="h-4 w-4" />} onClick={saveChanges} disabled={!dirty}>
-          Save Changes
+        <ToolbarButton tone="dark" icon={<Save className="h-4 w-4" />} onClick={() => void saveChanges()} disabled={!dirty || saving || loadingDaily}>
+          {saving ? "Saving..." : "Save Changes"}
         </ToolbarButton>
-        <ToolbarButton icon={<RefreshCw className="h-4 w-4" />} onClick={resetChanges} disabled={!dirty}>
-          Reset Changes
+        <ToolbarButton icon={<RefreshCw className="h-4 w-4" />} onClick={() => void Promise.all([refreshRatePlans(), loadDailyRates()])} disabled={saving || loadingDaily || ratesLoading}>
+          Refresh
         </ToolbarButton>
         <ToolbarButton tone="dark" onClick={() => setCreateOpen(true)}>
           Add Rate
         </ToolbarButton>
       </div>
+
+      {ratesError || dailyError ? <div role="alert" className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{ratesError || dailyError}</div> : null}
+      {ratesLoading || loadingDaily ? <div className="rounded-md border border-line bg-white px-4 py-3 text-sm text-slate-500">Loading rate plans and daily prices from MongoDB...</div> : null}
 
       <div className="flex flex-wrap justify-center gap-3">
         <SelectInput value={activeAction} onChange={(event) => setActiveAction(event.target.value as InventoryAction)} className="w-44">

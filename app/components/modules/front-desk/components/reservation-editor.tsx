@@ -1,9 +1,10 @@
-import { FormEvent, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Bot, Maximize2, Pencil, PlaySquare, Plus, Trash2, X } from "lucide-react";
 import { Reservation, ReservationStatus, Room } from "@/app/data/pms-data";
 import { createUuid } from "@/app/lib/record-ids";
 import { isValidEmail } from "@/app/lib/reservation-email";
 import { createRatePlan, getPlanRate } from "../rate-plans";
+import { createRatePlanRecord, getRateQuote, getRatesApiErrorMessage } from "@/app/lib/rates-api";
 import { addDays, bookingToForm, daysBetween, parseDate, roomHasOverlap, toISODate } from "../utils";
 import { RatePlan, ReservationForm, ReservationRoomDraft } from "../types";
 import { IconButton } from "./controls";
@@ -15,8 +16,7 @@ import { initialTravelAgents } from "../../reservation/constants";
 import type { BusinessBlock, TravelAgent } from "../../reservation/types";
 import { crossBookedRoomCodes, roomsAreCrossBooked } from "@/app/lib/cross-booking";
 import { isTravelAgentArray, travelAgentStorageKey } from "@/app/lib/travel-agent-repository";
-import type { InventoryCellMap, RoomTypeRecord } from "../../rooms-rates/types";
-import { makeInventoryKey } from "../../rooms-rates/utils";
+import type { RoomTypeRecord } from "../../rooms-rates/types";
 
 type SaveResult = { ok: true } | { ok: false; error: string };
 
@@ -45,27 +45,57 @@ export function ReservationEditor(props: ReservationEditorProps) {
   const [form, setForm] = useState(() => {
     return initialForm ? structuredClone(initialForm) : bookingToForm(booking, defaultDate, propertyId, ratePlans, homeCurrency, roomTypes);
   });
-  const [inventoryRates] = useLocalStorageState<InventoryCellMap>(
-    `staypilot:${propertyId}:rooms-rates:inventory:saved-cells`,
-    {}
-  );
   const [saving, setSaving] = useState(false);
   const submitLock = useRef(false);
   const [error, setError] = useState("");
   const [rateDialogOpen, setRateDialogOpen] = useState(false);
   const [editingLineId, setEditingLineId] = useState(form.roomLines[0]?.id ?? "");
+  const [quoteEnabled, setQuoteEnabled] = useState(!booking && !initialForm?.businessBlockId);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteError, setQuoteError] = useState("");
   const selectedPlan = ratePlans.find((plan) => plan.id === form.ratePlanId);
+  const quotedRoomTypeIds = useMemo(() => Array.from(new Set(form.roomLines.map((line) => line.roomTypeId).filter(Boolean))).sort().join("|"), [form.roomLines]);
 
-  function planRateFor(plan: RatePlan, roomTypeId: string, reservationForm: ReservationForm = form) {
-    const dates = reservationForm.isDayRoom
-      ? [reservationForm.checkIn]
-      : stayDates(reservationForm.checkIn, reservationForm.checkOut);
-    const pricedDates = dates.length ? dates : [reservationForm.checkIn];
-    const total = pricedDates.reduce((sum, date) => (
-      sum + (inventoryRates[makeInventoryKey(plan.id, roomTypeId, date)] ?? getPlanRate(plan, roomTypeId))
-    ), 0);
-    return total / pricedDates.length;
+  function planRateFor(plan: RatePlan, roomTypeId: string) {
+    return getPlanRate(plan, roomTypeId);
   }
+
+  useEffect(() => {
+    if (!quoteEnabled || !selectedPlan || !quotedRoomTypeIds || !form.checkIn || !form.checkOut) return;
+    let cancelled = false;
+    setQuoteLoading(true);
+    setQuoteError("");
+    const roomTypeIds = quotedRoomTypeIds.split("|");
+    void Promise.all(roomTypeIds.map((roomTypeId) => getRateQuote({
+      propertyId,
+      ratePlanId: selectedPlan.id,
+      roomTypeId,
+      checkIn: form.checkIn,
+      checkOut: form.checkOut,
+      dayRoom: form.isDayRoom
+    }))).then((quotes) => {
+      if (cancelled) return;
+      const byRoomType = new Map(quotes.map((quote) => [quote.roomTypeId, quote]));
+      setForm((current) => ({
+        ...current,
+        roomLines: current.roomLines.map((line) => {
+          const quote = byRoomType.get(line.roomTypeId);
+          if (!quote) return line;
+          const hasCustomOverride = !line.isFoc && line.effectiveNightlyRate !== line.originalNightlyRate;
+          return {
+            ...line,
+            originalNightlyRate: quote.averageNightlyRate,
+            effectiveNightlyRate: line.isFoc ? 0 : hasCustomOverride ? line.effectiveNightlyRate : quote.averageNightlyRate
+          };
+        })
+      }));
+    }).catch((quoteFailure) => {
+      if (!cancelled) setQuoteError(getRatesApiErrorMessage(quoteFailure));
+    }).finally(() => {
+      if (!cancelled) setQuoteLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [form.checkIn, form.checkOut, form.isDayRoom, propertyId, quoteEnabled, quotedRoomTypeIds, selectedPlan]);
 
   function crossBookConflict(roomCode: string, checkIn: string, checkOut: string) {
     return crossBookedRoomCodes(crossBookLinks, roomCode).find((linkedRoom) =>
@@ -74,6 +104,7 @@ export function ReservationEditor(props: ReservationEditorProps) {
   }
 
   function update<K extends keyof ReservationForm>(key: K, value: ReservationForm[K]) {
+    if (["checkIn", "checkOut", "nights", "isDayRoom"].includes(String(key))) setQuoteEnabled(true);
     setForm((current) => {
       const next = { ...current, [key]: value };
       if (key === "bookingSource" && value === "Direct") {
@@ -90,7 +121,7 @@ export function ReservationEditor(props: ReservationEditorProps) {
       if (key === "email" && !isValidEmail(String(value))) next.sendEmail = false;
       if (["checkIn", "checkOut", "nights", "isDayRoom"].includes(String(key)) && selectedPlan) {
         next.roomLines = next.roomLines.map((line) => {
-          const rate = planRateFor(selectedPlan, line.roomTypeId, next);
+          const rate = planRateFor(selectedPlan, line.roomTypeId);
           const hasCustomOverride = !line.isFoc && line.effectiveNightlyRate !== line.originalNightlyRate;
           return {
             ...line,
@@ -106,6 +137,7 @@ export function ReservationEditor(props: ReservationEditorProps) {
   function selectRatePlan(planId: string) {
     const plan = ratePlans.find((item) => item.id === planId);
     if (!plan) return;
+    setQuoteEnabled(true);
     applyRatePlan(plan);
   }
 
@@ -114,7 +146,7 @@ export function ReservationEditor(props: ReservationEditorProps) {
       ...current, ratePlanId: plan.id, currency: plan.currency, mealPlan: plan.mealPlan,
       refundable: plan.refundable, cancellationPolicy: plan.cancellationPolicy,
       roomLines: current.roomLines.map((line) => {
-        const rate = planRateFor(plan, line.roomTypeId, current);
+        const rate = planRateFor(plan, line.roomTypeId);
         return { ...line, ratePlanId: plan.id, ratePlanName: plan.name, mealPlan: plan.mealPlan, currency: plan.currency,
           originalNightlyRate: rate, effectiveNightlyRate: line.isFoc ? 0 : rate };
       })
@@ -176,6 +208,7 @@ export function ReservationEditor(props: ReservationEditorProps) {
     const type = roomTypes.find((item) => item.name === typeName) ?? roomTypes[0];
     if (!type) return;
     const plan = selectedPlan ?? ratePlans[0];
+    setQuoteEnabled(true);
     const rate = plan ? planRateFor(plan, type.id) : type.baseRate;
     updateRoomLine(line.id, { roomTypeId: type.id, roomType: type.name, roomId: "", roomNumber: "",
       originalNightlyRate: rate, effectiveNightlyRate: line.isFoc ? 0 : rate });
@@ -185,6 +218,7 @@ export function ReservationEditor(props: ReservationEditorProps) {
     const type = roomTypes[0];
     if (!type) { setError("Create an active room type before adding reservation rooms."); return; }
     const plan = selectedPlan ?? ratePlans[0];
+    setQuoteEnabled(true);
     const rate = plan ? planRateFor(plan, type.id) : type.baseRate;
     const line: ReservationRoomDraft = { id: createUuid(), roomTypeId: type.id, roomType: type.name, roomId: "", roomNumber: "",
       occupancy: "Double", bedType: "Bed Type", adults: 2, children: 0, ratePlanId: plan?.id ?? "", ratePlanName: plan?.name ?? "",
@@ -207,6 +241,8 @@ export function ReservationEditor(props: ReservationEditorProps) {
   }
 
   function validate() {
+    if (quoteLoading) return "Wait for the MongoDB rate quote to finish loading.";
+    if (quoteError) return quoteError;
     if (!form.guest.trim()) return "Guest name is required.";
     if (form.bookingSource !== "Direct" && !form.bookingReference.trim()) return "Booking reference is required for external booking sources.";
     if (form.bookingSource === "Travel Agent" && !form.travelAgentId) return "Select a travel agent for this reservation.";
@@ -327,20 +363,22 @@ export function ReservationEditor(props: ReservationEditorProps) {
           </div>{form.bookingSource === "Travel Agent" && form.travelAgentId ? <p className="mt-2 text-xs text-slate-500">Performance will be credited to {form.travelAgentName}. Commission saved for this reservation: {form.travelAgentCommission}%.</p> : null}</section>
 
           <section className="mt-4 rounded-md bg-slate-50 p-3">
-            <div className="grid gap-4 lg:grid-cols-[1.1fr_1fr_1.2fr]"><div className="flex gap-2"><SelectField label="Rate Plan" value={form.ratePlanId} onChange={selectRatePlan} options={ratePlans.filter((p) => (p.active && form.checkIn >= p.validFrom && form.checkIn <= p.validTo) || p.id === form.ratePlanId).map((p) => ({ value: p.id, label: p.name }))} /><button type="button" aria-label="Create rate plan" className="mt-7 grid h-11 w-11 place-items-center rounded-md border border-line bg-white" onClick={() => setRateDialogOpen(true)}><Plus className="h-4 w-4" /></button></div>
+            <div className="grid gap-4 lg:grid-cols-[1.1fr_1fr_1.2fr]"><div className="flex gap-2"><SelectField label="Rate Plan" value={form.ratePlanId} onChange={selectRatePlan} options={ratePlans.filter((p) => (p.active && form.checkIn >= p.validFrom && (form.isDayRoom ? form.checkIn : addDays(form.checkOut, -1)) <= p.validTo) || p.id === form.ratePlanId).map((p) => ({ value: p.id, label: p.name }))} /><button type="button" aria-label="Create rate plan" className="mt-7 grid h-11 w-11 place-items-center rounded-md border border-line bg-white" onClick={() => setRateDialogOpen(true)}><Plus className="h-4 w-4" /></button></div>
               <SelectField label="Currency" value={form.currency} onChange={(value) => update("currency", value)} options={[homeCurrency, "USD", "EUR", "GBP"].filter((v, i, a) => a.indexOf(v) === i)} />
               <SelectField label="Meal Plan" value={form.mealPlan} onChange={(value) => update("mealPlan", value)} options={["Room Only", "Bed & Breakfast", "Half Board", "Full Board"]} /></div>
             <p className="mt-2 text-xs text-slate-500">Selecting a rate plan fills currency, meal plan, cancellation terms and room rates. Edited values are treated as overrides.</p>
+            {quoteLoading ? <p className="mt-2 text-xs text-blue-600">Loading the nightly quote from MongoDB...</p> : null}
+            {quoteError ? <p role="alert" className="mt-2 text-xs text-rose-600">{quoteError}</p> : null}
             <div className="mt-1 flex gap-3 text-xs text-amber-600">{selectedPlan && form.currency !== selectedPlan.currency ? <span>Currency: Custom override</span> : null}{selectedPlan && form.mealPlan !== selectedPlan.mealPlan ? <span>Meal plan: Custom override</span> : null}</div>
             <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[1120px] text-sm"><thead><tr className="text-left text-slate-500">{["Room Type", "Room No", "Occupancy", "Bed", "Adult", "Child", "Rate", "Complimentary (FOC)", "Edit", ""].map((head, index) => <th key={`${head}-${index}`} className="px-2 py-2">{head}</th>)}</tr></thead>
-              <tbody>{form.roomLines.map((line) => { const editable = editingLineId === line.id; const options = roomOptions(line); const archivedType = !roomTypes.some((type) => type.name === line.roomType); const archivedRoom = Boolean(line.roomNumber && !options.some(({ room }) => room.code === line.roomNumber)); const planRate = selectedPlan ? planRateFor(selectedPlan, line.roomTypeId) : line.originalNightlyRate; return <tr key={line.id} className="border-t border-line">
+              <tbody>{form.roomLines.map((line) => { const editable = editingLineId === line.id; const options = roomOptions(line); const archivedType = !roomTypes.some((type) => type.name === line.roomType); const archivedRoom = Boolean(line.roomNumber && !options.some(({ room }) => room.code === line.roomNumber)); return <tr key={line.id} className="border-t border-line">
                 <td className="px-2 py-2"><select disabled={!editable} value={line.roomType} onChange={(e) => changeRoomType(line, e.target.value)} className="h-10 w-full rounded-md border border-line bg-white px-2 disabled:bg-slate-100">{archivedType ? <option value={line.roomType}>{line.roomType} (archived)</option> : null}{roomTypes.filter((type) => type.active || type.name === line.roomType).map((type) => <option key={type.id} value={type.name}>{type.name}{type.active ? "" : " (disabled)"}</option>)}</select></td>
                 <td className="px-2 py-2"><select disabled={!editable} value={line.roomNumber} onChange={(e) => { const room = roomList.find((item) => item.code === e.target.value); updateRoomLine(line.id, { roomNumber: e.target.value, roomId: room?.id ?? "" }); }} className="h-10 w-full rounded-md border border-line bg-white px-2 disabled:bg-slate-100"><option value="">Select</option>{archivedRoom ? <option value={line.roomNumber}>{line.roomNumber} — archived assignment</option> : null}{options.map(({ room, currentAssignment, unavailableReason }) => <option key={room.id} value={room.code} disabled={Boolean(unavailableReason)}>{room.code} — {currentAssignment ? "Current assignment" : unavailableReason || "Available"}</option>)}</select></td>
                 <td className="px-2 py-2"><select disabled={!editable} value={line.occupancy} onChange={(e) => updateRoomLine(line.id, { occupancy: e.target.value })} className="h-10 rounded-md border border-line bg-white px-2 disabled:bg-slate-100">{["Single", "Double", "Triple", "Family"].map((v) => <option key={v}>{v}</option>)}</select></td>
                 <td className="px-2 py-2"><select disabled={!editable} value={line.bedType} onChange={(e) => updateRoomLine(line.id, { bedType: e.target.value })} className="h-10 rounded-md border border-line bg-white px-2 disabled:bg-slate-100">{["Bed Type", "King Bed", "Twin Bed", "Queen Bed"].map((v) => <option key={v}>{v}</option>)}</select></td>
                 <td className="px-2 py-2"><input disabled={!editable} type="number" min="1" value={line.adults} onChange={(e) => updateRoomLine(line.id, { adults: Number(e.target.value) })} className="h-10 w-16 rounded-md border border-line px-2 disabled:bg-slate-100" /></td>
                 <td className="px-2 py-2"><input disabled={!editable} type="number" min="0" value={line.children} onChange={(e) => updateRoomLine(line.id, { children: Number(e.target.value) })} className="h-10 w-16 rounded-md border border-line px-2 disabled:bg-slate-100" /></td>
-                <td className="px-2 py-2"><input disabled={!editable || line.isFoc} type="number" min="0" value={line.effectiveNightlyRate} onChange={(e) => updateRoomLine(line.id, { effectiveNightlyRate: Number(e.target.value) })} className="h-10 w-28 rounded-md border border-yellow-400 px-2 disabled:bg-slate-100" />{!line.isFoc && line.effectiveNightlyRate !== planRate ? <span className="block text-[10px] text-amber-600">Custom override</span> : null}</td>
+                <td className="px-2 py-2"><input disabled={!editable || line.isFoc} type="number" min="0" value={line.effectiveNightlyRate} onChange={(e) => updateRoomLine(line.id, { effectiveNightlyRate: Number(e.target.value) })} className="h-10 w-28 rounded-md border border-yellow-400 px-2 disabled:bg-slate-100" />{!line.isFoc && line.effectiveNightlyRate !== line.originalNightlyRate ? <span className="block text-[10px] text-amber-600">Custom override</span> : null}</td>
                 <td className="px-2 py-2"><input aria-label="Complimentary (FOC)" type="checkbox" checked={line.isFoc} onChange={(e) => toggleFoc(line, e.target.checked)} /></td>
                 <td className="px-2 py-2"><button type="button" onClick={() => setEditingLineId(editable ? "" : line.id)}><Pencil className="h-4 w-4" /></button></td>
                 <td className="px-2 py-2"><button type="button" className="text-red-500" onClick={() => removeRoomLine(line.id)}><Trash2 className="h-4 w-4" /></button></td>
@@ -368,6 +406,7 @@ function stayDates(start: string, end: string) { const dates: string[] = []; con
 
 function RatePlanDialog({ propertyId, homeCurrency, defaultDate, roomTypes, onClose, onCreate }: { propertyId: string; homeCurrency: string; defaultDate: string; roomTypes: RoomTypeRecord[]; onClose: () => void; onCreate: (plan: RatePlan) => void }) {
   const [name, setName] = useState("");
+  const [code, setCode] = useState("");
   const [currency, setCurrency] = useState(homeCurrency);
   const [mealPlan, setMealPlan] = useState("Room Only");
   const [baseRate, setBaseRate] = useState(0);
@@ -375,12 +414,20 @@ function RatePlanDialog({ propertyId, homeCurrency, defaultDate, roomTypes, onCl
   const [refundable, setRefundable] = useState(true);
   const [active, setActive] = useState(true);
   const [policy, setPolicy] = useState("Free cancellation until 24 hours before check-in.");
+  const [dialogError, setDialogError] = useState("");
+  const [creating, setCreating] = useState(false);
 
-  function create() {
-    if (!name.trim() || baseRate < 0) return;
-    onCreate(createRatePlan(propertyId, {
+  async function create() {
+    if (!name.trim() || !code.trim() || baseRate < 0) {
+      setDialogError("Plan name, rate code and a non-negative rate are required.");
+      return;
+    }
+    setCreating(true);
+    setDialogError("");
+    try {
+      const draft = createRatePlan(propertyId, {
       name: name.trim(),
-      code: "FIT",
+      code: code.trim().toUpperCase(),
       currency,
       mealPlan,
       baseRate,
@@ -398,14 +445,23 @@ function RatePlanDialog({ propertyId, homeCurrency, defaultDate, roomTypes, onCl
       active,
       locked: false,
       isCustom: true
-    }));
+      });
+      const saved = await createRatePlanRecord(propertyId, draft);
+      onCreate(saved);
+    } catch (createError) {
+      setDialogError(getRatesApiErrorMessage(createError));
+    } finally {
+      setCreating(false);
+    }
   }
 
   return <div className="fixed inset-0 z-[60] grid place-items-center bg-black/40 p-4">
     <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-6 shadow-2xl">
       <div className="flex justify-between"><h3 className="text-lg font-semibold">Create Rate Plan</h3><button type="button" onClick={onClose}><X className="h-5 w-5" /></button></div>
       <div className="mt-4 grid gap-3">
+        {dialogError ? <div role="alert" className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{dialogError}</div> : null}
         <InputField label="Plan name" value={name} onChange={setName} />
+        <InputField label="Rate code" value={code} onChange={(value) => setCode(value.toUpperCase())} placeholder="Example: BAR-RO" />
         <SelectField label="Currency" value={currency} onChange={setCurrency} options={[homeCurrency, "USD", "EUR", "GBP"].filter((v, i, a) => a.indexOf(v) === i)} />
         <SelectField label="Meal plan" value={mealPlan} onChange={setMealPlan} options={["Room Only", "Bed & Breakfast", "Half Board", "Full Board"]} />
         <InputField label="Base nightly rate" type="number" value={String(baseRate)} onChange={(value) => setBaseRate(Number(value))} />
@@ -416,7 +472,7 @@ function RatePlanDialog({ propertyId, homeCurrency, defaultDate, roomTypes, onCl
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} />Active</label>
         <TextAreaField label="Cancellation policy" value={policy} onChange={setPolicy} />
       </div>
-      <div className="mt-5 flex justify-end gap-2"><button type="button" className="rounded-md border border-line px-4 py-2" onClick={onClose}>Cancel</button><button type="button" className="rounded-md bg-ink px-4 py-2 text-white" onClick={create}>Create</button></div>
+      <div className="mt-5 flex justify-end gap-2"><button type="button" disabled={creating} className="rounded-md border border-line px-4 py-2 disabled:opacity-60" onClick={onClose}>Cancel</button><button type="button" disabled={creating} className="rounded-md bg-ink px-4 py-2 text-white disabled:opacity-60" onClick={() => void create()}>{creating ? "Creating..." : "Create"}</button></div>
     </div>
   </div>;
 }

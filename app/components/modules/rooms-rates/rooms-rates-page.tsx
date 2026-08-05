@@ -1,17 +1,16 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useSessionState } from "@/app/components/hooks/use-session-state";
 import { initialRoomTypes, isRoomTypeRecordArray, normalizeRoomTypeRecords, roomTypeStorageKey } from "./constants";
-import { property } from "@/app/data/pms-data";
-import { createInitialRatePlans, isRatePlanArray, migrateRatePlans, ratePlansStorageKey, synchronizeRatePlansWithRoomTypes } from "../front-desk/rate-plans";
+import { getRoomCatalog, getRoomsApiErrorMessage } from "@/app/lib/rooms-api";
 import { InventoryPage } from "./inventory/inventory-page";
 import { RateHunterPage } from "./rate-hunter/rate-hunter-page";
 import { RatesPage } from "./rates/rates-page";
 import { RoomsPage } from "./rooms/rooms-page";
 import type { RoomsRatesModuleProps } from "./types";
 import type { RoomTypeRecord } from "./types";
-import type { RatePlan } from "./types";
+import { useRatePlans } from "./use-rate-plans";
 
 export function RoomsRatesPage(props: RoomsRatesModuleProps) {
   const [roomTypes, setRoomTypes] = useSessionState<RoomTypeRecord[]>(
@@ -20,27 +19,31 @@ export function RoomsRatesPage(props: RoomsRatesModuleProps) {
     isRoomTypeRecordArray,
     normalizeRoomTypeRecords
   );
-  const [ratePlans, setRatePlans] = useSessionState<RatePlan[]>(
-    ratePlansStorageKey(props.propertyId),
-    () => synchronizeRatePlansWithRoomTypes(createInitialRatePlans(props.propertyId, property.currency), roomTypes),
-    isRatePlanArray,
-    (records) => synchronizeRatePlansWithRoomTypes(migrateRatePlans(records, props.propertyId, property.currency), roomTypes)
-  );
+  const { ratePlans, setRatePlans, loading: ratesLoading, error: ratesError, refreshRatePlans } = useRatePlans(props.propertyId);
+  const [roomsError, setRoomsError] = useState("");
   const path = props.activePath;
 
   useEffect(() => {
-    setRatePlans((current) => {
-      const next = synchronizeRatePlansWithRoomTypes(current, roomTypes);
-      return next.every((plan, index) => plan === current[index]) ? current : next;
-    });
-  }, [roomTypes, setRatePlans]);
+    let cancelled = false;
+    void getRoomCatalog(props.propertyId)
+      .then((catalog) => {
+        if (cancelled) return;
+        setRoomTypes(catalog.roomTypes);
+        props.setRoomList(catalog.rooms);
+        setRoomsError("");
+      })
+      .catch((error) => {
+        if (!cancelled) setRoomsError(getRoomsApiErrorMessage(error));
+      });
+    return () => { cancelled = true; };
+  }, [props.propertyId, props.setRoomList, setRoomTypes]);
 
   if (path.endsWith("rates")) {
-    return <RatesPage {...props} roomTypes={roomTypes} ratePlans={ratePlans} setRatePlans={setRatePlans} />;
+    return <RatesPage {...props} roomTypes={roomTypes} ratePlans={ratePlans} setRatePlans={setRatePlans} loading={ratesLoading} error={ratesError || roomsError} refreshRatePlans={refreshRatePlans} />;
   }
 
   if (path.endsWith("inventory")) {
-    return <InventoryPage {...props} roomTypes={roomTypes} ratePlans={ratePlans} setRatePlans={setRatePlans} />;
+    return <InventoryPage {...props} roomTypes={roomTypes} ratePlans={ratePlans} setRatePlans={setRatePlans} ratesLoading={ratesLoading} ratesError={ratesError || roomsError} refreshRatePlans={refreshRatePlans} />;
   }
 
   if (path.endsWith("rate-hunter")) {

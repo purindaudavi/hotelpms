@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Building2, ExternalLink, Grid3X3, Heart, List, Search, Star } from "lucide-react";
 import { useLocalStorageState } from "@/app/components/hooks/use-local-storage-state";
 import { property } from "@/app/data/pms-data";
@@ -10,9 +10,9 @@ import {
   propertyCurrenciesStorageKey
 } from "@/app/lib/currency-repository";
 import { propertyDetailsStorageKey, readPropertyDetails } from "@/app/lib/property-repository";
-import { getPlanRate } from "../../front-desk/rate-plans";
-import type { InventoryCellMap, RatePlan, RoomTypeRecord, RoomsRatesModuleProps } from "../types";
-import { addDays, makeInventoryKey } from "../utils";
+import { getRateQuote, getRatesApiErrorMessage } from "@/app/lib/rates-api";
+import type { RatePlan, RoomTypeRecord, RoomsRatesModuleProps } from "../types";
+import { addDays } from "../utils";
 import { Field, IconButton, Panel, RoomsRatesFrame, SelectInput, TextInput, ToolbarButton } from "../components/rooms-rates-ui";
 import {
   type CompetitorQuote,
@@ -49,10 +49,6 @@ export function RateHunterPage({ propertyId, roomTypes, ratePlans, setToast }: R
     propertyCurrenciesStorageKey(propertyId),
     initialPropertyCurrencies
   );
-  const [inventoryRates] = useLocalStorageState<InventoryCellMap>(
-    `staypilot:${propertyId}:rooms-rates:inventory:saved-cells`,
-    {}
-  );
   const [favoriteIds, setFavoriteIds] = useLocalStorageState<string[]>(
     `staypilot:${propertyId}:rooms-rates:rate-hunter:favorites`,
     []
@@ -71,22 +67,24 @@ export function RateHunterPage({ propertyId, roomTypes, ratePlans, setToast }: R
   const [displayCurrency, setDisplayCurrency] = useState(homeCurrency);
   const [view, setView] = useState<"list" | "table">("list");
   const [searchSnapshot, setSearchSnapshot] = useState<SearchSnapshot | null>(null);
+  const [ownNativeTotal, setOwnNativeTotal] = useState<number | null>(null);
+  const [searching, setSearching] = useState(false);
   const [error, setError] = useState("");
 
   const selectedPlan = ratePlans.find((plan) => plan.id === ratePlanId);
   const currencyOptions = Array.from(new Set([homeCurrency, ...currencies.map((currency) => currency.code)]));
+
+  useEffect(() => {
+    if (!activeRoomTypes.some((roomType) => roomType.id === roomTypeId)) setRoomTypeId(activeRoomTypes[0]?.id ?? "");
+    if (!activeRatePlans.some((plan) => plan.id === ratePlanId)) setRatePlanId(activeRatePlans[0]?.id ?? "");
+  }, [activeRatePlans, activeRoomTypes, ratePlanId, roomTypeId]);
 
   const comparisons = useMemo<Comparison[]>(() => {
     if (!searchSnapshot) return [];
     const plan = ratePlans.find((item) => item.id === searchSnapshot.ratePlanId);
     if (!plan) return [];
     const dates = stayDates(searchSnapshot.checkIn, searchSnapshot.checkOut);
-    const ownNativeTotal = dates.reduce((total, date) => (
-      total + (
-        inventoryRates[makeInventoryKey(plan.id, searchSnapshot.roomTypeId, date)]
-        ?? getPlanRate(plan, searchSnapshot.roomTypeId)
-      )
-    ), 0);
+    if (ownNativeTotal === null) return [];
     const ownTotal = convertCurrency(
       ownNativeTotal,
       plan.currency,
@@ -122,9 +120,9 @@ export function RateHunterPage({ propertyId, roomTypes, ratePlans, setToast }: R
       })
       .filter((comparison): comparison is Comparison => comparison !== null)
       .sort((left, right) => left.competitorTotal - right.competitorTotal);
-  }, [currencies, homeCurrency, inventoryRates, ratePlans, searchSnapshot]);
+  }, [currencies, homeCurrency, ownNativeTotal, ratePlans, searchSnapshot]);
 
-  function runComparison() {
+  async function runComparison() {
     setError("");
     const plan = ratePlans.find((item) => item.id === ratePlanId);
     if (!city.trim()) { setError("Enter a city or location."); return; }
@@ -141,17 +139,26 @@ export function RateHunterPage({ propertyId, roomTypes, ratePlans, setToast }: R
       setError(`Configure an exchange rate from ${plan.currency} to ${displayCurrency} in Settings > Property > Currency.`);
       return;
     }
-    setSearchSnapshot({
-      city: city.trim(),
-      country,
-      checkIn,
-      checkOut,
-      mealPlan: plan.mealPlan,
-      roomTypeId,
-      ratePlanId,
-      displayCurrency
-    });
-    setToast("Rate comparison calculated from PMS rates and sample competitor benchmarks");
+    setSearching(true);
+    try {
+      const quote = await getRateQuote({ propertyId, ratePlanId, roomTypeId, checkIn, checkOut, dayRoom: false });
+      setOwnNativeTotal(quote.total);
+      setSearchSnapshot({
+        city: city.trim(),
+        country,
+        checkIn,
+        checkOut,
+        mealPlan: plan.mealPlan,
+        roomTypeId,
+        ratePlanId,
+        displayCurrency
+      });
+      setToast("Rate comparison calculated from the MongoDB rate quote and sample competitor benchmarks");
+    } catch (quoteError) {
+      setError(getRatesApiErrorMessage(quoteError));
+    } finally {
+      setSearching(false);
+    }
   }
 
   function toggleFavorite(id: string) {
@@ -223,8 +230,8 @@ export function RateHunterPage({ propertyId, roomTypes, ratePlans, setToast }: R
             </SelectInput>
           </Field>
           <div className="flex items-end justify-end">
-            <ToolbarButton tone="dark" icon={<Search className="h-4 w-4" />} onClick={runComparison}>
-              Run Comparison
+            <ToolbarButton tone="dark" icon={<Search className="h-4 w-4" />} onClick={() => void runComparison()} disabled={searching}>
+              {searching ? "Loading quote..." : "Run Comparison"}
             </ToolbarButton>
           </div>
         </div>
