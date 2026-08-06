@@ -299,6 +299,8 @@ export const navigation: NavGroup[] = [
     icon: WalletCards,
     children: [
       { title: "Transactions", path: "financials/transactions", icon: Receipt },
+      { title: "Invoices", path: "financials/invoices", icon: FileText },
+      { title: "Credit Notes", path: "financials/credit-notes", icon: CircleDollarSign },
       { title: "Purchases", path: "financials/purchases", icon: ShoppingBag },
       { title: "Expenses", path: "financials/expenses", icon: FileText },
       { title: "Payables", path: "financials/payables", icon: CircleDollarSign },

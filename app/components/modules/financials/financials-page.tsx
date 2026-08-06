@@ -27,11 +27,14 @@ import { IntegrationsPage } from "./integrations";
 import { ProfitLossPage } from "./profit&loss";
 import { SuppliersPage } from "./suppliers";
 import { TransferFundsPage } from "./transferfunds";
+import { CreditNotesPage, InvoicesPage } from "./financial-documents-page";
+import { getBookingsApiErrorMessage, getReservationDetails } from "@/app/lib/bookings-api";
 
 type FinancialsPageProps = {
   activePath: string;
   propertyId: string;
   reservations: Reservation[];
+  setReservations: Dispatch<SetStateAction<Reservation[]>>;
   transactions: FinancialTransaction[];
   setTransactions: Dispatch<SetStateAction<FinancialTransaction[]>>;
   setToast: (message: string) => void;
@@ -196,6 +199,15 @@ export function FinancialsPage(props: FinancialsPageProps) {
   };
 
   if (path.endsWith("purchases")) return <PurchasesPage {...shared} />;
+  if (path.endsWith("invoices")) return <InvoicesPage propertyId={props.propertyId} reservations={props.reservations} setToast={props.setToast} onReservationChanged={async (reservationId) => {
+    try {
+      const details = await getReservationDetails(props.propertyId, reservationId);
+      props.setReservations((current) => current.map((item) => item.id === reservationId ? details.reservation : item));
+    } catch (error) {
+      props.setToast(getBookingsApiErrorMessage(error));
+    }
+  }} />;
+  if (path.endsWith("credit-notes")) return <CreditNotesPage propertyId={props.propertyId} reservations={props.reservations} setToast={props.setToast} />;
   if (path.endsWith("expenses")) return <ExpensesPage {...shared} />;
   if (path.endsWith("payables")) return <PayablesPage {...shared} />;
   if (path.endsWith("receivables")) return <ReceivablesPage {...shared} />;

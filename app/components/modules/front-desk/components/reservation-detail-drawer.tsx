@@ -19,6 +19,7 @@ import { daysBetween } from "../utils";
 import { IconButton } from "./controls";
 import { ReservationRoomingList } from "./reservation-rooming-list";
 import { ReservationEmailActions } from "./reservation-email-actions";
+import { ReservationFinancialsPanel } from "../../financials/financial-documents-page";
 
 type DetailTab = "Overview" | "Rooms" | "Guests" | "Financials" | "Rooming List" | "Attachments" | "Log";
 
@@ -154,7 +155,7 @@ export function ReservationDetailDrawer(props: ReservationDetailDrawerProps) {
 
         {activeTab === "Guests" ? <><DetailSection title="Primary Guest" icon={<UserRound className="h-4 w-4" />}><DetailGrid items={[["Title", emptyValue(booking.guestTitle, "No title")], ["Name", booking.guest], ["Country", emptyValue(booking.country, "No country")], ["Phone", emptyValue(booking.phone === "-" ? "" : booking.phone, "No phone")], ["Email", emptyValue(booking.email === "-" ? "" : booking.email, "No email")], ["Adults / Children", `${booking.adults} / ${booking.children}`]]} /></DetailSection><Remarks booking={booking} /></> : null}
 
-        {activeTab === "Financials" ? <><FinancialSummary currency={currency} total={booking.total} paid={paid} remaining={remaining} /><p className="mt-4 rounded-md border border-line bg-slate-50 p-3 text-sm text-slate-600">Payment posting is not implemented. These values come directly from the saved reservation.</p></> : null}
+        {activeTab === "Financials" ? <><FinancialSummary currency={currency} total={booking.total} paid={paid} remaining={remaining} /><ReservationFinancialsPanel propertyId={propertyId} booking={booking} setToast={setToast} /></> : null}
 
         {activeTab === "Rooming List" ? <DetailSection title="Reservation Rooming List" icon={<UserRound className="h-4 w-4" />}><ReservationRoomingList booking={booking} onUpdate={updateRoomingList} setToast={setToast} /></DetailSection> : null}
 
