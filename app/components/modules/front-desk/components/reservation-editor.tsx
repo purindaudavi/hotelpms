@@ -9,13 +9,11 @@ import { addDays, bookingToForm, daysBetween, parseDate, roomHasOverlap, toISODa
 import { RatePlan, ReservationForm, ReservationRoomDraft } from "../types";
 import { IconButton } from "./controls";
 import { InputField, SelectField, TextAreaField } from "./form-fields";
-import { useLocalStorageState } from "@/app/components/hooks/use-local-storage-state";
 import { useCrossBookingLinks } from "@/app/components/hooks/use-cross-booking-links";
 import { roomTypeAvailability } from "@/app/lib/business-block-repository";
-import { initialTravelAgents } from "../../reservation/constants";
 import type { BusinessBlock, TravelAgent } from "../../reservation/types";
 import { crossBookedRoomCodes, roomsAreCrossBooked } from "@/app/lib/cross-booking";
-import { isTravelAgentArray, travelAgentStorageKey } from "@/app/lib/travel-agent-repository";
+import { getTravelAgentApiErrorMessage, getTravelAgents } from "@/app/lib/travel-agent-api";
 import type { RoomTypeRecord } from "../../rooms-rates/types";
 
 type SaveResult = { ok: true } | { ok: false; error: string };
@@ -41,7 +39,9 @@ type ReservationEditorProps = {
 export function ReservationEditor(props: ReservationEditorProps) {
   const { propertyId, booking, initialForm, reservations, roomList, roomTypes, businessBlocks, ratePlans, setRatePlans, homeCurrency, defaultDate, onClose, onSave, onDelete, setToast } = props;
   const { links: crossBookLinks } = useCrossBookingLinks(propertyId);
-  const [travelAgents] = useLocalStorageState<TravelAgent[]>(travelAgentStorageKey(propertyId), initialTravelAgents, isTravelAgentArray);
+  const [travelAgents, setTravelAgents] = useState<TravelAgent[]>([]);
+  const [travelAgentsLoading, setTravelAgentsLoading] = useState(true);
+  const [travelAgentsError, setTravelAgentsError] = useState("");
   const [form, setForm] = useState(() => {
     return initialForm ? structuredClone(initialForm) : bookingToForm(booking, defaultDate, propertyId, ratePlans, homeCurrency, roomTypes);
   });
@@ -55,6 +55,20 @@ export function ReservationEditor(props: ReservationEditorProps) {
   const [quoteError, setQuoteError] = useState("");
   const selectedPlan = ratePlans.find((plan) => plan.id === form.ratePlanId);
   const quotedRoomTypeIds = useMemo(() => Array.from(new Set(form.roomLines.map((line) => line.roomTypeId).filter(Boolean))).sort().join("|"), [form.roomLines]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setTravelAgentsLoading(true);
+    setTravelAgentsError("");
+    void getTravelAgents(propertyId).then((records) => {
+      if (!cancelled) setTravelAgents(records);
+    }).catch((loadError) => {
+      if (!cancelled) setTravelAgentsError(getTravelAgentApiErrorMessage(loadError));
+    }).finally(() => {
+      if (!cancelled) setTravelAgentsLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [propertyId]);
 
   function planRateFor(plan: RatePlan, roomTypeId: string) {
     return getPlanRate(plan, roomTypeId);
@@ -246,7 +260,9 @@ export function ReservationEditor(props: ReservationEditorProps) {
     if (!form.guest.trim()) return "Guest name is required.";
     if (form.bookingSource !== "Direct" && !form.bookingReference.trim()) return "Booking reference is required for external booking sources.";
     if (form.bookingSource === "Travel Agent" && !form.travelAgentId) return "Select a travel agent for this reservation.";
-    if (form.bookingSource === "Travel Agent" && !travelAgents.some((agent) => agent.id === form.travelAgentId)) return "The selected travel agent no longer exists.";
+    if (form.bookingSource === "Travel Agent" && travelAgentsLoading) return "Wait for the travel-agent list to finish loading.";
+    if (form.bookingSource === "Travel Agent" && travelAgentsError) return travelAgentsError;
+    if (form.bookingSource === "Travel Agent" && !travelAgents.some((agent) => agent.id === form.travelAgentId) && form.travelAgentId !== booking?.travelAgentId) return "The selected travel agent no longer exists.";
     if (!form.isDayRoom && form.checkOut <= form.checkIn) return "Check-out must be after check-in.";
     if (!form.roomLines.length) return "Add at least one room.";
     const assignedRoomNumbers = form.roomLines.map((line) => line.roomNumber).filter(Boolean);
@@ -346,13 +362,17 @@ export function ReservationEditor(props: ReservationEditorProps) {
                 value={form.travelAgentId}
                 onChange={selectTravelAgent}
                 options={[
-                  { value: "", label: "Select travel agent" },
+                  { value: "", label: travelAgentsLoading ? "Loading travel agents..." : "Select travel agent" },
+                  ...(!travelAgents.some((agent) => agent.id === form.travelAgentId) && form.travelAgentId
+                    ? [{ value: form.travelAgentId, label: `${form.travelAgentName || "Archived agent"} (historical)` }]
+                    : []),
                   ...travelAgents
                     .filter((agent) => agent.status === "Active" || agent.id === form.travelAgentId)
                     .map((agent) => ({ value: agent.id, label: `${agent.name} (${agent.code}) · ${agent.commission}%` }))
                 ]}
               />
             ) : null}
+            {form.bookingSource === "Travel Agent" && travelAgentsError ? <p className="self-end pb-3 text-xs text-red-600">{travelAgentsError}</p> : null}
             <InputField label={`Booking Ref.${form.bookingSource === "Direct" ? "" : " *"}`} value={form.bookingReference} onChange={(value) => update("bookingReference", value)} placeholder={form.bookingSource === "Direct" ? "Not required for direct bookings" : "Required external reference"} disabled={form.bookingSource === "Direct"} />
             <InputField label="Tour No" value={form.tourNumber} onChange={(value) => update("tourNumber", value)} placeholder="Tour No" disabled={form.bookingSource === "Direct"} />
             <InputField label="Group Name" value={form.groupName} onChange={(value) => update("groupName", value)} placeholder="Group Name" disabled={form.bookingSource === "Direct"} />

@@ -1,17 +1,17 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
-import { useSessionState } from "@/app/components/hooks/use-session-state";
-import { BarChart3, Building2, Edit3, Eye, Mail, MapPin, Phone, Plus, Search, User, WalletCards } from "lucide-react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { BarChart3, Building2, Edit3, Mail, MapPin, Phone, Plus, RefreshCw, Search, User, WalletCards } from "lucide-react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
-import { initialTravelAgents } from "../constants";
 import type { ReservationModuleProps, TravelAgent, TravelAgentMetric } from "../types";
+import type { TravelAgentPerformance } from "@/app/lib/travel-agent-repository";
 import {
-  calculateTravelAgentPerformance,
-  isTravelAgentArray,
-  travelAgentStorageKey,
-  type TravelAgentPerformance
-} from "@/app/lib/travel-agent-repository";
+  createTravelAgent,
+  getTravelAgentApiErrorMessage,
+  getTravelAgentPerformance,
+  getTravelAgents,
+  updateTravelAgent
+} from "@/app/lib/travel-agent-api";
 import {
   DetailGrid,
   Drawer,
@@ -27,18 +27,36 @@ import {
 
 const agentColors = ["#81c995", "#726bd9", "#60c7e6", "#ff6b6b", "#f59e0b", "#14b8a6"];
 
-export function TravelAgentsPage({ propertyId, reservations, setToast }: ReservationModuleProps) {
-  const [agents, setAgents] = useSessionState(travelAgentStorageKey(propertyId), initialTravelAgents, isTravelAgentArray);
+export function TravelAgentsPage({ propertyId, setToast }: ReservationModuleProps) {
+  const [agents, setAgents] = useState<TravelAgent[]>([]);
+  const [performanceAgents, setPerformanceAgents] = useState<TravelAgentPerformance[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [metric, setMetric] = useState<TravelAgentMetric>("revenue");
   const [query, setQuery] = useState("");
   const [editingAgent, setEditingAgent] = useState<TravelAgent | null>(null);
   const [detailsAgent, setDetailsAgent] = useState<TravelAgentPerformance | null>(null);
   const [addOpen, setAddOpen] = useState(false);
 
-  const performanceAgents = useMemo(
-    () => agents.map((agent) => calculateTravelAgentPerformance(agent, reservations)),
-    [agents, reservations]
-  );
+  const loadAgents = useCallback(async () => {
+    setLoading(true);
+    setLoadError("");
+    try {
+      const loaded = await getTravelAgents(propertyId);
+      setAgents(loaded);
+      setPerformanceAgents(await Promise.all(
+        loaded.map((agent) => getTravelAgentPerformance(propertyId, agent))
+      ));
+    } catch (error) {
+      setLoadError(getTravelAgentApiErrorMessage(error));
+    } finally {
+      setLoading(false);
+    }
+  }, [propertyId]);
+
+  useEffect(() => {
+    void loadAgents();
+  }, [loadAgents]);
 
   const visibleAgents = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -58,15 +76,25 @@ export function TravelAgentsPage({ propertyId, reservations, setToast }: Reserva
     [metric, performanceAgents]
   );
 
-  function saveAgent(agent: TravelAgent) {
-    setAgents((current) => (current.some((item) => item.id === agent.id) ? current.map((item) => (item.id === agent.id ? agent : item)) : [agent, ...current]));
+  async function saveAgent(agent: TravelAgent) {
+    const saved = agent.id
+      ? await updateTravelAgent(propertyId, agent)
+      : await createTravelAgent(propertyId, agent);
+    const performance = await getTravelAgentPerformance(propertyId, saved);
+    setAgents((current) => current.some((item) => item.id === saved.id)
+      ? current.map((item) => item.id === saved.id ? saved : item)
+      : [saved, ...current]);
+    setPerformanceAgents((current) => current.some((item) => item.id === performance.id)
+      ? current.map((item) => item.id === performance.id ? performance : item)
+      : [performance, ...current]);
     setEditingAgent(null);
     setAddOpen(false);
-    setToast(`${agent.name} saved`);
+    setToast(`${saved.name} saved to MongoDB`);
   }
 
   return (
     <ReservationPageFrame>
+      {loadError ? <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{loadError}</div> : null}
       <div className="grid gap-5 xl:grid-cols-[1.1fr_1fr]">
         <div className="space-y-5">
           <Panel
@@ -144,15 +172,21 @@ export function TravelAgentsPage({ propertyId, reservations, setToast }: Reserva
 
         <Panel
           action={
-            <ToolbarButton tone="dark" icon={<Plus className="h-4 w-4" />} onClick={() => setAddOpen(true)}>
-              Add Agent
-            </ToolbarButton>
+            <div className="flex gap-2">
+              <ToolbarButton icon={<RefreshCw className="h-4 w-4" />} onClick={() => void loadAgents()} disabled={loading}>
+                Refresh
+              </ToolbarButton>
+              <ToolbarButton tone="dark" icon={<Plus className="h-4 w-4" />} onClick={() => setAddOpen(true)}>
+                Add Agent
+              </ToolbarButton>
+            </div>
           }
         >
           <div className="mb-4">
             <SearchBox value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search..." />
           </div>
           <div className="divide-y divide-line">
+            {loading ? <p className="py-8 text-center text-sm text-slate-500">Loading travel agents from MongoDB...</p> : null}
             {visibleAgents.map((agent) => (
               <div key={agent.id} className="flex items-center justify-between gap-4 py-4">
                 <button type="button" onClick={() => setDetailsAgent(agent)} className="min-w-0 text-left">
@@ -169,6 +203,7 @@ export function TravelAgentsPage({ propertyId, reservations, setToast }: Reserva
                 </div>
               </div>
             ))}
+            {!loading && !visibleAgents.length ? <p className="py-8 text-center text-sm text-slate-500">No travel agents found.</p> : null}
           </div>
         </Panel>
       </div>
@@ -195,14 +230,16 @@ function AgentFormDrawer({
   mode: "add" | "edit";
   agent: TravelAgent | null;
   onClose: () => void;
-  onSave: (agent: TravelAgent) => void;
+  onSave: (agent: TravelAgent) => Promise<void>;
   setToast: (message: string) => void;
 }) {
   const [method, setMethod] = useState<"manual" | "excel">("manual");
   const [preview, setPreview] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const [form, setForm] = useState<TravelAgent>(
     agent ?? {
-      id: `agent-${Date.now()}`,
+      id: "",
       name: "",
       contactPerson: "",
       agentType: "Online Travel Agent",
@@ -226,9 +263,17 @@ function AgentFormDrawer({
     setForm((current) => ({ ...current, [key]: value }));
   }
 
-  function submit(event: FormEvent) {
+  async function submit(event: FormEvent) {
     event.preventDefault();
-    onSave(form);
+    setSaving(true);
+    setSaveError("");
+    try {
+      await onSave(form);
+    } catch (error) {
+      setSaveError(getTravelAgentApiErrorMessage(error));
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -249,7 +294,7 @@ function AgentFormDrawer({
         {method === "excel" ? (
           <div className="rounded-lg border border-dashed border-line p-6 text-center">
             <Search className="mx-auto h-6 w-6 text-slate-400" />
-            <p className="mt-3 text-sm text-slate-500">Upload an Excel file to stage agents. This demo stores imported rows locally.</p>
+            <p className="mt-3 text-sm text-slate-500">Excel import is not connected yet. Add agents manually to save them in MongoDB.</p>
             <TextInput
               type="file"
               accept=".xlsx,.xls,.csv"
@@ -272,9 +317,9 @@ function AgentFormDrawer({
               <Field label="Agent Type">
                 <SelectInput value={form.agentType} onChange={(event) => update("agentType", event.target.value)}>
                   <option>Online Travel Agent</option>
-                  <option>Direct Agent</option>
-                  <option>Booking Engine</option>
+                  <option>Traditional Agent</option>
                   <option>Corporate</option>
+                  <option>Tour Operator</option>
                 </SelectInput>
               </Field>
               <Field label="Email">
@@ -300,11 +345,9 @@ function AgentFormDrawer({
               <Field label="VAT No">
                 <TextInput value={form.vatNo} onChange={(event) => update("vatNo", event.target.value)} placeholder="VAT123456" />
               </Field>
-              {mode === "add" ? (
-                <Field label="Code">
-                  <TextInput value={form.code} onChange={(event) => update("code", event.target.value)} placeholder="TA001" />
-                </Field>
-              ) : null}
+              <Field label="Code">
+                <TextInput value={form.code} onChange={(event) => update("code", event.target.value)} placeholder="TA001" required />
+              </Field>
               <Field label="Status">
                 <SelectInput value={form.status} onChange={(event) => update("status", event.target.value as TravelAgent["status"])}>
                   <option>Active</option>
@@ -320,14 +363,15 @@ function AgentFormDrawer({
         )}
 
         <div className="flex justify-end gap-2 border-t border-line pt-4">
+          {saveError ? <p role="alert" className="mr-auto self-center text-sm text-red-600">{saveError}</p> : null}
           <ToolbarButton onClick={onClose}>Cancel</ToolbarButton>
           {mode === "add" && method === "manual" ? (
             <ToolbarButton onClick={() => setPreview((current) => !current)}>
               Preview POST JSON
             </ToolbarButton>
           ) : null}
-          <ToolbarButton type="submit" tone="dark" disabled={method === "excel"}>
-            {mode === "add" ? "Save Agent" : "Save"}
+          <ToolbarButton type="submit" tone="dark" disabled={method === "excel" || saving}>
+            {saving ? "Saving..." : mode === "add" ? "Save Agent" : "Save"}
           </ToolbarButton>
         </div>
       </form>

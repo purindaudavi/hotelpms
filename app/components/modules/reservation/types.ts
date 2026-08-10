@@ -110,6 +110,7 @@ export type TravelAgent = {
   reservations: number;
   roomNights: number;
   averageDailyRate: number;
+  version?: number;
 };
 
 export type TravelAgentMetric = "revenue" | "roomNights";
