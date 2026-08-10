@@ -220,11 +220,13 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
             </button>
             <div className="min-w-0">
               <h1 className="truncate text-xl font-semibold lg:text-2xl">{pageTitle}</h1>
-              <div className="mt-1 flex items-center gap-2">
+              <div className="group relative mt-1 flex items-center gap-2">
                 <span className="rounded bg-cyan-100 px-2 py-0.5 text-xs font-semibold uppercase text-ocean">
                   {property.name}
                 </span>
-                <span className="hidden text-xs text-slate-400 sm:inline">Data: {dataSource}</span>
+                <span className="pointer-events-none absolute left-full z-30 ml-2 hidden whitespace-nowrap rounded bg-slate-900 px-2 py-1 text-xs text-white opacity-0 shadow transition-opacity group-hover:opacity-100 sm:inline" role="status">
+                  Data: {dataSource}
+                </span>
               </div>
             </div>
           </div>

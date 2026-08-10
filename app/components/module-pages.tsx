@@ -52,8 +52,6 @@ import { RoomsRatesPage as RoomsRatesModulePage } from "@/app/components/modules
 import { HousekeepingPage as HousekeepingModulePage } from "@/app/components/modules/housekeeping/housekeeping-page";
 import { FinancialsPage as FinancialsModulePage } from "@/app/components/modules/financials/financials-page";
 import { ReportsPage as ReportsModulePage } from "@/app/components/modules/reports/reports-page";
-import { TemplatesPage as CrmTemplatesModulePage } from "@/app/components/modules/crm/templates";
-import { CampaignsPage as CrmCampaignsModulePage } from "@/app/components/modules/crm/campaigns";
 import { ChannelManagerRequestPage } from "@/app/components/modules/channelmanager/channelmanager";
 import { ChannelManagerDashboardPage } from "@/app/components/modules/channelmanager/dashboard";
 import { ChannelManagerInventoryPage } from "@/app/components/modules/channelmanager/inventory";
@@ -112,7 +110,6 @@ export function ModuleContent(props: ModuleProps) {
   if (path.startsWith("housekeeping")) return <HousekeepingModulePage {...props} />;
   if (path.startsWith("financials")) return <FinancialsModulePage {...props} />;
   if (path === "reports") return <ReportsModulePage {...props} />;
-  if (path.startsWith("crm")) return <CrmModule {...props} />;
   if (path.startsWith("channel-manager")) return <ChannelManagerModule {...props} />;
   if (path === "night-audit") return <NightAuditModulePage {...props} />;
   if (path === "ibe") return <IbeModulePage {...props} />;
@@ -953,36 +950,6 @@ function ReportsPage({ setToast }: ModuleProps) {
           </section>
         ))}
       </div>
-    </Page>
-  );
-}
-
-function CrmModule(props: ModuleProps) {
-  if (props.activePath.endsWith("campaigns")) return <CrmCampaignsModulePage {...props} />;
-  return <CrmTemplatesModulePage {...props} />;
-}
-
-function CampaignsPage({ setToast }: { setToast: (message: string) => void }) {
-  return (
-    <Page>
-      <Panel
-        title="Campaigns"
-        action={
-          <ToolbarButton variant="primary" onClick={() => setToast("Campaign builder opened")}>
-            <Send className="h-4 w-4" />
-            Campaign
-          </ToolbarButton>
-        }
-      >
-        <SimpleTable
-          headers={["Campaign", "Audience", "Sent", "Open Rate", "Status"]}
-          rows={[
-            ["Airport stopover offer", "Past guests", 412, "42%", "Running"],
-            ["Long stay discount", "Corporate guests", 88, "36%", "Scheduled"],
-            ["Direct booking promo", "OTA bookers", 240, "29%", "Draft"]
-          ]}
-        />
-      </Panel>
     </Page>
   );
 }

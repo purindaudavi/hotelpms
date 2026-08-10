@@ -27,7 +27,7 @@ import { IntegrationsPage } from "./integrations";
 import { ProfitLossPage } from "./profit&loss";
 import { SuppliersPage } from "./suppliers";
 import { TransferFundsPage } from "./transferfunds";
-import { CreditNotesPage, InvoicesPage } from "./financial-documents-page";
+import { CreditNotesPage, InvoicesPage, RefundsPage } from "./financial-documents-page";
 import { getBookingsApiErrorMessage, getReservationDetails } from "@/app/lib/bookings-api";
 
 type FinancialsPageProps = {
@@ -208,6 +208,7 @@ export function FinancialsPage(props: FinancialsPageProps) {
     }
   }} />;
   if (path.endsWith("credit-notes")) return <CreditNotesPage propertyId={props.propertyId} reservations={props.reservations} setToast={props.setToast} />;
+  if (path.endsWith("refunds")) return <RefundsPage propertyId={props.propertyId} reservations={props.reservations} setToast={props.setToast} />;
   if (path.endsWith("expenses")) return <ExpensesPage {...shared} />;
   if (path.endsWith("payables")) return <PayablesPage {...shared} />;
   if (path.endsWith("receivables")) return <ReceivablesPage {...shared} />;

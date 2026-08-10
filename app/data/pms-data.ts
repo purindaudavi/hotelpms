@@ -301,6 +301,7 @@ export const navigation: NavGroup[] = [
       { title: "Transactions", path: "financials/transactions", icon: Receipt },
       { title: "Invoices", path: "financials/invoices", icon: FileText },
       { title: "Credit Notes", path: "financials/credit-notes", icon: CircleDollarSign },
+      { title: "Refunds", path: "financials/refunds", icon: Repeat },
       { title: "Purchases", path: "financials/purchases", icon: ShoppingBag },
       { title: "Expenses", path: "financials/expenses", icon: FileText },
       { title: "Payables", path: "financials/payables", icon: CircleDollarSign },
@@ -313,15 +314,6 @@ export const navigation: NavGroup[] = [
     ]
   },
   { title: "Reports", path: "reports", icon: BarChart3 },
-  {
-    title: "CRM",
-    path: "crm/templates",
-    icon: Mail,
-    children: [
-      { title: "Templates", path: "crm/templates", icon: FileText },
-      { title: "Campaigns", path: "crm/campaigns", icon: Send }
-    ]
-  },
   {
     title: "Channel Manager",
     path: "channel-manager/dashboard",

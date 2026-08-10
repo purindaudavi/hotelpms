@@ -10,6 +10,8 @@ export type InvoiceStatus =
   | "voided";
 
 export type CreditNoteStatus = "draft" | "issued" | "voided";
+export type RefundStatus = "pending" | "completed" | "voided";
+export type RefundMethod = "cash" | "credit_card" | "debit_card" | "bank_transfer" | "online" | "other";
 
 export type InvoiceLine = {
   _id: string;
@@ -134,6 +136,35 @@ export type InvoicePayment = {
   notes?: string;
 };
 
+export type Refund = {
+  _id: string;
+  property_id: string;
+  refund_no: string;
+  invoice_id: string;
+  invoice_no: string;
+  payment_id: string;
+  reservation_id: string;
+  reservation_no: string;
+  guest_id: string;
+  amount: number;
+  currency: string;
+  refund_method: RefundMethod;
+  reference_number?: string;
+  reason: string;
+  status: RefundStatus;
+  notes?: string;
+  requested_at: string;
+  requested_by?: FinancialActor;
+  completed_at?: string;
+  completed_by?: FinancialActor;
+  voided_at?: string;
+  voided_by?: FinancialActor;
+  void_reason?: string;
+  created_at: string;
+  updated_at: string;
+  version?: number;
+};
+
 export type FinancialLog = {
   _id: string;
   action: string;
@@ -158,16 +189,32 @@ type CreditListResponse = {
   pages: number;
 };
 
+type RefundListResponse = {
+  refunds: Refund[];
+  count: number;
+  total: number;
+  page: number;
+  pages: number;
+};
+
 export type InvoiceDetails = {
   invoice: Invoice;
   payments: InvoicePayment[];
   credits: CreditNote[];
+  refunds: Refund[];
   logs: FinancialLog[];
 };
 
 export type CreditNoteDetails = {
   credit: CreditNote;
   invoice: Invoice | null;
+  logs: FinancialLog[];
+};
+
+export type RefundDetails = {
+  refund: Refund;
+  invoice: Invoice | null;
+  payment: InvoicePayment | null;
   logs: FinancialLog[];
 };
 
@@ -183,6 +230,15 @@ export type CreditFilters = {
   status?: CreditNoteStatus | "all";
   search?: string;
   invoiceId?: string;
+  page?: number;
+  limit?: number;
+};
+
+export type RefundFilters = {
+  status?: RefundStatus | "all";
+  search?: string;
+  invoiceId?: string;
+  reservationId?: string;
   page?: number;
   limit?: number;
 };
@@ -346,6 +402,83 @@ export async function issueCreditNote(propertyId: string, creditId: string) {
 export async function voidCreditNote(propertyId: string, creditId: string, reason: string) {
   const response = await api.post<{ credit: CreditNote; invoice: Invoice }>(
     `/credits/${creditId}/void`,
+    { property_id: propertyId, reason },
+    { headers: actorHeaders() }
+  );
+  return response.data;
+}
+
+export async function listRefunds(propertyId: string, filters: RefundFilters = {}) {
+  const response = await api.get<RefundListResponse>("/refunds", {
+    params: {
+      property_id: propertyId,
+      status: filters.status,
+      search: filters.search,
+      invoice_id: filters.invoiceId,
+      reservation_id: filters.reservationId,
+      page: filters.page,
+      limit: filters.limit
+    }
+  });
+  return response.data;
+}
+
+export async function getRefund(propertyId: string, refundId: string) {
+  const response = await api.get<RefundDetails>(`/refunds/${refundId}`, {
+    params: { property_id: propertyId }
+  });
+  return response.data;
+}
+
+export async function createRefund(
+  propertyId: string,
+  input: {
+    invoiceId: string;
+    paymentId: string;
+    amount: number;
+    refundMethod: RefundMethod;
+    referenceNumber?: string;
+    reason: string;
+    notes?: string;
+  }
+) {
+  const response = await api.post<{ refund: Refund; invoice: Invoice; payment: InvoicePayment }>(
+    "/refunds",
+    {
+      property_id: propertyId,
+      invoice_id: input.invoiceId,
+      payment_id: input.paymentId,
+      amount: input.amount,
+      refund_method: input.refundMethod,
+      reference_number: input.referenceNumber,
+      reason: input.reason,
+      notes: input.notes
+    },
+    { headers: actorHeaders() }
+  );
+  return response.data;
+}
+
+export async function completeRefund(
+  propertyId: string,
+  refundId: string,
+  options: { referenceNumber?: string; notes?: string } = {}
+) {
+  const response = await api.post<{ refund: Refund; invoice: Invoice; payment: InvoicePayment }>(
+    `/refunds/${refundId}/complete`,
+    {
+      property_id: propertyId,
+      ...(options.referenceNumber ? { reference_number: options.referenceNumber } : {}),
+      ...(options.notes ? { notes: options.notes } : {})
+    },
+    { headers: actorHeaders() }
+  );
+  return response.data;
+}
+
+export async function voidRefund(propertyId: string, refundId: string, reason: string) {
+  const response = await api.post<{ refund: Refund; invoice: Invoice }>(
+    `/refunds/${refundId}/void`,
     { property_id: propertyId, reason },
     { headers: actorHeaders() }
   );

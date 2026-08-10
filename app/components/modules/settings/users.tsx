@@ -13,7 +13,6 @@ const permissions = [
   "Settings",
   "Housekeeping",
   "Reports",
-  "CRM",
   "Night Audit",
   "IBE"
 ] as const;
