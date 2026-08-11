@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Bell,
   Calendar,
@@ -50,7 +50,9 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
   const reservationKey = reservationStorageKey(propertyId);
   const roomKey = `staypilot:${propertyId}:rooms`;
   const transactionKey = `staypilot:${propertyId}:transactions`;
+  const sidebarScrollKey = `staypilot:${propertyId}:sidebar-scroll`;
   const homeCurrency = readPropertyHomeCurrency(propertyId);
+  const sidebarScrollRef = useRef<HTMLElement>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [toast, setToast] = useState("");
   const [reservations, setReservations] = useLocalStorageState<Reservation[]>(
@@ -92,6 +94,20 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
     };
   }, [propertyId, setReservations, setRoomList]);
 
+  useLayoutEffect(() => {
+    const sidebar = sidebarScrollRef.current;
+    if (!sidebar) return;
+
+    const savedPosition = Number(window.sessionStorage.getItem(sidebarScrollKey));
+    if (Number.isFinite(savedPosition) && savedPosition > 0) {
+      sidebar.scrollTop = savedPosition;
+    }
+
+    return () => {
+      window.sessionStorage.setItem(sidebarScrollKey, String(sidebar.scrollTop));
+    };
+  }, [sidebarScrollKey]);
+
   const pageTitle = useMemo(() => getActiveTitle(activePath), [activePath]);
 
   function toggleGroup(title: string) {
@@ -101,6 +117,14 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
       else next.add(title);
       return next;
     });
+  }
+
+  function closeSidebarForNavigation() {
+    const sidebar = sidebarScrollRef.current;
+    if (sidebar) {
+      window.sessionStorage.setItem(sidebarScrollKey, String(sidebar.scrollTop));
+    }
+    setSidebarOpen(false);
   }
 
   return (
@@ -133,7 +157,7 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
           </div>
         </div>
 
-        <nav className="table-scroll flex-1 overflow-y-auto px-2 py-3">
+        <nav ref={sidebarScrollRef} className="table-scroll flex-1 overflow-y-auto px-2 py-3">
           {navigation.map((group) => {
             const Icon = group.icon;
             const active = isGroupActive(group, activePath);
@@ -144,7 +168,7 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
                 <Link
                   key={group.title}
                   href={`/properties/${propertyId}/${group.path}`}
-                  onClick={() => setSidebarOpen(false)}
+                  onClick={closeSidebarForNavigation}
                   className={`mb-1 flex h-10 items-center gap-3 rounded-md px-3 text-sm transition ${
                     active ? "bg-slate-200/80 font-semibold text-ink" : "text-slate-600 hover:bg-white"
                   }`}
@@ -177,7 +201,7 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
                         <Link
                           key={item.path}
                           href={`/properties/${propertyId}/${item.path}`}
-                          onClick={() => setSidebarOpen(false)}
+                          onClick={closeSidebarForNavigation}
                           className={`mb-1 flex h-9 items-center gap-3 rounded-md px-3 text-sm transition ${
                             childActive ? "bg-slate-200/80 font-semibold text-ink" : "text-slate-600 hover:bg-white"
                           }`}

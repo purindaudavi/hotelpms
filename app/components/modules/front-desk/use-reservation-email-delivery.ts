@@ -2,6 +2,7 @@
 
 import { useRef, type Dispatch, type SetStateAction } from "react";
 import type { Reservation } from "@/app/data/pms-data";
+import { updateReservationEmailDelivery } from "@/app/lib/bookings-api";
 import { saveReservationRecord } from "@/app/lib/reservation-repository";
 import {
   sendReservationEmail,
@@ -42,9 +43,31 @@ export function useReservationEmailDelivery({ setReservations, setToast, log }: 
 
     try {
       const result = await sendReservationEmail(booking, category, options);
-      const updated = context === "manual" ? booking : updateEmailState(booking, result);
+      let updated = context === "manual" ? booking : updateEmailState(booking, result);
+      let trackingFailed = false;
 
       if (context !== "manual") {
+        try {
+          updated = await updateReservationEmailDelivery(
+            booking.propertyId || "demo",
+            booking.id,
+            result.ok
+              ? {
+                  status: "accepted",
+                  category,
+                  requestedAt: result.sentAt,
+                  sentAt: result.sentAt
+                }
+              : {
+                  status: "failed",
+                  category,
+                  requestedAt: new Date().toISOString(),
+                  failureMessage: result.failureMessage
+                }
+          );
+        } catch {
+          trackingFailed = true;
+        }
         setReservations((current) => saveReservationRecord(current, updated));
       }
 
@@ -56,7 +79,11 @@ export function useReservationEmailDelivery({ setReservations, setToast, log }: 
           ? `${label} email accepted for ${(options.to ?? booking.email).trim()}. Message ID: ${result.messageId || "not returned"}. Inbox delivery is pending.`
           : `${label} email could not be sent to ${(options.to ?? booking.email).trim() || "the guest"}.`
       );
-      setToast(toastMessage(context, result, label));
+      setToast(
+        trackingFailed
+          ? `${toastMessage(context, result, label)} The MongoDB email status could not be updated.`
+          : toastMessage(context, result, label)
+      );
       return { booking: updated, result };
     } finally {
       inFlight.current.delete(requestKey);

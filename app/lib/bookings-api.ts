@@ -355,6 +355,32 @@ export async function updateReservation(propertyId: string, booking: Reservation
   return mapReservation(response.data.reservation);
 }
 
+export async function updateReservationEmailDelivery(
+  propertyId: string,
+  reservationId: string,
+  delivery: {
+    status: "pending" | "accepted" | "sent" | "failed";
+    category: string;
+    requestedAt?: string;
+    sentAt?: string;
+    failureMessage?: string;
+  }
+) {
+  const response = await api.patch<ReservationResponse>(
+    `/bookings/reservations/${reservationId}/email-delivery`,
+    {
+      property_id: propertyId,
+      status: delivery.status,
+      category: delivery.category,
+      requested_at: delivery.requestedAt,
+      sent_at: delivery.sentAt,
+      failure_message: delivery.failureMessage
+    },
+    { headers: actorHeaders() }
+  );
+  return mapReservation(response.data.reservation);
+}
+
 export async function transitionReservation(
   propertyId: string,
   reservationId: string,
