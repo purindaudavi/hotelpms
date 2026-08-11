@@ -9,8 +9,6 @@ import {
   activityDateKey,
   formatActivityTime,
   groupActivities,
-  initialRoomStatuses,
-  nowLabel,
   statusClass,
   statusPillClass
 } from "../utils";
@@ -18,33 +16,38 @@ import { Field, HelpVideoButton, HelpVideoModal, HkButton, RightDrawer, SearchFi
 
 type BoardProps = HousekeepingModuleProps & {
   roomStatuses: Record<string, HousekeepingStatus>;
-  setRoomStatuses: React.Dispatch<React.SetStateAction<Record<string, HousekeepingStatus>>>;
   attendantByRoom: Record<string, string>;
-  setAttendantByRoom: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   attendants: HousekeepingAttendant[];
-  setAttendants: React.Dispatch<React.SetStateAction<HousekeepingAttendant[]>>;
   activities: HousekeepingActivity[];
-  setActivities: React.Dispatch<React.SetStateAction<HousekeepingActivity[]>>;
   showDayEnd: boolean;
   setShowDayEnd: React.Dispatch<React.SetStateAction<boolean>>;
+  loading: boolean;
+  error: string;
+  refreshHousekeeping: () => Promise<void>;
+  startCleaning: (roomId: string, roomCode: string) => Promise<boolean>;
+  completeCleaning: (roomId: string, roomCode: string) => Promise<boolean>;
+  assignAttendant: (roomId: string, roomCode: string, attendantId: string) => Promise<boolean>;
+  createAttendant: (attendant: Omit<HousekeepingAttendant, "id">) => Promise<void>;
 };
 
 const boardTabs: HousekeepingBoardTab[] = ["All", "Clean", "Dirty", "Occupied", "WIP", "Available", "Activity"];
 
 export function HousekeepingBoardPage({
   roomList,
-  setRoomList,
   setToast,
   roomStatuses,
-  setRoomStatuses,
   attendantByRoom,
-  setAttendantByRoom,
   attendants,
-  setAttendants,
   activities,
-  setActivities,
   showDayEnd,
-  setShowDayEnd
+  setShowDayEnd,
+  loading,
+  error,
+  refreshHousekeeping,
+  startCleaning,
+  completeCleaning,
+  assignAttendant: saveAssignment,
+  createAttendant
 }: BoardProps) {
   const [activeTab, setActiveTab] = useState<HousekeepingBoardTab>("All");
   const [query, setQuery] = useState("");
@@ -82,60 +85,12 @@ export function HousekeepingBoardPage({
     return matchesSearch && matchesTab;
   });
 
-  function addActivity(room: Room, status: HousekeepingStatus, state: HousekeepingActivity["state"], attendant = attendantByRoom[room.id] || "Unassigned") {
-    const activity: HousekeepingActivity = {
-      id: `hk-act-${Date.now()}`,
-      roomCode: room.code,
-      roomType: room.type,
-      attendant,
-      status,
-      state,
-      createdAt: nowLabel(),
-      finishedAt: state === "Completed" ? nowLabel() : undefined
-    };
-    setActivities((current) => [activity, ...current]);
-  }
-
-  function updateStatus(room: Room, status: HousekeepingStatus) {
-    const currentStatus = roomStatuses[room.id] ?? "Clean";
-    if (room.status === "Occupied") {
-      setToast(`Room ${room.code} is occupied and cannot be released by Housekeeping`);
-      return;
-    }
-    if (room.status === "Maintenance" || room.status === "Out of Order") {
-      setToast(`Room ${room.code} is ${room.status.toLowerCase()} and cannot be cleaned for sale`);
-      return;
-    }
-    if (status === "WIP" && currentStatus !== "Dirty" && currentStatus !== "Clean") return;
-    if (status === "Clean" && currentStatus !== "WIP") return;
-
-    setRoomStatuses((current) => ({ ...current, [room.id]: status }));
-    setRoomList((current) => current.map((item) => (item.id === room.id ? { ...item, housekeeping: status } : item)));
-    addActivity(room, status, status === "Clean" ? "Completed" : "Started");
-    setToast(`Room ${room.code} marked ${status}`);
-  }
-
-  function assignAttendant(room: Room, attendant: string) {
-    if (!attendant) {
+  async function assignAttendant(room: Room, attendantId: string) {
+    if (!attendantId) {
       setToast("Select an active housekeeping attendant");
       return;
     }
-    setAttendantByRoom((current) => ({ ...current, [room.id]: attendant }));
-    addActivity(room, roomStatuses[room.id] ?? "Clean", "Assigned", attendant);
-    setAssignRoom(null);
-    setToast(`Room ${room.code} assigned to ${attendant}`);
-  }
-
-  function refreshBoard() {
-    const nextStatuses = initialRoomStatuses(roomList);
-    setRoomStatuses(nextStatuses);
-    setRoomList((current) =>
-      current.map((room) => ({
-        ...room,
-        housekeeping: nextStatuses[room.id] ?? room.housekeeping
-      }))
-    );
-    setToast("Housekeeping board refreshed from the shared local room list");
+    if (await saveAssignment(room.id, room.code, attendantId)) setAssignRoom(null);
   }
 
   function remindDayEndLater() {
@@ -148,9 +103,9 @@ export function HousekeepingBoardPage({
     <main className="space-y-5 p-4 lg:p-6">
       <section className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-wrap items-center gap-3">
-          <HkButton onClick={refreshBoard}>
+          <HkButton onClick={() => void refreshHousekeeping()} disabled={loading}>
             <RefreshCw className="h-4 w-4" />
-            Refresh
+            {loading ? "Refreshing..." : "Refresh"}
           </HkButton>
           <MetricBadge label="Clean" value={counts.Clean} className="bg-emerald-100 text-emerald-700" />
           <MetricBadge label="Dirty" value={counts.Dirty} className="bg-rose-100 text-rose-700" />
@@ -163,15 +118,17 @@ export function HousekeepingBoardPage({
         </div>
       </section>
 
+      {error ? <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
+
       <SegmentedTabs tabs={boardTabs} active={activeTab} onChange={setActiveTab} />
 
       {activeTab === "Activity" ? (
-        <ActivityView activities={activities} onRefresh={() => setToast("Housekeeping activity refreshed")} />
+        <ActivityView activities={activities} onRefresh={() => void refreshHousekeeping()} />
       ) : (
         <section className="grid gap-5 xl:grid-cols-4">
           {visibleRooms.length ? (
             visibleRooms.map((room) => (
-              <RoomCard key={room.id} room={room} onAssign={() => setAssignRoom(room)} onStart={() => updateStatus(room, "WIP")} onComplete={() => updateStatus(room, "Clean")} />
+              <RoomCard key={room.id} room={room} onAssign={() => setAssignRoom(room)} onStart={() => void startCleaning(room.id, room.code)} onComplete={() => void completeCleaning(room.id, room.code)} />
             ))
           ) : (
             <div className="col-span-full rounded-lg border border-line bg-white p-8 text-slate-500">No rooms to show. Select a property or try a different tab/search.</div>
@@ -183,7 +140,7 @@ export function HousekeepingBoardPage({
         <AssignDrawer
           room={assignRoom}
           attendants={attendants}
-          currentAttendant={attendantByRoom[assignRoom.id] ?? "aa"}
+          currentAttendant={attendants.find((attendant) => attendant.name === attendantByRoom[assignRoom.id])?.id ?? ""}
           activities={activities.filter((activity) => activity.roomCode === assignRoom.code)}
           onClose={() => setAssignRoom(null)}
           onAssign={assignAttendant}
@@ -191,13 +148,13 @@ export function HousekeepingBoardPage({
         />
       ) : null}
 
-      {showNewEmployee ? <NewEmployeeDrawer onClose={() => setShowNewEmployee(false)} onCreate={(employee) => setAttendants((current) => [...current, employee])} /> : null}
+      {showNewEmployee ? <NewEmployeeDrawer onClose={() => setShowNewEmployee(false)} onCreate={createAttendant} /> : null}
 
       {showDayEnd ? (
         <DayEndModal
           onClose={() => setShowDayEnd(false)}
           onRemind={remindDayEndLater}
-          onRun={() => runDayEnd(roomList, setRoomStatuses, setRoomList, setShowDayEnd, setToast)}
+          onRun={() => { setShowDayEnd(false); void refreshHousekeeping(); setToast("Housekeeping Day End reviewed from MongoDB"); }}
         />
       ) : null}
 
@@ -362,7 +319,8 @@ function AssignDrawer({
           </div>
           <div className="flex gap-2">
             <select value={selected} onChange={(event) => setSelected(event.target.value)} className="h-12 flex-1 rounded-md border border-indigo-500 px-4 outline-none">
-              {attendants.filter((attendant) => attendant.status === "active").map((attendant) => <option key={attendant.id}>{attendant.name}</option>)}
+              <option value="">Select attendant</option>
+              {attendants.filter((attendant) => attendant.status === "active").map((attendant) => <option key={attendant.id} value={attendant.id}>{attendant.name}</option>)}
             </select>
             <HkButton onClick={onAddEmployee}><Plus className="h-4 w-4" /></HkButton>
           </div>
@@ -382,7 +340,7 @@ function AssignDrawer({
   );
 }
 
-function NewEmployeeDrawer({ onClose, onCreate }: { onClose: () => void; onCreate: (employee: HousekeepingAttendant) => void }) {
+function NewEmployeeDrawer({ onClose, onCreate }: { onClose: () => void; onCreate: (employee: Omit<HousekeepingAttendant, "id">) => Promise<void> }) {
   const [form, setForm] = useState({
     employeeNo: "",
     name: "",
@@ -390,14 +348,27 @@ function NewEmployeeDrawer({ onClose, onCreate }: { onClose: () => void; onCreat
     status: "active",
     phone: "",
     email: "",
-    joinedIso: "2026-06-16T09:41:52.453Z"
+    joinedIso: new Date().toISOString()
   });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
-  function submit(event: FormEvent) {
+  async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!form.name.trim()) return;
-    onCreate({ id: `hk-${Date.now()}`, ...form, status: form.status === "inactive" ? "inactive" : "active" });
-    onClose();
+    if (!form.employeeNo.trim() || !form.name.trim()) {
+      setError("Employee number and name are required.");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      await onCreate({ ...form, status: form.status === "inactive" ? "inactive" : "active" });
+      onClose();
+    } catch {
+      setError("The attendant could not be saved.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -411,8 +382,9 @@ function NewEmployeeDrawer({ onClose, onCreate }: { onClose: () => void; onCreat
         <Field label="Email" value={form.email} onChange={(value) => setForm((current) => ({ ...current, email: value }))} />
         <Field label="Joined (ISO)" value={form.joinedIso} onChange={(value) => setForm((current) => ({ ...current, joinedIso: value }))} />
         <div className="flex justify-end gap-3">
+          {error ? <p className="mr-auto self-center text-sm text-red-600">{error}</p> : null}
           <HkButton onClick={onClose}>Cancel</HkButton>
-          <HkButton type="submit" variant="primary">Create</HkButton>
+          <HkButton type="submit" variant="primary" disabled={saving}>{saving ? "Creating..." : "Create"}</HkButton>
         </div>
       </form>
     </RightDrawer>
@@ -428,7 +400,7 @@ function DayEndModal({ onClose, onRun, onRemind }: { onClose: () => void; onRun:
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-2xl font-bold text-ink">Day End Process Required</h2>
-            <p className="mt-2 text-slate-500">The hotel&apos;s system date {systemDate} does not match today&apos;s date {today}. Complete the local housekeeping review. Dirty and WIP rooms will remain unfinished.</p>
+            <p className="mt-2 text-slate-500">The hotel&apos;s system date {systemDate} does not match today&apos;s date {today}. Review the MongoDB housekeeping board. Dirty and WIP rooms will remain unfinished.</p>
           </div>
           <button onClick={onClose} className="text-slate-500">x</button>
         </div>
@@ -439,18 +411,4 @@ function DayEndModal({ onClose, onRun, onRemind }: { onClose: () => void; onRun:
       </section>
     </div>
   );
-}
-
-function runDayEnd(
-  rooms: Room[],
-  setRoomStatuses: React.Dispatch<React.SetStateAction<Record<string, HousekeepingStatus>>>,
-  setRoomList: React.Dispatch<React.SetStateAction<Room[]>>,
-  setShowDayEnd: React.Dispatch<React.SetStateAction<boolean>>,
-  setToast: (message: string) => void
-) {
-  const nextStatuses = initialRoomStatuses(rooms);
-  setRoomStatuses(nextStatuses);
-  setRoomList((current) => current.map((room) => ({ ...room, housekeeping: nextStatuses[room.id] ?? "Clean" })));
-  setShowDayEnd(false);
-  setToast("Housekeeping Day End reviewed; Dirty and WIP rooms were preserved");
 }

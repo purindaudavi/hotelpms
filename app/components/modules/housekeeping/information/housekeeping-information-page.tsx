@@ -89,7 +89,7 @@ export function HousekeepingInformationPage({
     <main className="space-y-5 p-4 lg:p-6">
       <div>
         <h1 className="text-3xl font-bold text-ink">Housekeeping Information</h1>
-        <p className="mt-2 text-slate-500">Plan arrivals, departures and stayover work from saved local reservations.</p>
+        <p className="mt-2 text-slate-500">Plan arrivals, departures and stayover work from MongoDB reservations and housekeeping records.</p>
         <div className="mt-4 max-w-xl">
           <SegmentedTabs tabs={infoTabs} active={activeTab} onChange={setActiveTab} />
         </div>
