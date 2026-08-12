@@ -4,8 +4,8 @@ import { initialProperty } from "@/app/components/modules/settings/property/prop
 export const propertyDetailsStorageKey = (propertyId: string) => `staypilot:${propertyId}:property:details`;
 
 export function readPropertyDetails(propertyId: string) {
-  const legacy = readLocalStorageValue("staypilot.property.details", initialProperty);
-  return readLocalStorageValue(propertyDetailsStorageKey(propertyId), legacy);
+  const legacy = { ...initialProperty, ...readLocalStorageValue("staypilot.property.details", initialProperty) };
+  return { ...initialProperty, ...readLocalStorageValue(propertyDetailsStorageKey(propertyId), legacy) };
 }
 
 export function readPropertyHomeCurrency(propertyId: string) {

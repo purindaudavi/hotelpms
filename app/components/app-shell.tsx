@@ -39,6 +39,7 @@ import { useLocalStorageState, writeLocalStorageValue } from "@/app/components/h
 import { roomTypeStorageKey } from "@/app/components/modules/rooms-rates/constants";
 import { getRoomCatalog } from "@/app/lib/rooms-api";
 import { getReservations } from "@/app/lib/bookings-api";
+import { usePropertyBrand } from "@/app/components/hooks/use-property-brand";
 
 type WorkspaceProps = {
   propertyId: string;
@@ -52,6 +53,7 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
   const transactionKey = `staypilot:${propertyId}:transactions`;
   const sidebarScrollKey = `staypilot:${propertyId}:sidebar-scroll`;
   const homeCurrency = readPropertyHomeCurrency(propertyId);
+  const propertyBrand = usePropertyBrand(propertyId, property.name);
   const sidebarScrollRef = useRef<HTMLElement>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [toast, setToast] = useState("");
@@ -144,11 +146,9 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
       >
         <div className="border-b border-line bg-white/70 p-3">
           <div className="flex items-center gap-3 rounded-lg border border-line bg-white p-3 shadow-sm">
-            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-cyan-50 text-ocean">
-              <span className="text-lg font-bold">SP</span>
-            </div>
+            <BrandLogo logoUrl={propertyBrand.logoUrl} hotelName={propertyBrand.hotelName} className="h-9 w-9 rounded-md" />
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold">{property.shortName}</p>
+              <p className="truncate text-sm font-semibold" title={propertyBrand.hotelName}>{propertyBrand.hotelName}</p>
               <p className="text-xs text-slate-500">{appName}</p>
             </div>
             <button className="rounded-md p-1 text-slate-500 hover:bg-slate-100" aria-label="Property menu">
@@ -245,8 +245,9 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
             <div className="min-w-0">
               <h1 className="truncate text-xl font-semibold lg:text-2xl">{pageTitle}</h1>
               <div className="group relative mt-1 flex items-center gap-2">
-                <span className="rounded bg-cyan-100 px-2 py-0.5 text-xs font-semibold uppercase text-ocean">
-                  {property.name}
+                <span className="inline-flex max-w-[min(55vw,420px)] items-center gap-1.5 rounded bg-cyan-100 px-2 py-0.5 text-xs font-semibold uppercase text-ocean">
+                  <BrandLogo logoUrl={propertyBrand.logoUrl} hotelName={propertyBrand.hotelName} className="h-4 w-4 rounded-sm" />
+                  <span className="truncate">{propertyBrand.hotelName}</span>
                 </span>
                 <span className="pointer-events-none absolute left-full z-30 ml-2 hidden whitespace-nowrap rounded bg-slate-900 px-2 py-1 text-xs text-white opacity-0 shadow transition-opacity group-hover:opacity-100 sm:inline" role="status">
                   Data: {dataSource}
@@ -327,5 +328,32 @@ function TopIcon({ label, children }: { label: string; children: React.ReactNode
     >
       {children}
     </button>
+  );
+}
+
+function BrandLogo({ logoUrl, hotelName, className }: { logoUrl: string; hotelName: string; className: string }) {
+  const [failedUrl, setFailedUrl] = useState("");
+  const initials = hotelName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word[0])
+    .join("")
+    .toUpperCase() || "SP";
+  const showImage = Boolean(logoUrl) && failedUrl !== logoUrl;
+
+  return (
+    <div className={`grid shrink-0 place-items-center overflow-hidden bg-cyan-50 text-ocean ${className}`}>
+      {showImage ? (
+        <img
+          src={logoUrl}
+          alt={`${hotelName} logo`}
+          className="h-full w-full object-contain"
+          onError={() => setFailedUrl(logoUrl)}
+        />
+      ) : (
+        <span className="text-[0.7em] font-bold">{initials}</span>
+      )}
+    </div>
   );
 }

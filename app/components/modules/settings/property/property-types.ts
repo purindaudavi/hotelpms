@@ -2,13 +2,22 @@ export type PropertyDetails = {
   hotelName: string; hotelType: string; hotelGuid: string; starCategory: string; numberOfRooms: string;
   onTrial: boolean; plan: string; description: string; address: string; city: string; zipCode: string;
   country: string; phone: string; email: string; website: string; checkInTime: string; checkOutTime: string;
-  homeCurrency: string; languageCode: string; logoWidth: string; logoHeight: string; ibeLogoWidth: string;
+  homeCurrency: string; languageCode: string; timezone: string; logoWidth: string; logoHeight: string; ibeLogoWidth: string;
   ibeLogoHeight: string; supportPin: string; invoiceFooter: string; invoiceNotes: string; createdOn: string;
   createdTimestamp: string; lastUpdatedOn: string; lastUpdatedTimestamp: string; lastUpdatedBy: string;
   cmPropertyId: string; cmActive: boolean; latitude: string; longitude: string; logoUrl: string;
 };
 
-export type PropertyImageRecord = { id: string; url: string; description: string; fileName: string };
+export type PropertyImageRecord = {
+  id: string;
+  url: string;
+  description: string;
+  fileName: string;
+  altText: string;
+  imageType: "logo" | "gallery";
+  isPrimary: boolean;
+  sortOrder: number;
+};
 export type MealAllocation = { id: string; breakfast: number; lunch: number; dinner: number; currency: string; allInclusive: boolean };
 export type GatewayName = "CyberSource" | "PayPal" | "Skrill" | "Stripe" | "Google Pay" | "Apple Pay";
 export type GatewaySettings = {
