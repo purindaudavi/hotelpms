@@ -118,9 +118,9 @@ export function RatesPage({ propertyId, roomTypes, ratePlans, setRatePlans, load
                 <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold">{roomType.rooms.length} physical rooms</span>
               </div>
               <div className="overflow-x-auto border-t border-line">
-                <table className="w-full min-w-[1250px] text-left text-sm">
+                <table className="w-full min-w-[1380px] text-left text-sm">
                   <thead className="text-slate-500"><tr className="border-b border-line">
-                    {["Code", "Rate Plan", "Meal Plan", "Currency", "Nightly Rate", "Valid Period", "Terms", "Status", "Actions"].map((heading) => <th key={heading} className="px-4 py-4 font-semibold">{heading}</th>)}
+                    {["Code", "Rate Plan", "Meal Plan", "Meal Allocation", "Currency", "Nightly Rate", "Valid Period", "Terms", "Status", "Actions"].map((heading) => <th key={heading} className="px-4 py-4 font-semibold">{heading}</th>)}
                   </tr></thead>
                   <tbody>
                     {filteredPlans.map((plan) => (
@@ -128,6 +128,7 @@ export function RatesPage({ propertyId, roomTypes, ratePlans, setRatePlans, load
                         <td className="px-4 py-4 font-medium">{plan.code}{plan.resident ? " Resident" : ""}</td>
                         <td className="px-4 py-4 font-semibold">{plan.name}{plan.locked ? <span className="ml-2 text-xs text-amber-600">Locked</span> : null}</td>
                         <td className="px-4 py-4">{plan.mealPlan}</td>
+                        <td className="px-4 py-4">{plan.mealPlan === "Room Only" ? "Not applicable" : plan.mealAllocation?.name || <span className="font-semibold text-amber-600">Not linked</span>}</td>
                         <td className="px-4 py-4">{plan.currency}</td>
                         <td className="px-4 py-4 text-base font-bold">{getPlanRate(plan, roomType.id).toLocaleString()}</td>
                         <td className="px-4 py-4">{plan.validFrom} – {plan.validTo}</td>

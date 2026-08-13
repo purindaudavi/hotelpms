@@ -15,6 +15,8 @@ import type { BusinessBlock, TravelAgent } from "../../reservation/types";
 import { crossBookedRoomCodes, roomsAreCrossBooked } from "@/app/lib/cross-booking";
 import { getTravelAgentApiErrorMessage, getTravelAgents } from "@/app/lib/travel-agent-api";
 import type { RoomTypeRecord } from "../../rooms-rates/types";
+import { getMealAllocations, getPropertyApiErrorMessage } from "@/app/lib/property-api";
+import type { MealAllocation } from "../../settings/property/property-types";
 
 type SaveResult = { ok: true } | { ok: false; error: string };
 
@@ -54,7 +56,9 @@ export function ReservationEditor(props: ReservationEditorProps) {
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState("");
   const selectedPlan = ratePlans.find((plan) => plan.id === form.ratePlanId);
-  const quotedRoomTypeIds = useMemo(() => Array.from(new Set(form.roomLines.map((line) => line.roomTypeId).filter(Boolean))).sort().join("|"), [form.roomLines]);
+  const quotedRoomLines = useMemo(() => form.roomLines.map((line) =>
+    `${line.id}:${line.roomTypeId}:${line.adults}:${line.children}`
+  ).sort().join("|"), [form.roomLines]);
 
   useEffect(() => {
     let cancelled = false;
@@ -75,25 +79,27 @@ export function ReservationEditor(props: ReservationEditorProps) {
   }
 
   useEffect(() => {
-    if (!quoteEnabled || !selectedPlan || !quotedRoomTypeIds || !form.checkIn || !form.checkOut) return;
+    if (!quoteEnabled || !selectedPlan || !quotedRoomLines || !form.checkIn || !form.checkOut) return;
     let cancelled = false;
     setQuoteLoading(true);
     setQuoteError("");
-    const roomTypeIds = quotedRoomTypeIds.split("|");
-    void Promise.all(roomTypeIds.map((roomTypeId) => getRateQuote({
+    const requestedLines = form.roomLines.filter((line) => line.roomTypeId);
+    void Promise.all(requestedLines.map(async (line) => ({ lineId: line.id, quote: await getRateQuote({
       propertyId,
       ratePlanId: selectedPlan.id,
-      roomTypeId,
+      roomTypeId: line.roomTypeId,
       checkIn: form.checkIn,
       checkOut: form.checkOut,
-      dayRoom: form.isDayRoom
-    }))).then((quotes) => {
+      dayRoom: form.isDayRoom,
+      adults: line.adults,
+      children: line.children
+    }) }))).then((results) => {
       if (cancelled) return;
-      const byRoomType = new Map(quotes.map((quote) => [quote.roomTypeId, quote]));
+      const byLine = new Map(results.map((result) => [result.lineId, result.quote]));
       setForm((current) => ({
         ...current,
         roomLines: current.roomLines.map((line) => {
-          const quote = byRoomType.get(line.roomTypeId);
+          const quote = byLine.get(line.id);
           if (!quote) return line;
           const hasCustomOverride = !line.isFoc && line.effectiveNightlyRate !== line.originalNightlyRate;
           return {
@@ -109,7 +115,7 @@ export function ReservationEditor(props: ReservationEditorProps) {
       if (!cancelled) setQuoteLoading(false);
     });
     return () => { cancelled = true; };
-  }, [form.checkIn, form.checkOut, form.isDayRoom, propertyId, quoteEnabled, quotedRoomTypeIds, selectedPlan]);
+  }, [form.checkIn, form.checkOut, form.isDayRoom, propertyId, quoteEnabled, quotedRoomLines, selectedPlan]);
 
   function crossBookConflict(roomCode: string, checkIn: string, checkOut: string) {
     return crossBookedRoomCodes(crossBookLinks, roomCode).find((linkedRoom) =>
@@ -135,7 +141,7 @@ export function ReservationEditor(props: ReservationEditorProps) {
       if (key === "email" && !isValidEmail(String(value))) next.sendEmail = false;
       if (["checkIn", "checkOut", "nights", "isDayRoom"].includes(String(key)) && selectedPlan) {
         next.roomLines = next.roomLines.map((line) => {
-          const rate = planRateFor(selectedPlan, line.roomTypeId);
+          const rate = rateForGuests(planRateFor(selectedPlan, line.roomTypeId), roomTypes.find((type) => type.id === line.roomTypeId), line.adults, line.children);
           const hasCustomOverride = !line.isFoc && line.effectiveNightlyRate !== line.originalNightlyRate;
           return {
             ...line,
@@ -160,7 +166,7 @@ export function ReservationEditor(props: ReservationEditorProps) {
       ...current, ratePlanId: plan.id, currency: plan.currency, mealPlan: plan.mealPlan,
       refundable: plan.refundable, cancellationPolicy: plan.cancellationPolicy,
       roomLines: current.roomLines.map((line) => {
-        const rate = planRateFor(plan, line.roomTypeId);
+        const rate = rateForGuests(planRateFor(plan, line.roomTypeId), roomTypes.find((type) => type.id === line.roomTypeId), line.adults, line.children);
         return { ...line, ratePlanId: plan.id, ratePlanName: plan.name, mealPlan: plan.mealPlan, currency: plan.currency,
           originalNightlyRate: rate, effectiveNightlyRate: line.isFoc ? 0 : rate };
       })
@@ -168,7 +174,20 @@ export function ReservationEditor(props: ReservationEditorProps) {
   }
 
   function updateRoomLine(id: string, patch: Partial<ReservationRoomDraft>) {
-    setForm((current) => ({ ...current, roomLines: current.roomLines.map((line) => line.id === id ? { ...line, ...patch } : line) }));
+    const occupancyChanged = Object.prototype.hasOwnProperty.call(patch, "adults") || Object.prototype.hasOwnProperty.call(patch, "children");
+    if (occupancyChanged) setQuoteEnabled(true);
+    setForm((current) => ({
+      ...current,
+      roomLines: current.roomLines.map((line) => {
+        if (line.id !== id) return line;
+        const next = { ...line, ...patch };
+        if (!occupancyChanged) return next;
+        const type = roomTypes.find((item) => item.id === next.roomTypeId);
+        const baseRate = selectedPlan ? planRateFor(selectedPlan, next.roomTypeId) : type?.baseRate ?? next.originalNightlyRate;
+        const rate = rateForGuests(baseRate, type, next.adults, next.children);
+        return { ...next, originalNightlyRate: rate, effectiveNightlyRate: next.isFoc ? 0 : rate };
+      })
+    }));
   }
 
   function roomOptions(line: ReservationRoomDraft) {
@@ -223,9 +242,12 @@ export function ReservationEditor(props: ReservationEditorProps) {
     if (!type) return;
     const plan = selectedPlan ?? ratePlans[0];
     setQuoteEnabled(true);
-    const rate = plan ? planRateFor(plan, type.id) : type.baseRate;
+    const adults = Math.min(Math.max(line.adults, 1), type.maxAdults);
+    const children = Math.min(Math.max(line.children, 0), type.maxChildren);
+    const baseRate = plan ? planRateFor(plan, type.id) : type.baseRate;
+    const rate = rateForGuests(baseRate, type, adults, children);
     updateRoomLine(line.id, { roomTypeId: type.id, roomType: type.name, roomId: "", roomNumber: "",
-      originalNightlyRate: rate, effectiveNightlyRate: line.isFoc ? 0 : rate });
+      adults, children, originalNightlyRate: rate, effectiveNightlyRate: line.isFoc ? 0 : rate });
   }
 
   function addRoomLine() {
@@ -233,9 +255,12 @@ export function ReservationEditor(props: ReservationEditorProps) {
     if (!type) { setError("Create an active room type before adding reservation rooms."); return; }
     const plan = selectedPlan ?? ratePlans[0];
     setQuoteEnabled(true);
-    const rate = plan ? planRateFor(plan, type.id) : type.baseRate;
+    const adults = Math.min(Math.max(type.includedAdults, 1), type.maxAdults);
+    const children = Math.min(Math.max(type.includedChildren, 0), type.maxChildren);
+    const baseRate = plan ? planRateFor(plan, type.id) : type.baseRate;
+    const rate = rateForGuests(baseRate, type, adults, children);
     const line: ReservationRoomDraft = { id: createUuid(), roomTypeId: type.id, roomType: type.name, roomId: "", roomNumber: "",
-      occupancy: "Double", bedType: "Bed Type", adults: 2, children: 0, ratePlanId: plan?.id ?? "", ratePlanName: plan?.name ?? "",
+      occupancy: "Double", bedType: "Bed Type", adults, children, ratePlanId: plan?.id ?? "", ratePlanName: plan?.name ?? "",
       mealPlan: plan?.mealPlan ?? form.mealPlan, currency: plan?.currency ?? form.currency, originalNightlyRate: rate, effectiveNightlyRate: rate,
       isFoc: false, focReason: "", requiresManagerApproval: false };
     update("roomLines", [...form.roomLines, line]); setEditingLineId(line.id);
@@ -257,6 +282,7 @@ export function ReservationEditor(props: ReservationEditorProps) {
   function validate() {
     if (quoteLoading) return "Wait for the MongoDB rate quote to finish loading.";
     if (quoteError) return quoteError;
+    if (!booking && selectedPlan?.mealPlan !== "Room Only" && !selectedPlan?.mealAllocationId) return "Link this rate plan to a Meal Allocation before creating the reservation.";
     if (!form.guest.trim()) return "Guest name is required.";
     if (form.bookingSource !== "Direct" && !form.bookingReference.trim()) return "Booking reference is required for external booking sources.";
     if (form.bookingSource === "Travel Agent" && !form.travelAgentId) return "Select a travel agent for this reservation.";
@@ -265,6 +291,13 @@ export function ReservationEditor(props: ReservationEditorProps) {
     if (form.bookingSource === "Travel Agent" && !travelAgents.some((agent) => agent.id === form.travelAgentId) && form.travelAgentId !== booking?.travelAgentId) return "The selected travel agent no longer exists.";
     if (!form.isDayRoom && form.checkOut <= form.checkIn) return "Check-out must be after check-in.";
     if (!form.roomLines.length) return "Add at least one room.";
+    for (const line of form.roomLines) {
+      const type = roomTypes.find((item) => item.id === line.roomTypeId || item.name === line.roomType);
+      if (!Number.isInteger(line.adults) || line.adults < 1) return `${line.roomType} must have at least one adult.`;
+      if (!Number.isInteger(line.children) || line.children < 0) return `${line.roomType} children must be zero or more.`;
+      if (type && line.adults > type.maxAdults) return `${type.name} allows at most ${type.maxAdults} adult(s).`;
+      if (type && line.children > type.maxChildren) return `${type.name} allows at most ${type.maxChildren} child(ren).`;
+    }
     const assignedRoomNumbers = form.roomLines.map((line) => line.roomNumber).filter(Boolean);
     if (new Set(assignedRoomNumbers).size !== assignedRoomNumbers.length) return "The same physical room cannot be assigned twice.";
     for (const line of form.roomLines) {
@@ -384,21 +417,21 @@ export function ReservationEditor(props: ReservationEditorProps) {
 
           <section className="mt-4 rounded-md bg-slate-50 p-3">
             <div className="grid gap-4 lg:grid-cols-[1.1fr_1fr_1.2fr]"><div className="flex gap-2"><SelectField label="Rate Plan" value={form.ratePlanId} onChange={selectRatePlan} options={ratePlans.filter((p) => (p.active && form.checkIn >= p.validFrom && (form.isDayRoom ? form.checkIn : addDays(form.checkOut, -1)) <= p.validTo) || p.id === form.ratePlanId).map((p) => ({ value: p.id, label: p.name }))} /><button type="button" aria-label="Create rate plan" className="mt-7 grid h-11 w-11 place-items-center rounded-md border border-line bg-white" onClick={() => setRateDialogOpen(true)}><Plus className="h-4 w-4" /></button></div>
-              <SelectField label="Currency" value={form.currency} onChange={(value) => update("currency", value)} options={[homeCurrency, "USD", "EUR", "GBP"].filter((v, i, a) => a.indexOf(v) === i)} />
-              <SelectField label="Meal Plan" value={form.mealPlan} onChange={(value) => update("mealPlan", value)} options={["Room Only", "Bed & Breakfast", "Half Board", "Full Board"]} /></div>
-            <p className="mt-2 text-xs text-slate-500">Selecting a rate plan fills currency, meal plan, cancellation terms and room rates. Edited values are treated as overrides.</p>
+              <SelectField disabled label="Currency" value={form.currency} onChange={(value) => update("currency", value)} options={[form.currency]} />
+              <SelectField disabled label="Meal Plan" value={form.mealPlan} onChange={(value) => update("mealPlan", value)} options={[form.mealPlan]} /></div>
+            <p className="mt-2 text-xs text-slate-500">Currency, meal plan, cancellation terms and room prices come from the selected rate plan.</p>
+            {selectedPlan?.mealAllocation ? <p className="mt-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">Included meal allocation: <b>{selectedPlan.mealAllocation.name}</b>. Adult per night: {formatAllocation(selectedPlan.mealAllocation.adultAmounts, selectedPlan.currency)}. Child per night: {formatAllocation(selectedPlan.mealAllocation.childAmounts, selectedPlan.currency)}. This is already included in the nightly room rate.</p> : selectedPlan && selectedPlan.mealPlan !== "Room Only" ? <p className="mt-2 text-xs text-amber-700">This meal-inclusive plan must be linked to a Meal Allocation before it can be used for a new reservation.</p> : null}
             {quoteLoading ? <p className="mt-2 text-xs text-blue-600">Loading the nightly quote from MongoDB...</p> : null}
             {quoteError ? <p role="alert" className="mt-2 text-xs text-rose-600">{quoteError}</p> : null}
-            <div className="mt-1 flex gap-3 text-xs text-amber-600">{selectedPlan && form.currency !== selectedPlan.currency ? <span>Currency: Custom override</span> : null}{selectedPlan && form.mealPlan !== selectedPlan.mealPlan ? <span>Meal plan: Custom override</span> : null}</div>
             <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[1120px] text-sm"><thead><tr className="text-left text-slate-500">{["Room Type", "Room No", "Occupancy", "Bed", "Adult", "Child", "Rate", "Complimentary (FOC)", "Edit", ""].map((head, index) => <th key={`${head}-${index}`} className="px-2 py-2">{head}</th>)}</tr></thead>
               <tbody>{form.roomLines.map((line) => { const editable = editingLineId === line.id; const options = roomOptions(line); const archivedType = !roomTypes.some((type) => type.name === line.roomType); const archivedRoom = Boolean(line.roomNumber && !options.some(({ room }) => room.code === line.roomNumber)); return <tr key={line.id} className="border-t border-line">
                 <td className="px-2 py-2"><select disabled={!editable} value={line.roomType} onChange={(e) => changeRoomType(line, e.target.value)} className="h-10 w-full rounded-md border border-line bg-white px-2 disabled:bg-slate-100">{archivedType ? <option value={line.roomType}>{line.roomType} (archived)</option> : null}{roomTypes.filter((type) => type.active || type.name === line.roomType).map((type) => <option key={type.id} value={type.name}>{type.name}{type.active ? "" : " (disabled)"}</option>)}</select></td>
                 <td className="px-2 py-2"><select disabled={!editable} value={line.roomNumber} onChange={(e) => { const room = roomList.find((item) => item.code === e.target.value); updateRoomLine(line.id, { roomNumber: e.target.value, roomId: room?.id ?? "" }); }} className="h-10 w-full rounded-md border border-line bg-white px-2 disabled:bg-slate-100"><option value="">Select</option>{archivedRoom ? <option value={line.roomNumber}>{line.roomNumber} — archived assignment</option> : null}{options.map(({ room, currentAssignment, unavailableReason }) => <option key={room.id} value={room.code} disabled={Boolean(unavailableReason)}>{room.code} — {currentAssignment ? "Current assignment" : unavailableReason || "Available"}</option>)}</select></td>
                 <td className="px-2 py-2"><select disabled={!editable} value={line.occupancy} onChange={(e) => updateRoomLine(line.id, { occupancy: e.target.value })} className="h-10 rounded-md border border-line bg-white px-2 disabled:bg-slate-100">{["Single", "Double", "Triple", "Family"].map((v) => <option key={v}>{v}</option>)}</select></td>
                 <td className="px-2 py-2"><select disabled={!editable} value={line.bedType} onChange={(e) => updateRoomLine(line.id, { bedType: e.target.value })} className="h-10 rounded-md border border-line bg-white px-2 disabled:bg-slate-100">{["Bed Type", "King Bed", "Twin Bed", "Queen Bed"].map((v) => <option key={v}>{v}</option>)}</select></td>
-                <td className="px-2 py-2"><input disabled={!editable} type="number" min="1" value={line.adults} onChange={(e) => updateRoomLine(line.id, { adults: Number(e.target.value) })} className="h-10 w-16 rounded-md border border-line px-2 disabled:bg-slate-100" /></td>
-                <td className="px-2 py-2"><input disabled={!editable} type="number" min="0" value={line.children} onChange={(e) => updateRoomLine(line.id, { children: Number(e.target.value) })} className="h-10 w-16 rounded-md border border-line px-2 disabled:bg-slate-100" /></td>
-                <td className="px-2 py-2"><input disabled={!editable || line.isFoc} type="number" min="0" value={line.effectiveNightlyRate} onChange={(e) => updateRoomLine(line.id, { effectiveNightlyRate: Number(e.target.value) })} className="h-10 w-28 rounded-md border border-yellow-400 px-2 disabled:bg-slate-100" />{!line.isFoc && line.effectiveNightlyRate !== line.originalNightlyRate ? <span className="block text-[10px] text-amber-600">Custom override</span> : null}</td>
+                <td className="px-2 py-2"><input disabled={!editable} type="number" min="1" max={roomTypes.find((type) => type.id === line.roomTypeId)?.maxAdults} value={line.adults} onChange={(e) => updateRoomLine(line.id, { adults: Number(e.target.value) })} className="h-10 w-16 rounded-md border border-line px-2 disabled:bg-slate-100" /></td>
+                <td className="px-2 py-2"><input disabled={!editable} type="number" min="0" max={roomTypes.find((type) => type.id === line.roomTypeId)?.maxChildren} value={line.children} onChange={(e) => updateRoomLine(line.id, { children: Number(e.target.value) })} className="h-10 w-16 rounded-md border border-line px-2 disabled:bg-slate-100" /></td>
+                <td className="px-2 py-2"><input disabled={!editable || line.isFoc} type="number" min="0" value={line.effectiveNightlyRate} onChange={(e) => updateRoomLine(line.id, { effectiveNightlyRate: Number(e.target.value) })} className="h-10 w-28 rounded-md border border-yellow-400 px-2 disabled:bg-slate-100" />{guestSupplement(roomTypes.find((type) => type.id === line.roomTypeId), line.adults, line.children) > 0 ? <span className="block text-[10px] text-blue-600">Includes {form.currency} {guestSupplement(roomTypes.find((type) => type.id === line.roomTypeId), line.adults, line.children).toFixed(2)} extra guest / night</span> : null}{!line.isFoc && line.effectiveNightlyRate !== line.originalNightlyRate ? <span className="block text-[10px] text-amber-600">Custom override</span> : null}</td>
                 <td className="px-2 py-2"><input aria-label="Complimentary (FOC)" type="checkbox" checked={line.isFoc} onChange={(e) => toggleFoc(line, e.target.checked)} /></td>
                 <td className="px-2 py-2"><button type="button" onClick={() => setEditingLineId(editable ? "" : line.id)}><Pencil className="h-4 w-4" /></button></td>
                 <td className="px-2 py-2"><button type="button" className="text-red-500" onClick={() => removeRoomLine(line.id)}><Trash2 className="h-4 w-4" /></button></td>
@@ -424,11 +457,29 @@ export function ReservationEditor(props: ReservationEditorProps) {
 
 function stayDates(start: string, end: string) { const dates: string[] = []; const date = parseDate(start); const last = parseDate(end); while (date < last) { dates.push(toISODate(date)); date.setDate(date.getDate() + 1); } return dates; }
 
+function guestSupplement(type: RoomTypeRecord | undefined, adults: number, children: number) {
+  if (!type) return 0;
+  const extraAdults = Math.max(adults - type.includedAdults, 0);
+  const extraChildren = Math.max(children - type.includedChildren, 0);
+  return extraAdults * type.extraAdultRate + extraChildren * type.extraChildRate;
+}
+
+function rateForGuests(baseRate: number, type: RoomTypeRecord | undefined, adults: number, children: number) {
+  return baseRate + guestSupplement(type, adults, children);
+}
+
+function formatAllocation(amounts: { breakfast: number; lunch: number; dinner: number }, currency: string) {
+  const parts = Object.entries(amounts).filter(([, amount]) => Number(amount) > 0).map(([meal, amount]) => `${meal} ${currency} ${Number(amount).toFixed(2)}`);
+  return parts.length ? parts.join(", ") : `${currency} 0.00`;
+}
+
 function RatePlanDialog({ propertyId, homeCurrency, defaultDate, roomTypes, onClose, onCreate }: { propertyId: string; homeCurrency: string; defaultDate: string; roomTypes: RoomTypeRecord[]; onClose: () => void; onCreate: (plan: RatePlan) => void }) {
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [currency, setCurrency] = useState(homeCurrency);
   const [mealPlan, setMealPlan] = useState("Room Only");
+  const [mealAllocationId, setMealAllocationId] = useState("");
+  const [mealAllocations, setMealAllocations] = useState<MealAllocation[]>([]);
   const [baseRate, setBaseRate] = useState(0);
   const [roomTypeRates, setRoomTypeRates] = useState<Record<string, number>>({});
   const [refundable, setRefundable] = useState(true);
@@ -436,10 +487,25 @@ function RatePlanDialog({ propertyId, homeCurrency, defaultDate, roomTypes, onCl
   const [policy, setPolicy] = useState("Free cancellation until 24 hours before check-in.");
   const [dialogError, setDialogError] = useState("");
   const [creating, setCreating] = useState(false);
+  const matchingAllocations = mealAllocations.filter((allocation) => allocation.active && allocation.mealPlan === mealPlan && allocation.currency === currency);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getMealAllocations(propertyId).then((records) => {
+      if (!cancelled) setMealAllocations(records);
+    }).catch((loadError) => {
+      if (!cancelled) setDialogError(getPropertyApiErrorMessage(loadError));
+    });
+    return () => { cancelled = true; };
+  }, [propertyId]);
 
   async function create() {
     if (!name.trim() || !code.trim() || baseRate < 0) {
       setDialogError("Plan name, rate code and a non-negative rate are required.");
+      return;
+    }
+    if (mealPlan !== "Room Only" && !mealAllocationId) {
+      setDialogError("Select a matching meal allocation.");
       return;
     }
     setCreating(true);
@@ -450,6 +516,8 @@ function RatePlanDialog({ propertyId, homeCurrency, defaultDate, roomTypes, onCl
       code: code.trim().toUpperCase(),
       currency,
       mealPlan,
+      mealAllocationId,
+      mealAllocation: mealAllocations.find((allocation) => allocation.id === mealAllocationId),
       baseRate,
       roomTypeRates: Object.fromEntries(roomTypes.map((type) => [
         type.id,
@@ -482,8 +550,9 @@ function RatePlanDialog({ propertyId, homeCurrency, defaultDate, roomTypes, onCl
         {dialogError ? <div role="alert" className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{dialogError}</div> : null}
         <InputField label="Plan name" value={name} onChange={setName} />
         <InputField label="Rate code" value={code} onChange={(value) => setCode(value.toUpperCase())} placeholder="Example: BAR-RO" />
-        <SelectField label="Currency" value={currency} onChange={setCurrency} options={[homeCurrency, "USD", "EUR", "GBP"].filter((v, i, a) => a.indexOf(v) === i)} />
-        <SelectField label="Meal plan" value={mealPlan} onChange={setMealPlan} options={["Room Only", "Bed & Breakfast", "Half Board", "Full Board"]} />
+        <SelectField label="Currency" value={currency} onChange={(value) => { setCurrency(value); setMealAllocationId(""); }} options={[homeCurrency, "USD", "EUR", "GBP"].filter((v, i, a) => a.indexOf(v) === i)} />
+        <SelectField label="Meal plan" value={mealPlan} onChange={(value) => { setMealPlan(value); setMealAllocationId(""); }} options={["Room Only", "Bed & Breakfast", "Half Board", "Full Board", "All Inclusive"]} />
+        {mealPlan !== "Room Only" ? <SelectField label="Meal allocation" value={mealAllocationId} onChange={setMealAllocationId} options={[{ value: "", label: "Select allocation" }, ...matchingAllocations.map((allocation) => ({ value: allocation.id, label: `${allocation.name} · ${allocation.validFrom} to ${allocation.validTo}` }))]} /> : null}
         <InputField label="Base nightly rate" type="number" value={String(baseRate)} onChange={(value) => setBaseRate(Number(value))} />
         <fieldset className="rounded-md border border-line p-3"><legend className="px-1 text-sm font-semibold">Optional room-type overrides</legend>
           <div className="grid gap-2">{roomTypes.map((type) => <InputField key={type.id} label={type.name} type="number" value={String(roomTypeRates[type.id] ?? "")} onChange={(value) => setRoomTypeRates((current) => ({ ...current, [type.id]: Number(value) }))} />)}</div>

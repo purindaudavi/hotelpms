@@ -1,7 +1,8 @@
 import axios from "axios";
 import type {
   PropertyDetails,
-  PropertyImageRecord
+  PropertyImageRecord,
+  MealAllocation
 } from "@/app/components/modules/settings/property/property-types";
 import { api, getApiErrorMessage } from "./api";
 
@@ -81,6 +82,23 @@ type PropertyImagesResponse = {
 type PropertyImageResponse = {
   image: ApiPropertyImage;
 };
+
+type ApiMealAllocation = {
+  _id: string;
+  name: string;
+  meal_plan: MealAllocation["mealPlan"];
+  currency: string;
+  adult_amounts: { breakfast: number; lunch: number; dinner: number };
+  child_amounts: { breakfast: number; lunch: number; dinner: number };
+  valid_from: string;
+  valid_to: string;
+  active: boolean;
+  notes: string;
+  version: number;
+};
+
+type MealAllocationsResponse = { meal_allocations: ApiMealAllocation[] };
+type MealAllocationResponse = { meal_allocation: ApiMealAllocation };
 
 export type PropertyRecord = {
   details: PropertyDetails;
@@ -183,6 +201,37 @@ export async function deletePropertyImage(propertyId: string, imageId: string) {
   notifyPropertyBrandChanged(propertyId);
 }
 
+export async function getMealAllocations(propertyId: string) {
+  const response = await api.get<MealAllocationsResponse>(
+    `/properties/${encodeURIComponent(propertyId)}/meal-allocations`,
+    { params: { include_inactive: true } }
+  );
+  return response.data.meal_allocations.map(mapMealAllocation);
+}
+
+export async function createMealAllocation(propertyId: string, allocation: MealAllocation) {
+  const response = await api.post<MealAllocationResponse>(
+    `/properties/${encodeURIComponent(propertyId)}/meal-allocations`,
+    mealAllocationPayload(allocation)
+  );
+  return mapMealAllocation(response.data.meal_allocation);
+}
+
+export async function updateMealAllocation(propertyId: string, allocation: MealAllocation) {
+  const response = await api.patch<MealAllocationResponse>(
+    `/properties/${encodeURIComponent(propertyId)}/meal-allocations/${allocation.id}`,
+    { ...mealAllocationPayload(allocation), version: allocation.version }
+  );
+  return mapMealAllocation(response.data.meal_allocation);
+}
+
+export async function retireMealAllocation(propertyId: string, allocationId: string) {
+  const response = await api.delete<MealAllocationResponse>(
+    `/properties/${encodeURIComponent(propertyId)}/meal-allocations/${allocationId}`
+  );
+  return mapMealAllocation(response.data.meal_allocation);
+}
+
 export function notifyPropertyBrandChanged(propertyId: string) {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent(propertyBrandChangedEvent, {
@@ -276,6 +325,36 @@ function mapPropertyImage(image: ApiPropertyImage): PropertyImageRecord {
     imageType: image.image_type,
     isPrimary: image.is_primary,
     sortOrder: image.sort_order
+  };
+}
+
+function mealAllocationPayload(allocation: MealAllocation) {
+  return {
+    name: allocation.name,
+    meal_plan: allocation.mealPlan,
+    currency: allocation.currency,
+    adult_amounts: allocation.adultAmounts,
+    child_amounts: allocation.childAmounts,
+    valid_from: allocation.validFrom,
+    valid_to: allocation.validTo,
+    active: allocation.active,
+    notes: allocation.notes
+  };
+}
+
+function mapMealAllocation(value: ApiMealAllocation): MealAllocation {
+  return {
+    id: value._id,
+    name: value.name,
+    mealPlan: value.meal_plan,
+    currency: value.currency,
+    adultAmounts: value.adult_amounts,
+    childAmounts: value.child_amounts,
+    validFrom: value.valid_from,
+    validTo: value.valid_to,
+    active: value.active,
+    notes: value.notes,
+    version: value.version
   };
 }
 

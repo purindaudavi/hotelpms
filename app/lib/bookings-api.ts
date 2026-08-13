@@ -50,6 +50,17 @@ type ApiReservationRoom = {
   rate_plan_id?: string;
   rate_plan_name?: string;
   meal_plan?: string;
+  meal_allocation_snapshot?: {
+    meal_allocation_id: string;
+    name: string;
+    meal_plan: string;
+    currency: string;
+    adult_amounts: { breakfast: number; lunch: number; dinner: number };
+    child_amounts: { breakfast: number; lunch: number; dinner: number };
+    valid_from: string;
+    valid_to: string;
+    captured_at: string;
+  };
   currency?: string;
   original_nightly_rate?: number;
   effective_nightly_rate?: number;
@@ -700,6 +711,17 @@ function mapReservationRoom(reservation: ApiReservation, room: ApiReservationRoo
     ratePlanId: room.rate_plan_id || "",
     ratePlanName: room.rate_plan_name || "",
     mealPlan: room.meal_plan || "",
+    mealAllocationSnapshot: room.meal_allocation_snapshot ? {
+      id: String(room.meal_allocation_snapshot.meal_allocation_id),
+      name: room.meal_allocation_snapshot.name,
+      mealPlan: room.meal_allocation_snapshot.meal_plan,
+      currency: room.meal_allocation_snapshot.currency,
+      adultAmounts: room.meal_allocation_snapshot.adult_amounts,
+      childAmounts: room.meal_allocation_snapshot.child_amounts,
+      validFrom: room.meal_allocation_snapshot.valid_from,
+      validTo: room.meal_allocation_snapshot.valid_to,
+      capturedAt: room.meal_allocation_snapshot.captured_at
+    } : undefined,
     currency: room.currency || reservation.currency || "LKR",
     originalNightlyRate: Number(room.original_nightly_rate || 0),
     effectiveNightlyRate: Number(room.effective_nightly_rate || 0),

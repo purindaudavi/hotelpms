@@ -1,12 +1,14 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { CalendarDays } from "lucide-react";
 import { property } from "@/app/data/pms-data";
 import { currencyOptions, mealPlanOptions } from "../constants";
 import type { RatePlan, RoomTypeRecord } from "../types";
 import { addDays } from "../utils";
 import { Drawer, Field, SelectInput, TextInput, ToolbarButton } from "./rooms-rates-ui";
+import { getMealAllocations, getPropertyApiErrorMessage } from "@/app/lib/property-api";
+import type { MealAllocation } from "../../settings/property/property-types";
 
 export function RatePlanDrawer({
   mode,
@@ -34,6 +36,7 @@ export function RatePlanDrawer({
     code: "",
     currency: property.currency,
     mealPlan: "Room Only",
+    mealAllocationId: "",
     baseRate: activeRoomTypes[0]?.baseRate ?? 0,
     roomTypeRates: Object.fromEntries(activeRoomTypes.map((type) => [type.id, type.baseRate])),
     resident: false,
@@ -51,7 +54,27 @@ export function RatePlanDrawer({
   });
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [mealAllocations, setMealAllocations] = useState<MealAllocation[]>([]);
+  const [allocationsLoading, setAllocationsLoading] = useState(true);
   const editingLocked = mode === "edit" && Boolean(ratePlan?.locked) && form.locked;
+  const matchingAllocations = useMemo(() => mealAllocations.filter((allocation) =>
+    allocation.active &&
+    allocation.mealPlan === form.mealPlan &&
+    allocation.currency === form.currency
+  ), [form.currency, form.mealPlan, mealAllocations]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setAllocationsLoading(true);
+    void getMealAllocations(propertyId).then((items) => {
+      if (!cancelled) setMealAllocations(items);
+    }).catch((loadError) => {
+      if (!cancelled) setError(getPropertyApiErrorMessage(loadError));
+    }).finally(() => {
+      if (!cancelled) setAllocationsLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [propertyId]);
 
   function update<K extends keyof RatePlan>(key: K, value: RatePlan[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -84,6 +107,10 @@ export function RatePlanDrawer({
       return;
     }
     if (!form.cancellationPolicy.trim()) { setError("Cancellation policy is required."); return; }
+    if (form.mealPlan !== "Room Only" && !form.mealAllocationId) {
+      setError("Select a matching meal allocation for this meal-inclusive rate plan.");
+      return;
+    }
 
     setSaving(true);
     setError("");
@@ -129,15 +156,22 @@ export function RatePlanDrawer({
             <TextInput disabled={editingLocked} value={form.code} onChange={(event) => update("code", event.target.value.toUpperCase())} placeholder="Example: BAR-BB" />
           </Field>
           <Field label="Meal Plan">
-            <SelectInput disabled={editingLocked} value={form.mealPlan} onChange={(event) => update("mealPlan", event.target.value)}>
+            <SelectInput disabled={editingLocked} value={form.mealPlan} onChange={(event) => setForm((current) => ({ ...current, mealPlan: event.target.value, mealAllocationId: "", mealAllocation: undefined }))}>
               {mealPlanOptions.map((mealPlan) => <option key={mealPlan}>{mealPlan}</option>)}
             </SelectInput>
           </Field>
           <Field label="Currency">
-            <SelectInput disabled={editingLocked} value={form.currency} onChange={(event) => update("currency", event.target.value)}>
+            <SelectInput disabled={editingLocked} value={form.currency} onChange={(event) => setForm((current) => ({ ...current, currency: event.target.value, mealAllocationId: "", mealAllocation: undefined }))}>
               {currencyOptions.filter((item) => item !== "All Currencies").map((currency) => <option key={currency}>{currency}</option>)}
             </SelectInput>
           </Field>
+          {form.mealPlan !== "Room Only" ? <Field label="Meal Allocation">
+            <SelectInput disabled={editingLocked || allocationsLoading} value={form.mealAllocationId} onChange={(event) => update("mealAllocationId", event.target.value)}>
+              <option value="">{allocationsLoading ? "Loading allocations..." : "Select allocation"}</option>
+              {matchingAllocations.map((allocation) => <option key={allocation.id} value={allocation.id}>{allocation.name} · {allocation.validFrom} to {allocation.validTo}</option>)}
+            </SelectInput>
+            {!allocationsLoading && !matchingAllocations.length ? <p className="mt-2 text-xs text-amber-700">Create an active {form.mealPlan} allocation in Settings &gt; Property &gt; Meal Allocation using {form.currency}.</p> : null}
+          </Field> : null}
         </div>
 
         <section className="rounded-lg border border-line bg-slate-50 p-5">

@@ -26,6 +26,10 @@ export type RoomTypeRecord = {
   rooms: string[];
   maxAdults: number;
   maxChildren: number;
+  includedAdults: number;
+  includedChildren: number;
+  extraAdultRate: number;
+  extraChildRate: number;
   amenities: string[];
   description: string;
   baseRate: number;

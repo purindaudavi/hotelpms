@@ -67,6 +67,18 @@ export type ReservationStatus =
 
 export type ReservationEmailStatus = "not_requested" | "pending" | "accepted" | "sent" | "failed";
 
+export type MealAllocationSnapshot = {
+  id: string;
+  name: string;
+  mealPlan: string;
+  currency: string;
+  adultAmounts: { breakfast: number; lunch: number; dinner: number };
+  childAmounts: { breakfast: number; lunch: number; dinner: number };
+  validFrom: string;
+  validTo: string;
+  capturedAt: string;
+};
+
 export type ReservationRoom = {
   id: string;
   propertyId: string;
@@ -82,6 +94,7 @@ export type ReservationRoom = {
   ratePlanId: string;
   ratePlanName: string;
   mealPlan: string;
+  mealAllocationSnapshot?: MealAllocationSnapshot;
   currency: string;
   originalNightlyRate: number;
   effectiveNightlyRate: number;

@@ -32,12 +32,12 @@ export function InputField({
 
 type SelectOption = string | { value: string; label: string };
 
-export function SelectField({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: SelectOption[] }) {
+export function SelectField({ label, value, onChange, options, disabled = false }: { label: string; value: string; onChange: (value: string) => void; options: SelectOption[]; disabled?: boolean }) {
   return (
     <label className="grid min-w-0 gap-1">
       <span className="text-sm font-semibold">{label}</span>
       <span className="relative">
-        <select value={value} onChange={(event) => onChange(event.target.value)} className="focus-ring h-11 w-full appearance-none rounded-md border border-line bg-white px-3 pr-9 text-sm">
+        <select disabled={disabled} value={value} onChange={(event) => onChange(event.target.value)} className="focus-ring h-11 w-full appearance-none rounded-md border border-line bg-white px-3 pr-9 text-sm disabled:bg-slate-100 disabled:text-slate-500">
           {options.map((option) => {
             const optionValue = typeof option === "string" ? option : option.value;
             const optionLabel = typeof option === "string" ? option : option.label;

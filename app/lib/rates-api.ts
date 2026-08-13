@@ -1,4 +1,5 @@
 import type { RatePlan } from "@/app/components/modules/front-desk/types";
+import type { MealAllocation } from "@/app/components/modules/settings/property/property-types";
 import { api, getApiErrorMessage } from "./api";
 
 export type DailyRate = {
@@ -25,15 +26,29 @@ export type RateQuote = {
   roomTypeName: string;
   currency: string;
   mealPlan: string;
+  mealAllocation: MealAllocation | null;
   refundable: boolean;
   cancellationPolicy: string;
   checkIn: string;
   checkOut: string;
   dayRoom: boolean;
   nights: number;
-  nightlyRates: Array<{ date: string; amount: number; source: "rate_plan" | "daily_rate" }>;
+  occupancyPricing: OccupancyPricing;
+  nightlyRates: Array<{ date: string; baseAmount: number; occupancySupplement: number; amount: number; source: "rate_plan" | "daily_rate" }>;
   averageNightlyRate: number;
   total: number;
+};
+
+export type OccupancyPricing = {
+  adults: number;
+  children: number;
+  includedAdults: number;
+  includedChildren: number;
+  extraAdults: number;
+  extraChildren: number;
+  extraAdultRate: number;
+  extraChildRate: number;
+  nightlySupplement: number;
 };
 
 type ApiRatePlan = {
@@ -43,6 +58,8 @@ type ApiRatePlan = {
   code: string;
   currency: string;
   meal_plan: string;
+  meal_allocation_id?: string | null;
+  meal_allocation?: ApiMealAllocation | null;
   valid_from: string;
   valid_to: string;
   refundable: boolean;
@@ -56,6 +73,20 @@ type ApiRatePlan = {
   is_custom: boolean;
   created_at: string;
   updated_at: string;
+};
+
+type ApiMealAllocation = {
+  _id: string;
+  name: string;
+  meal_plan: MealAllocation["mealPlan"];
+  currency: string;
+  adult_amounts: MealAllocation["adultAmounts"];
+  child_amounts: MealAllocation["childAmounts"];
+  valid_from: string;
+  valid_to: string;
+  active?: boolean;
+  notes?: string;
+  version?: number;
 };
 
 type ApiDailyRate = {
@@ -82,13 +113,25 @@ type ApiQuote = {
   room_type_name: string;
   currency: string;
   meal_plan: string;
+  meal_allocation?: ApiMealAllocation | null;
   refundable: boolean;
   cancellation_policy: string;
   check_in: string;
   check_out: string;
   day_room: boolean;
   nights: number;
-  nightly_rates: Array<{ date: string; amount: number; source: "rate_plan" | "daily_rate" }>;
+  occupancy_pricing: {
+    adults: number;
+    children: number;
+    included_adults: number;
+    included_children: number;
+    extra_adults: number;
+    extra_children: number;
+    extra_adult_rate: number;
+    extra_child_rate: number;
+    nightly_supplement: number;
+  };
+  nightly_rates: Array<{ date: string; base_amount: number; occupancy_supplement: number; amount: number; source: "rate_plan" | "daily_rate" }>;
   average_nightly_rate: number;
   total: number;
 };
@@ -166,6 +209,8 @@ export async function getRateQuote(input: {
   checkIn: string;
   checkOut: string;
   dayRoom: boolean;
+  adults?: number;
+  children?: number;
 }): Promise<RateQuote> {
   const response = await api.post<{ quote: ApiQuote }>("/rates/quote", {
     property_id: input.propertyId,
@@ -173,7 +218,9 @@ export async function getRateQuote(input: {
     room_type_id: input.roomTypeId,
     check_in: input.checkIn,
     check_out: input.checkOut,
-    day_room: input.dayRoom
+    day_room: input.dayRoom,
+    adults: input.adults ?? 1,
+    children: input.children ?? 0
   });
   return mapQuote(response.data.quote);
 }
@@ -188,6 +235,7 @@ function ratePlanPayload(plan: RatePlan) {
     code: plan.code.trim().toUpperCase(),
     currency: plan.currency,
     meal_plan: plan.mealPlan,
+    meal_allocation_id: plan.mealAllocationId || null,
     valid_from: plan.validFrom,
     valid_to: plan.validTo,
     refundable: plan.refundable,
@@ -210,7 +258,7 @@ function partialRatePlanPayload(changes: Partial<RatePlan>) {
   const payload: Record<string, unknown> = {};
   const map: Array<[keyof RatePlan, string]> = [
     ["name", "name"], ["code", "code"], ["currency", "currency"],
-    ["mealPlan", "meal_plan"], ["validFrom", "valid_from"], ["validTo", "valid_to"],
+    ["mealPlan", "meal_plan"], ["mealAllocationId", "meal_allocation_id"], ["validFrom", "valid_from"], ["validTo", "valid_to"],
     ["refundable", "refundable"], ["cancellationPolicy", "cancellation_policy"],
     ["resident", "resident"], ["active", "active"], ["locked", "locked"],
     ["isCustom", "is_custom"]
@@ -244,6 +292,8 @@ function mapRatePlan(plan: ApiRatePlan): RatePlan {
     code: plan.code,
     currency: plan.currency,
     mealPlan: plan.meal_plan,
+    mealAllocationId: String(plan.meal_allocation_id || ""),
+    mealAllocation: plan.meal_allocation ? mapMealAllocation(plan.meal_allocation) : undefined,
     baseRate: Object.values(roomTypeRates)[0] ?? 0,
     roomTypeRates,
     refundable: plan.refundable,
@@ -288,14 +338,48 @@ function mapQuote(quote: ApiQuote): RateQuote {
     roomTypeName: quote.room_type_name,
     currency: quote.currency,
     mealPlan: quote.meal_plan,
+    mealAllocation: quote.meal_allocation ? mapMealAllocation(quote.meal_allocation) : null,
     refundable: quote.refundable,
     cancellationPolicy: quote.cancellation_policy,
     checkIn: quote.check_in,
     checkOut: quote.check_out,
     dayRoom: quote.day_room,
     nights: quote.nights,
-    nightlyRates: quote.nightly_rates,
+    occupancyPricing: {
+      adults: quote.occupancy_pricing.adults,
+      children: quote.occupancy_pricing.children,
+      includedAdults: quote.occupancy_pricing.included_adults,
+      includedChildren: quote.occupancy_pricing.included_children,
+      extraAdults: quote.occupancy_pricing.extra_adults,
+      extraChildren: quote.occupancy_pricing.extra_children,
+      extraAdultRate: quote.occupancy_pricing.extra_adult_rate,
+      extraChildRate: quote.occupancy_pricing.extra_child_rate,
+      nightlySupplement: quote.occupancy_pricing.nightly_supplement
+    },
+    nightlyRates: quote.nightly_rates.map((rate) => ({
+      date: rate.date,
+      baseAmount: rate.base_amount,
+      occupancySupplement: rate.occupancy_supplement,
+      amount: rate.amount,
+      source: rate.source
+    })),
     averageNightlyRate: quote.average_nightly_rate,
     total: quote.total
+  };
+}
+
+function mapMealAllocation(value: ApiMealAllocation): MealAllocation {
+  return {
+    id: value._id,
+    name: value.name,
+    mealPlan: value.meal_plan,
+    currency: value.currency,
+    adultAmounts: value.adult_amounts,
+    childAmounts: value.child_amounts,
+    validFrom: value.valid_from,
+    validTo: value.valid_to,
+    active: value.active ?? true,
+    notes: value.notes ?? "",
+    version: value.version ?? 0
   };
 }

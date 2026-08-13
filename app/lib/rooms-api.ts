@@ -27,6 +27,10 @@ type ApiRoomType = {
   name: string;
   maximum_adults: number;
   maximum_children: number;
+  included_adults?: number;
+  included_children?: number;
+  extra_adult_rate?: number;
+  extra_child_rate?: number;
   base_rate: number;
   description: string;
   amenities: string[];
@@ -165,6 +169,10 @@ function roomTypePayload(roomType: RoomTypeRecord) {
     name: roomType.name.trim(),
     maximum_adults: roomType.maxAdults,
     maximum_children: roomType.maxChildren,
+    included_adults: roomType.includedAdults,
+    included_children: roomType.includedChildren,
+    extra_adult_rate: roomType.extraAdultRate,
+    extra_child_rate: roomType.extraChildRate,
     base_rate: roomType.baseRate,
     currency: "LKR",
     description: roomType.description,
@@ -192,6 +200,10 @@ function mapRoomCatalog(apiRoomTypes: ApiRoomType[]): RoomCatalog {
       .sort(numericRoomSort),
     maxAdults: roomType.maximum_adults,
     maxChildren: roomType.maximum_children,
+    includedAdults: roomType.included_adults ?? 1,
+    includedChildren: roomType.included_children ?? 0,
+    extraAdultRate: roomType.extra_adult_rate ?? 0,
+    extraChildRate: roomType.extra_child_rate ?? 0,
     amenities: roomType.amenities ?? [],
     description: roomType.description ?? "",
     baseRate: roomType.base_rate,

@@ -18,7 +18,21 @@ export type PropertyImageRecord = {
   isPrimary: boolean;
   sortOrder: number;
 };
-export type MealAllocation = { id: string; breakfast: number; lunch: number; dinner: number; currency: string; allInclusive: boolean };
+export type MealPlan = "Room Only" | "Bed & Breakfast" | "Half Board" | "Full Board" | "All Inclusive";
+export type MealAmounts = { breakfast: number; lunch: number; dinner: number };
+export type MealAllocation = {
+  id: string;
+  name: string;
+  mealPlan: MealPlan;
+  currency: string;
+  adultAmounts: MealAmounts;
+  childAmounts: MealAmounts;
+  validFrom: string;
+  validTo: string;
+  active: boolean;
+  notes: string;
+  version: number;
+};
 export type GatewayName = "CyberSource" | "PayPal" | "Skrill" | "Stripe" | "Google Pay" | "Apple Pay";
 export type GatewaySettings = {
   active: boolean; sandbox: boolean; bankName: string; ipgName: string; merchantIdUsd: string; profileIdUsd: string;

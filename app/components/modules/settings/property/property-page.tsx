@@ -19,7 +19,7 @@ import { CurrencyTab } from "./currency";
 import { TaxesTab } from "./taxes";
 import { ThemeTab } from "./theme";
 import { HotelFeaturesTab } from "./hotel features";
-import type { CurrencyRecord, GatewayName, GatewaySettings, MealAllocation, PropertyDetails, PropertyImageRecord, TaxRecord, ThemeSettings } from "./property-types";
+import type { CurrencyRecord, GatewayName, GatewaySettings, PropertyDetails, PropertyImageRecord, TaxRecord, ThemeSettings } from "./property-types";
 
 const tabs = ["Property Info", "Property Image", "Meal Allocation", "Payment Gateway", "Taxes", "Currency", "Theme", "Hotel Features"] as const;
 type Tab = (typeof tabs)[number];
@@ -56,7 +56,6 @@ export function PropertySettingsPage({ propertyId, setToast }: { propertyId: str
   const [propertyError, setPropertyError] = useState("");
   const [images, setImages] = useState<PropertyImageRecord[]>([]);
   const [imagesLoading, setImagesLoading] = useState(false);
-  const [allocations, setAllocations] = useLocalStorageState<MealAllocation[]>(key("meals"), () => readLocalStorageValue("staypilot.property.meals", []));
   const gatewayFallback = Object.fromEntries((["CyberSource", "PayPal", "Skrill", "Stripe", "Google Pay", "Apple Pay"] as GatewayName[]).map((name) => [name, blankGateway(name)])) as Record<GatewayName, GatewaySettings>;
   const [gateways, setGateways] = useLocalStorageState<Record<GatewayName, GatewaySettings>>(key("gateways"), () => readLocalStorageValue("staypilot.property.gateways", gatewayFallback));
   const [currencies, setCurrencies] = useLocalStorageState<CurrencyRecord[]>(key("currencies"), () => readLocalStorageValue("staypilot.property.currencies", initialCurrencies));
@@ -179,7 +178,7 @@ export function PropertySettingsPage({ propertyId, setToast }: { propertyId: str
 
         {activeTab === "Property Info" ? <PropertyInfo value={{ ...details, logoUrl: images.find((image) => image.imageType === "logo")?.url || "" }} onChange={setDetails} editing={editing} setToast={setToast} /> : null}
         {activeTab === "Property Image" ? <PropertyImages propertyId={propertyId} propertyExists={propertyExists} images={images} editing={editing} loading={imagesLoading} onRefresh={refreshImages} setToast={setToast} /> : null}
-        {activeTab === "Meal Allocation" ? <MealAllocationTab allocations={allocations} setAllocations={setAllocations} setToast={setToast} /> : null}
+        {activeTab === "Meal Allocation" ? <MealAllocationTab propertyId={propertyId} propertyExists={propertyExists} homeCurrency={details.homeCurrency} setToast={setToast} /> : null}
         {activeTab === "Payment Gateway" ? <PaymentGatewayTab gateways={gateways} setGateways={setGateways} setToast={setToast} /> : null}
         {activeTab === "Taxes" ? <TaxesTab taxes={taxes} setTaxes={setTaxes} setToast={setToast} /> : null}
         {activeTab === "Currency" ? <CurrencyTab currencies={currencies} setCurrencies={setCurrencies} manualRates={manualRates} setManualRates={setManualRates} hotelCurrency={details.homeCurrency} setToast={setToast} /> : null}

@@ -511,6 +511,10 @@ function RoomTypeDrawer({
     rooms: [],
     maxAdults: 2,
     maxChildren: 0,
+    includedAdults: 2,
+    includedChildren: 0,
+    extraAdultRate: 0,
+    extraChildRate: 0,
     amenities: ["Air Conditioner", "Fan"],
     description: "",
     baseRate: 6500,
@@ -576,6 +580,10 @@ function RoomTypeDrawer({
     event.preventDefault();
     if (!form.name.trim()) { setError("Room type name is required."); setTab("details"); return; }
     if (form.maxAdults < 1) { setError("Adult capacity must be at least one."); setTab("details"); return; }
+    if (form.maxChildren < 0) { setError("Child capacity cannot be negative."); setTab("details"); return; }
+    if (form.includedAdults < 1 || form.includedAdults > form.maxAdults) { setError("Adults included in the base rate must be between 1 and the maximum adults."); setTab("details"); return; }
+    if (form.includedChildren < 0 || form.includedChildren > form.maxChildren) { setError("Children included in the base rate cannot exceed the maximum children."); setTab("details"); return; }
+    if (form.extraAdultRate < 0 || form.extraChildRate < 0) { setError("Extra guest prices cannot be negative."); setTab("details"); return; }
     setSaving(true);
     try {
       const message = await onSave({ ...form, name: form.name.trim(), imageGradient: form.imageGradient || roomTypeImageGradients[0] });
@@ -609,7 +617,13 @@ function RoomTypeDrawer({
               <Field label="Maximum Adults"><TextInput type="number" min={1} value={form.maxAdults} onChange={(event) => update("maxAdults", Number(event.target.value))} /></Field>
               <Field label="Maximum Children"><TextInput type="number" min={0} value={form.maxChildren} onChange={(event) => update("maxChildren", Number(event.target.value))} /></Field>
               <Field label="Base Rate"><TextInput type="number" min={0} value={form.baseRate} onChange={(event) => update("baseRate", Number(event.target.value))} /></Field>
+              <Field label="Adults Included in Base Rate"><TextInput type="number" min={1} max={form.maxAdults} value={form.includedAdults} onChange={(event) => update("includedAdults", Number(event.target.value))} /></Field>
+              <Field label="Children Included in Base Rate"><TextInput type="number" min={0} max={form.maxChildren} value={form.includedChildren} onChange={(event) => update("includedChildren", Number(event.target.value))} /></Field>
+              <div />
+              <Field label="Extra Adult / Night"><TextInput type="number" min={0} value={form.extraAdultRate} onChange={(event) => update("extraAdultRate", Number(event.target.value))} /></Field>
+              <Field label="Extra Child / Night"><TextInput type="number" min={0} value={form.extraChildRate} onChange={(event) => update("extraChildRate", Number(event.target.value))} /></Field>
             </div>
+            <p className="text-xs text-slate-500">The base rate covers the included guests. Guests above that amount add the configured nightly supplement, up to the room type's maximum capacity.</p>
             <label className="block"><span className="mb-2 block text-sm font-semibold text-slate-700">Description</span><textarea value={form.description} onChange={(event) => update("description", event.target.value)} className="min-h-28 w-full rounded-md border border-line bg-white px-3 py-2 text-sm outline-none focus:border-slate-500" /></label>
           </div>
         ) : null}

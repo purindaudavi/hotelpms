@@ -1,5 +1,6 @@
 import { Dispatch, SetStateAction } from "react";
 import { Reservation, ReservationRoom, ReservationStatus, Room } from "@/app/data/pms-data";
+import type { MealAllocation } from "../settings/property/property-types";
 
 export type FrontDeskProps = {
   propertyId: string;
@@ -68,6 +69,8 @@ export type RatePlan = {
   name: string;
   currency: string;
   mealPlan: string;
+  mealAllocationId: string;
+  mealAllocation?: MealAllocation;
   baseRate: number;
   roomTypeRates: Record<string, number>;
   refundable: boolean;

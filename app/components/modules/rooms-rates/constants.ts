@@ -40,6 +40,10 @@ export const initialRoomTypes: RoomTypeRecord[] = roomTypes.map((type, index) =>
   rooms: type.rooms,
   maxAdults: type.maxAdults,
   maxChildren: type.maxChildren,
+  includedAdults: Math.min(type.maxAdults, 2),
+  includedChildren: 0,
+  extraAdultRate: 0,
+  extraChildRate: 0,
   amenities: type.amenities,
   description: `${type.name} configured for transit stays with private bathroom and front-desk managed availability.`,
   baseRate: type.baseRate,
@@ -64,6 +68,10 @@ export function normalizeRoomTypeRecords(records: RoomTypeRecord[]) {
   return records.map((record) => ({
     ...record,
     rooms: Array.isArray(record.rooms) ? record.rooms : [],
+    includedAdults: Math.min(Number(record.includedAdults ?? 1), Number(record.maxAdults || 1)),
+    includedChildren: Math.min(Number(record.includedChildren ?? 0), Number(record.maxChildren || 0)),
+    extraAdultRate: Number(record.extraAdultRate ?? 0),
+    extraChildRate: Number(record.extraChildRate ?? 0),
     amenities: Array.isArray(record.amenities) ? record.amenities : [],
     images: Array.isArray(record.images) ? record.images.filter((image) =>
       Boolean(image && typeof image.id === "string" && typeof image.name === "string" && typeof image.dataUrl === "string")
@@ -73,5 +81,5 @@ export function normalizeRoomTypeRecords(records: RoomTypeRecord[]) {
 
 export const currencyOptions = ["All Currencies", "LKR", "USD"];
 export const rateCodeOptions = ["All Rate Codes", "FIT", "IBE", "TA", "OTA"];
-export const mealPlanOptions = ["Room Only", "Bed & Breakfast", "Half Board", "Full Board"];
+export const mealPlanOptions = ["Room Only", "Bed & Breakfast", "Half Board", "Full Board", "All Inclusive"];
 export const countryOptions = ["Sri Lanka", "India", "Maldives", "United Arab Emirates", "Singapore"];
