@@ -744,8 +744,6 @@ function HousekeepingInfoPage({ roomList }: ModuleProps) {
 function FinancialsModule(props: ModuleProps) {
   const path = props.activePath;
   if (path.endsWith("profit-loss")) return <ProfitLossPage {...props} />;
-  if (path.endsWith("chart-of-accounts")) return <ChartOfAccountsPage />;
-  if (path.endsWith("suppliers")) return <SuppliersPage />;
   if (path.endsWith("transfer-funds")) return <TransferFundsPage setToast={props.setToast} />;
   if (path.endsWith("integrations")) return <FinancialIntegrationsPage setToast={props.setToast} />;
   if (path.endsWith("purchases")) return <FinancialListPage title="Purchases" type="Purchase Order" />;
@@ -826,41 +824,6 @@ function ProfitLossPage({ transactions }: ModuleProps) {
 
 function TrendingIcon() {
   return <BarChart3 className="h-5 w-5" />;
-}
-
-function ChartOfAccountsPage() {
-  return (
-    <Page>
-      <Panel title="Chart of Accounts">
-        <SimpleTable
-          headers={["Code", "Account", "Type", "Normal Balance", "Status"]}
-          rows={[
-            ["1000", "Cash on Hand", "Asset", "Debit", "Active"],
-            ["1200", "Accounts Receivable", "Asset", "Debit", "Active"],
-            ["4000", "Room Revenue", "Income", "Credit", "Active"],
-            ["5100", "OTA Commission", "Expense", "Debit", "Active"]
-          ]}
-        />
-      </Panel>
-    </Page>
-  );
-}
-
-function SuppliersPage() {
-  return (
-    <Page>
-      <Panel title="Suppliers">
-        <SimpleTable
-          headers={["Supplier", "Category", "Phone", "Balance", "Status"]}
-          rows={[
-            ["Airport Supplies", "Room Amenities", "+94 11 220 1122", currency(12500), "Active"],
-            ["Fresh Linen Co", "Laundry", "+94 11 330 4411", currency(7600), "Active"],
-            ["Utility Provider", "Utilities", "+94 11 550 9911", currency(33100), "Active"]
-          ]}
-        />
-      </Panel>
-    </Page>
-  );
 }
 
 function TransferFundsPage({ setToast }: { setToast: (message: string) => void }) {

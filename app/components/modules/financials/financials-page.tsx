@@ -1,6 +1,6 @@
 "use client";
 
-import { type Dispatch, type FormEvent, type SetStateAction, useMemo, useState } from "react";
+import { type Dispatch, type FormEvent, type SetStateAction, useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowUpRight,
   ChevronLeft,
@@ -22,13 +22,27 @@ import {
 } from "lucide-react";
 import { useSessionState } from "@/app/components/hooks/use-session-state";
 import { dateLabel, type FinancialTransaction, property, type Reservation } from "@/app/data/pms-data";
-import { ChartOfAccountantsPage } from "./chartofaccountants";
 import { IntegrationsPage } from "./integrations";
 import { ProfitLossPage } from "./profit&loss";
-import { SuppliersPage } from "./suppliers";
 import { TransferFundsPage } from "./transferfunds";
 import { CreditNotesPage, InvoicesPage, RefundsPage } from "./financial-documents-page";
+import { WithdrawalsPage } from "./withdrawals-page";
 import { getBookingsApiErrorMessage, getReservationDetails } from "@/app/lib/bookings-api";
+import {
+  type BackendFinancialTransaction,
+  getTransactionsApiErrorMessage,
+  listAllFinancialTransactions
+} from "@/app/lib/transactions-api";
+import {
+  type BackendExpense,
+  type BackendPurchase,
+  createExpense,
+  createPurchase,
+  getPurchasesExpensesApiErrorMessage,
+  listExpenses,
+  listPurchases,
+  payPurchase as payBackendPurchase
+} from "@/app/lib/purchases-expenses-api";
 
 type FinancialsPageProps = {
   activePath: string;
@@ -49,7 +63,53 @@ type FrontOfficeTransaction = {
   status: "Completed" | "Pending" | "Cancelled";
 };
 
-type PurchaseStatus = "Unpaid" | "Paid";
+type DisplayFinancialTransaction = FinancialTransaction & {
+  direction: "Money In" | "Money Out" | "Non-cash" | "Transfer" | "Unspecified";
+  dataSource: "MongoDB" | "Local cache";
+  description?: string;
+  sourceNumber?: string;
+};
+
+function toDisplayBackendTransaction(transaction: BackendFinancialTransaction): DisplayFinancialTransaction {
+  const directions: Record<BackendFinancialTransaction["direction"], DisplayFinancialTransaction["direction"]> = {
+    in: "Money In",
+    out: "Money Out",
+    non_cash: "Non-cash",
+    transfer: "Transfer"
+  };
+  return {
+    id: `mongodb:${transaction._id}`,
+    date: transaction.transaction_date,
+    type: readableSourceType(transaction.source_type),
+    documentNo: transaction.transaction_no,
+    value: transaction.amount,
+    reservationNo: transaction.reservation_no || "-",
+    roomNo: transaction.room_numbers.join(", ") || "-",
+    createdBy: transaction.created_by?.name || transaction.created_by?.email || "System",
+    status: transaction.status === "posted" ? "Active" : "Voided",
+    direction: directions[transaction.direction],
+    dataSource: "MongoDB",
+    description: transaction.description,
+    sourceNumber: transaction.source_number
+  };
+}
+
+function toDisplayLocalTransaction(transaction: FinancialTransaction): DisplayFinancialTransaction {
+  const type = normalize(transaction.type);
+  let direction: DisplayFinancialTransaction["direction"] = "Unspecified";
+  if (type.includes("receive payment")) direction = "Money In";
+  else if (type.includes("refund") || type.includes("expense") || type.includes("supplier payment") || type.includes("withdrawal")) direction = "Money Out";
+  else if (type.includes("invoice") || type.includes("revenue") || type.includes("opening balance") || type.includes("purchase")) direction = "Non-cash";
+  else if (type.includes("transfer")) direction = "Transfer";
+  return {
+    ...transaction,
+    id: `local:${transaction.id}`,
+    direction,
+    dataSource: "Local cache"
+  };
+}
+
+type PurchaseStatus = "Unpaid" | "Paid" | "Voided";
 
 type GlLine = {
   id: string;
@@ -81,8 +141,47 @@ type Expense = {
   amount: number;
   attachments: string[];
   remark: string;
-  status: "Posted";
+  status: "Posted" | "Voided";
 };
+
+function fromBackendPurchase(purchase: BackendPurchase): Purchase {
+  return {
+    id: purchase._id,
+    supplier: purchase.supplier_name,
+    purchaseDate: purchase.purchase_date,
+    dueDate: purchase.due_date,
+    invoiceNumber: purchase.supplier_invoice_no,
+    referenceAmount: purchase.amount,
+    narration: purchase.narration,
+    attachments: purchase.attachments || [],
+    glLines: (purchase.gl_lines || []).map((line, index) => ({
+      id: line._id || `${purchase._id}:gl:${index}`,
+      account: line.account,
+      amount: line.amount,
+      memo: line.memo
+    })),
+    status: purchase.status === "paid" ? "Paid" : purchase.status === "voided" ? "Voided" : "Unpaid",
+    createdAt: purchase.created_at
+  };
+}
+
+function fromBackendExpense(expense: BackendExpense): Expense {
+  return {
+    id: expense._id,
+    date: expense.expense_date,
+    expenseType: expense.expense_type,
+    paidUsing: expense.paid_using,
+    description: expense.description,
+    amount: expense.amount,
+    attachments: expense.attachments || [],
+    remark: expense.remark,
+    status: expense.status === "voided" ? "Voided" : "Posted"
+  };
+}
+
+function readableSourceType(value: string) {
+  return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
 
 type Supplier = {
   id: string;
@@ -171,7 +270,7 @@ const initialReceivables: Receivable[] = [
 ];
 
 const supplierCategories = ["Food & Beverage", "Laundry", "Utilities", "Maintenance", "Room Amenities", "Other"];
-const expenseAccounts = ["Electricity", "Water", "Internet", "Laundry", "Room Amenities", "Repairs", "Staff Meal"];
+const expenseAccounts = ["Electricity", "Water", "Internet", "Laundry", "Room Amenities", "Repairs", "Staff Meal", "Other"];
 const paymentAccounts = ["Cash Account", "Bank Account", "Card Settlement", "Petty Cash"];
 const glAccounts = ["Cost of Goods Sold", "Food Purchases", "Laundry Expense", "Maintenance Expense", "Utilities", "Room Amenities"];
 
@@ -183,6 +282,19 @@ export function FinancialsPage(props: FinancialsPageProps) {
   const [suppliers, setSuppliers] = useSessionState<Supplier[]>(`${keyPrefix}:suppliers`, initialSuppliers);
   const [receivables, setReceivables] = useSessionState<Receivable[]>(`${keyPrefix}:receivables`, initialReceivables);
   const [agents, setAgents] = useSessionState<TravelAgent[]>(`${keyPrefix}:travel-agents`, []);
+  useEffect(() => {
+    let active = true;
+    Promise.all([listPurchases(props.propertyId), listExpenses(props.propertyId)])
+      .then(([savedPurchases, savedExpenses]) => {
+        if (!active) return;
+        setPurchases(savedPurchases.map(fromBackendPurchase));
+        setExpenses(savedExpenses.map(fromBackendExpense));
+      })
+      .catch((error) => {
+        if (active) props.setToast(getPurchasesExpensesApiErrorMessage(error));
+      });
+    return () => { active = false; };
+  }, [props.propertyId, props.setToast, setExpenses, setPurchases]);
   const path = props.activePath;
   const shared = {
     ...props,
@@ -209,12 +321,11 @@ export function FinancialsPage(props: FinancialsPageProps) {
   }} />;
   if (path.endsWith("credit-notes")) return <CreditNotesPage propertyId={props.propertyId} reservations={props.reservations} setToast={props.setToast} />;
   if (path.endsWith("refunds")) return <RefundsPage propertyId={props.propertyId} reservations={props.reservations} setToast={props.setToast} />;
+  if (path.endsWith("withdrawals")) return <WithdrawalsPage propertyId={props.propertyId} setToast={props.setToast} />;
   if (path.endsWith("expenses")) return <ExpensesPage {...shared} />;
   if (path.endsWith("payables")) return <PayablesPage {...shared} />;
   if (path.endsWith("receivables")) return <ReceivablesPage {...shared} />;
-  if (path.endsWith("profit-loss")) return <ProfitLossPage transactions={props.transactions} purchases={purchases} expenses={expenses} setToast={props.setToast} />;
-  if (path.endsWith("chart-of-accounts")) return <ChartOfAccountantsPage propertyId={props.propertyId} setToast={props.setToast} />;
-  if (path.endsWith("suppliers")) return <SuppliersPage suppliers={suppliers} setSuppliers={setSuppliers} setToast={props.setToast} />;
+  if (path.endsWith("profit-loss")) return <ProfitLossPage propertyId={props.propertyId} setToast={props.setToast} />;
   if (path.endsWith("transfer-funds")) return <TransferFundsPage propertyId={props.propertyId} setTransactions={props.setTransactions} setToast={props.setToast} />;
   if (path.endsWith("integrations")) return <IntegrationsPage />;
 
@@ -236,7 +347,9 @@ type SharedFinancialState = FinancialsPageProps & {
 
 function TransactionsPage({
   transactions,
-  frontOfficeTransactions
+  frontOfficeTransactions,
+  propertyId,
+  setToast
 }: FinancialsPageProps & {
   frontOfficeTransactions: FrontOfficeTransaction[];
 }) {
@@ -245,14 +358,50 @@ function TransactionsPage({
   const [financialPage, setFinancialPage] = useState(1);
   const [frontOfficePage, setFrontOfficePage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(10);
-  const [viewingFinancial, setViewingFinancial] = useState<FinancialTransaction | null>(null);
+  const [viewingFinancial, setViewingFinancial] = useState<DisplayFinancialTransaction | null>(null);
   const [viewingFrontOffice, setViewingFrontOffice] = useState<FrontOfficeTransaction | null>(null);
+  const [backendTransactions, setBackendTransactions] = useState<BackendFinancialTransaction[]>([]);
+  const [loadingTransactions, setLoadingTransactions] = useState(false);
+
+  const loadBackendTransactions = useCallback(async () => {
+    setLoadingTransactions(true);
+    try {
+      setBackendTransactions(await listAllFinancialTransactions(propertyId));
+    } catch (error) {
+      setToast(getTransactionsApiErrorMessage(error));
+    } finally {
+      setLoadingTransactions(false);
+    }
+  }, [propertyId, setToast]);
+
+  useEffect(() => {
+    void loadBackendTransactions();
+  }, [loadBackendTransactions]);
 
   const financialRows = useMemo(() => {
+    const backendRows = backendTransactions.map(toDisplayBackendTransaction);
+    const mongoBackedTypes = ["invoice", "receive payment", "payment", "credit note", "refund", "withdrawal", "purchase", "supplier payment", "expense"];
+    const localRows = transactions
+      .filter((transaction) => !mongoBackedTypes.some((type) => normalize(transaction.type).includes(type)))
+      .map(toDisplayLocalTransaction);
+    const combined = [...backendRows, ...localRows];
     const needle = normalize(search);
-    if (!needle) return transactions;
-    return transactions.filter((tran) => normalize([tran.date, tran.type, tran.documentNo, tran.value, tran.reservationNo, tran.roomNo, tran.createdBy, tran.status].join(" ")).includes(needle));
-  }, [transactions, search]);
+    if (!needle) return combined;
+    return combined.filter((tran) => normalize([
+      tran.date,
+      tran.type,
+      tran.documentNo,
+      tran.value,
+      tran.reservationNo,
+      tran.roomNo,
+      tran.createdBy,
+      tran.status,
+      tran.direction,
+      tran.dataSource,
+      tran.description,
+      tran.sourceNumber
+    ].join(" ")).includes(needle));
+  }, [backendTransactions, transactions, search]);
 
   const frontOfficeRows = useMemo(() => {
     const needle = normalize(search);
@@ -277,15 +426,25 @@ function TransactionsPage({
         }}
       />
 
-      <SearchInput value={search} onChange={setSearch} />
+      <div className="flex items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <SearchInput value={search} onChange={setSearch} />
+        </div>
+        {activeTab === "financial" ? (
+          <ActionButton onClick={() => void loadBackendTransactions()} disabled={loadingTransactions}>
+            <RefreshCw size={16} className={loadingTransactions ? "animate-spin" : ""} />
+            {loadingTransactions ? "Loading" : "Refresh"}
+          </ActionButton>
+        ) : null}
+      </div>
 
       {activeTab === "financial" ? (
         <DataPanel title="Transactions">
           <div className="overflow-x-auto">
-            <table className="min-w-[1220px] w-full text-left text-sm">
+            <table className="min-w-[1450px] w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-line text-slate-500">
-                  {["Tran Date", "Tran Type", "Doc No", "Tran Value", "Reservation No", "Room No", "Created By", "Status", "Actions"].map((heading) => (
+                  {["Tran Date", "Tran Type", "Direction", "Doc No", "Tran Value", "Reservation No", "Room No", "Created By", "Source", "Status", "Actions"].map((heading) => (
                     <th key={heading} className="px-4 py-3 font-semibold">{heading}</th>
                   ))}
                 </tr>
@@ -295,11 +454,15 @@ function TransactionsPage({
                   <tr key={tran.id} className="border-b border-line hover:bg-slate-50">
                     <td className="px-4 py-4">{shortDate(tran.date)}</td>
                     <td className="px-4 py-4">{tran.type}</td>
+                    <td className="px-4 py-4 font-semibold">{tran.direction}</td>
                     <td className="px-4 py-4">{tran.documentNo}</td>
                     <td className="px-4 py-4">{money(tran.value)}</td>
                     <td className="px-4 py-4">{tran.reservationNo}</td>
                     <td className="px-4 py-4">{tran.roomNo}</td>
                     <td className="max-w-[190px] truncate px-4 py-4">{tran.createdBy}</td>
+                    <td className="px-4 py-4">
+                      <StatusPill tone={tran.dataSource === "MongoDB" ? "green" : "slate"}>{tran.dataSource}</StatusPill>
+                    </td>
                     <td className="px-4 py-4">
                       <StatusPill tone={tran.status === "Active" ? "green" : tran.status === "Pending" ? "amber" : "slate"}>{tran.status}</StatusPill>
                     </td>
@@ -353,9 +516,9 @@ function TransactionsPage({
   );
 }
 
-function PurchasesPage({ purchases, setPurchases, suppliers, setSuppliers, setTransactions, setToast }: SharedFinancialState) {
+function PurchasesPage({ propertyId, purchases, setPurchases, suppliers, setSuppliers, setToast }: SharedFinancialState) {
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<"Unpaid" | "Paid" | "All">("Unpaid");
+  const [status, setStatus] = useState<"To be paid" | "Paid" | "All">("To be paid");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [viewing, setViewing] = useState<Purchase | null>(null);
   const [page, setPage] = useState(1);
@@ -364,7 +527,7 @@ function PurchasesPage({ purchases, setPurchases, suppliers, setSuppliers, setTr
   const visiblePurchases = useMemo(() => {
     const needle = normalize(search);
     return purchases.filter((purchase) => {
-      const matchesStatus = status === "All" || purchase.status === status;
+      const matchesStatus = status === "All" || (status === "To be paid" ? purchase.status === "Unpaid" : purchase.status === "Paid");
       const text = normalize([purchase.supplier, purchase.invoiceNumber, purchase.referenceAmount, purchase.narration, purchase.status].join(" "));
       return matchesStatus && (!needle || text.includes(needle));
     });
@@ -372,17 +535,34 @@ function PurchasesPage({ purchases, setPurchases, suppliers, setSuppliers, setTr
 
   const paged = paginate(visiblePurchases, page, rowsPerPage);
 
-  function savePurchase(purchase: Purchase) {
-    setPurchases((current) => [purchase, ...current]);
-    setTransactions((current) => [makeTransaction("Purchase", purchase.purchaseDate, purchase.invoiceNumber, purchase.referenceAmount, "-", "-", "ASIRI PERERA"), ...current]);
-    setDrawerOpen(false);
-    setToast("Purchase saved for this session");
+  async function savePurchase(purchase: Purchase) {
+    try {
+      const saved = await createPurchase(propertyId, {
+        supplierName: purchase.supplier,
+        supplierInvoiceNo: purchase.invoiceNumber,
+        purchaseDate: purchase.purchaseDate,
+        dueDate: purchase.dueDate,
+        amount: purchase.referenceAmount,
+        narration: purchase.narration,
+        attachments: purchase.attachments,
+        glLines: purchase.glLines.filter((line) => line.account && line.amount > 0).map(({ account, amount, memo }) => ({ account, amount, memo }))
+      });
+      setPurchases((current) => [fromBackendPurchase(saved), ...current.filter((item) => item.id !== saved._id)]);
+      setDrawerOpen(false);
+      setToast(`Purchase ${saved.purchase_no} saved to MongoDB`);
+    } catch (error) {
+      setToast(getPurchasesExpensesApiErrorMessage(error));
+    }
   }
 
-  function markPurchasePaid(purchase: Purchase) {
-    setPurchases((current) => current.map((item) => (item.id === purchase.id ? { ...item, status: "Paid" } : item)));
-    setTransactions((current) => [makeTransaction("Supplier Payment", property.systemDate, `PAY-${purchase.invoiceNumber}`, purchase.referenceAmount, "-", "-", "ASIRI PERERA"), ...current]);
-    setToast(`${purchase.invoiceNumber} marked paid`);
+  async function markPurchasePaid(purchase: Purchase) {
+    try {
+      const saved = await payBackendPurchase(propertyId, purchase.id, property.systemDate);
+      setPurchases((current) => current.map((item) => item.id === saved._id ? fromBackendPurchase(saved) : item));
+      setToast(`${purchase.invoiceNumber} marked paid in MongoDB`);
+    } catch (error) {
+      setToast(getPurchasesExpensesApiErrorMessage(error));
+    }
   }
 
   return (
@@ -402,7 +582,7 @@ function PurchasesPage({ purchases, setPurchases, suppliers, setSuppliers, setTr
           <SegmentedControl
             compact
             tabs={[
-              { label: "Unpaid", value: "Unpaid" },
+              { label: "To be paid", value: "To be paid" },
               { label: "Paid", value: "Paid" },
               { label: "All", value: "All" }
             ]}
@@ -434,12 +614,14 @@ function PurchasesPage({ purchases, setPurchases, suppliers, setSuppliers, setTr
                       <td className="px-4 py-4">{purchase.invoiceNumber}</td>
                       <td className="px-4 py-4">{money(purchase.referenceAmount)}</td>
                       <td className="px-4 py-4">
-                        <StatusPill tone={purchase.status === "Paid" ? "green" : "amber"}>{purchase.status}</StatusPill>
+                        <StatusPill tone={purchase.status === "Paid" ? "green" : purchase.status === "Voided" ? "slate" : "amber"}>
+                          {purchase.status === "Unpaid" ? "To be paid" : purchase.status}
+                        </StatusPill>
                       </td>
                       <td className="px-4 py-4">
                         <div className="flex gap-2">
                           <SmallButton onClick={() => setViewing(purchase)}>View</SmallButton>
-                          {purchase.status === "Unpaid" ? <SmallButton onClick={() => markPurchasePaid(purchase)}>Pay</SmallButton> : null}
+                          {purchase.status === "Unpaid" ? <SmallButton onClick={() => void markPurchasePaid(purchase)}>Pay</SmallButton> : null}
                         </div>
                       </td>
                     </tr>
@@ -470,7 +652,7 @@ function PurchasesPage({ purchases, setPurchases, suppliers, setSuppliers, setTr
   );
 }
 
-function ExpensesPage({ expenses, setExpenses, setTransactions, setToast }: SharedFinancialState) {
+function ExpensesPage({ propertyId, expenses, setExpenses, setToast }: SharedFinancialState) {
   const [search, setSearch] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [viewing, setViewing] = useState<Expense | null>(null);
@@ -485,11 +667,15 @@ function ExpensesPage({ expenses, setExpenses, setTransactions, setToast }: Shar
 
   const paged = paginate(visibleExpenses, page, rowsPerPage);
 
-  function saveExpense(expense: Expense) {
-    setExpenses((current) => [expense, ...current]);
-    setTransactions((current) => [makeTransaction("Expense", expense.date, `EXP-${expense.id.slice(-6)}`, expense.amount, "-", "-", "ASIRI PERERA"), ...current]);
-    setDrawerOpen(false);
-    setToast("Expense saved for this session");
+  async function saveExpense(expense: Expense) {
+    try {
+      const saved = await createExpense(propertyId, expense);
+      setExpenses((current) => [fromBackendExpense(saved), ...current.filter((item) => item.id !== saved._id)]);
+      setDrawerOpen(false);
+      setToast(`Expense ${saved.expense_no} saved to MongoDB`);
+    } catch (error) {
+      setToast(getPurchasesExpensesApiErrorMessage(error));
+    }
   }
 
   return (
@@ -553,7 +739,7 @@ function ExpensesPage({ expenses, setExpenses, setTransactions, setToast }: Shar
   );
 }
 
-function PayablesPage({ purchases, setPurchases, suppliers, setSuppliers, setTransactions, setToast }: SharedFinancialState) {
+function PayablesPage({ propertyId, purchases, setPurchases, suppliers, setSuppliers, setToast }: SharedFinancialState) {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<"To be paid" | "Paid">("To be paid");
   const [filterOpen, setFilterOpen] = useState(false);
@@ -577,7 +763,7 @@ function PayablesPage({ purchases, setPurchases, suppliers, setSuppliers, setTra
     return payableRows.filter((row) => {
       const matchesStatus = status === "Paid" ? row.status === "Paid" : row.status === "Unpaid";
       const dueAge = daysBetween(row.dueDate, property.systemDate);
-      const matchesOverdue = !overdueOnly || (row.status === "Unpaid" && dueAge > 0);
+      const matchesOverdue = !overdueOnly || (row.status !== "Paid" && dueAge > 0);
       const matchesSearch = !needle || normalize([row.supplier, row.invoiceNumber, row.amount, row.status].join(" ")).includes(needle);
       return matchesStatus && matchesOverdue && matchesSearch;
     });
@@ -591,10 +777,14 @@ function PayablesPage({ purchases, setPurchases, suppliers, setSuppliers, setTra
     setToast(`${supplier.name} saved`);
   }
 
-  function payPurchase(purchase: Purchase) {
-    setPurchases((current) => current.map((item) => (item.id === purchase.id ? { ...item, status: "Paid" } : item)));
-    setTransactions((current) => [makeTransaction("Supplier Payment", property.systemDate, `PAY-${purchase.invoiceNumber}`, purchase.referenceAmount, "-", "-", "ASIRI PERERA"), ...current]);
-    setToast(`${purchase.invoiceNumber} marked paid`);
+  async function payPurchase(purchase: Purchase) {
+    try {
+      const saved = await payBackendPurchase(propertyId, purchase.id, property.systemDate);
+      setPurchases((current) => current.map((item) => item.id === saved._id ? fromBackendPurchase(saved) : item));
+      setToast(`${purchase.invoiceNumber} marked paid in MongoDB`);
+    } catch (error) {
+      setToast(getPurchasesExpensesApiErrorMessage(error));
+    }
   }
 
   return (
@@ -663,7 +853,7 @@ function PayablesPage({ purchases, setPurchases, suppliers, setSuppliers, setTra
                         <StatusPill tone={row.status === "Paid" ? "green" : "amber"}>{row.status === "Paid" ? "Paid" : "To be paid"}</StatusPill>
                       </td>
                       <td className="px-4 py-4">
-                        {row.status === "Unpaid" ? <SmallButton onClick={() => payPurchase(row.purchase)}>Pay</SmallButton> : <SmallButton>View</SmallButton>}
+                        {row.status === "Unpaid" ? <SmallButton onClick={() => void payPurchase(row.purchase)}>Pay</SmallButton> : <SmallButton>View</SmallButton>}
                       </td>
                     </tr>
                   ))}
@@ -1013,6 +1203,7 @@ function ExpenseDrawer({ onClose, onSave }: { onClose: () => void; onSave: (expe
   const [form, setForm] = useState({
     date: property.systemDate,
     expenseType: "",
+    customExpenseType: "",
     paidUsing: "",
     description: "",
     amount: "",
@@ -1022,10 +1213,14 @@ function ExpenseDrawer({ onClose, onSave }: { onClose: () => void; onSave: (expe
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const expenseType = form.expenseType === "Other"
+      ? form.customExpenseType.trim()
+      : form.expenseType;
+    if (!expenseType) return;
     onSave({
       id: uniqueId("expense"),
       date: form.date,
-      expenseType: form.expenseType || "Unassigned Expense",
+      expenseType,
       paidUsing: form.paidUsing || "Cash Account",
       description: form.description,
       amount: toNumber(form.amount),
@@ -1049,6 +1244,16 @@ function ExpenseDrawer({ onClose, onSave }: { onClose: () => void; onSave: (expe
             ))}
           </SelectField>
         </FieldBlock>
+        {form.expenseType === "Other" ? (
+          <FieldBlock label="Custom Expense Type">
+            <TextField
+              value={form.customExpenseType}
+              onChange={(value) => setForm({ ...form, customExpenseType: value })}
+              placeholder="Example: Staff transport"
+              required
+            />
+          </FieldBlock>
+        ) : null}
         <FieldBlock label="Paid Using">
           <SelectField value={form.paidUsing} onChange={(value) => setForm({ ...form, paidUsing: value })}>
             <option value="">Select bank/cash account</option>
@@ -1341,18 +1546,22 @@ function TravelAgentDrawer({
   );
 }
 
-function FinancialTransactionDrawer({ transaction, onClose }: { transaction: FinancialTransaction; onClose: () => void }) {
+function FinancialTransactionDrawer({ transaction, onClose }: { transaction: DisplayFinancialTransaction; onClose: () => void }) {
   return (
     <Drawer title="Transaction Details" subtitle="Posted transactions are read-only" width="max-w-xl" onClose={onClose}>
       <DetailList
         items={[
           ["Tran Date", shortDate(transaction.date)],
           ["Tran Type", transaction.type],
+          ["Direction", transaction.direction],
           ["Doc No", transaction.documentNo],
+          ["Source document", transaction.sourceNumber || "-"],
           ["Tran Value", money(transaction.value)],
           ["Reservation No", transaction.reservationNo],
           ["Room No", transaction.roomNo],
           ["Created By", transaction.createdBy],
+          ["Data Source", transaction.dataSource],
+          ["Description", transaction.description || "-"],
           ["Status", transaction.status]
         ]}
       />

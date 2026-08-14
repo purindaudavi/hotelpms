@@ -128,7 +128,7 @@ export function PropertyImages({
         <div>
           <h2 className="text-2xl font-semibold">Official Hotel Logo</h2>
           <p className="mt-2 text-sm text-slate-500">
-            One shared logo is used by Property Info and can later be reused by invoices, emails and the booking engine.
+            This logo is used in the sidebar, page header and browser tab. Replacing it updates those locations automatically.
           </p>
           <input
             type="file"

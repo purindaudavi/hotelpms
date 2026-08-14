@@ -9,6 +9,7 @@ import { addDays } from "../utils";
 import { Drawer, Field, SelectInput, TextInput, ToolbarButton } from "./rooms-rates-ui";
 import { getMealAllocations, getPropertyApiErrorMessage } from "@/app/lib/property-api";
 import type { MealAllocation } from "../../settings/property/property-types";
+import { getDefaultRateSuggestions, getRatesApiErrorMessage } from "@/app/lib/rates-api";
 
 export function RatePlanDrawer({
   mode,
@@ -37,8 +38,8 @@ export function RatePlanDrawer({
     currency: property.currency,
     mealPlan: "Room Only",
     mealAllocationId: "",
-    baseRate: activeRoomTypes[0]?.baseRate ?? 0,
-    roomTypeRates: Object.fromEntries(activeRoomTypes.map((type) => [type.id, type.baseRate])),
+    baseRate: 0,
+    roomTypeRates: {},
     resident: false,
     validFrom: property.systemDate,
     validTo: addDays(property.systemDate, 365),
@@ -56,6 +57,7 @@ export function RatePlanDrawer({
   const [saving, setSaving] = useState(false);
   const [mealAllocations, setMealAllocations] = useState<MealAllocation[]>([]);
   const [allocationsLoading, setAllocationsLoading] = useState(true);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(mode === "create");
   const editingLocked = mode === "edit" && Boolean(ratePlan?.locked) && form.locked;
   const matchingAllocations = useMemo(() => mealAllocations.filter((allocation) =>
     allocation.active &&
@@ -75,6 +77,32 @@ export function RatePlanDrawer({
     });
     return () => { cancelled = true; };
   }, [propertyId]);
+
+  useEffect(() => {
+    if (mode !== "create") return;
+    let cancelled = false;
+    setSuggestionsLoading(true);
+    void getDefaultRateSuggestions(propertyId).then((suggestions) => {
+      if (cancelled) return;
+      const suggestionByRoomType = new Map(
+        suggestions.map((suggestion) => [suggestion.roomTypeId, suggestion.suggestedAmount])
+      );
+      const roomTypeRates = Object.fromEntries(activeRoomTypes.flatMap((type) => {
+        const suggestion = suggestionByRoomType.get(type.id);
+        return Number.isFinite(suggestion) ? [[type.id, suggestion as number]] : [];
+      }));
+      setForm((current) => ({
+        ...current,
+        baseRate: Object.values(roomTypeRates)[0] ?? 0,
+        roomTypeRates
+      }));
+    }).catch((loadError) => {
+      if (!cancelled) setError(getRatesApiErrorMessage(loadError));
+    }).finally(() => {
+      if (!cancelled) setSuggestionsLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [mode, propertyId]);
 
   function update<K extends keyof RatePlan>(key: K, value: RatePlan[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -102,8 +130,8 @@ export function RatePlanDrawer({
       return;
     }
     if (form.validTo < form.validFrom) { setError("End date must be on or after the start date."); return; }
-    if (activeRoomTypes.some((type) => Number(form.roomTypeRates[type.id]) < 0)) {
-      setError("Room-type rates cannot be negative.");
+    if (activeRoomTypes.some((type) => !Number.isFinite(form.roomTypeRates[type.id]) || form.roomTypeRates[type.id] < 0)) {
+      setError("Enter a non-negative price for every active room type.");
       return;
     }
     if (!form.cancellationPolicy.trim()) { setError("Cancellation policy is required."); return; }
@@ -123,7 +151,7 @@ export function RatePlanDrawer({
         baseRate: Number(form.baseRate) || 0,
         roomTypeRates: Object.fromEntries(activeRoomTypes.map((type) => [
           type.id,
-          Number.isFinite(Number(form.roomTypeRates[type.id])) ? Number(form.roomTypeRates[type.id]) : Number(type.baseRate) || 0
+          Number(form.roomTypeRates[type.id])
         ])),
         sellMode: "Per Room",
         rateMode: "Manual",
@@ -186,12 +214,13 @@ export function RatePlanDrawer({
           <div className="mb-4">
             <h3 className="font-semibold">Room-type nightly prices</h3>
             <p className="mt-1 text-sm text-slate-500">These are the prices Reservations and Front Desk will use when this plan is selected.</p>
+            {mode === "create" ? <p className="mt-1 text-xs text-slate-500">{suggestionsLoading ? "Loading default room-rate suggestions..." : "Suggested from each room type's Default Room Rate. Review every price before saving."}</p> : null}
           </div>
           <div className="grid gap-4 md:grid-cols-2">
             {activeRoomTypes.map((type) => (
               <Field key={type.id} label={type.name}>
                 <div className="flex items-center gap-2">
-                  <TextInput disabled={editingLocked} type="number" min={0} value={form.roomTypeRates[type.id] ?? type.baseRate} onChange={(event) => updateRoomTypeRate(type.id, Number(event.target.value))} />
+                  <TextInput disabled={editingLocked || suggestionsLoading} type="number" min={0} value={form.roomTypeRates[type.id] ?? ""} onChange={(event) => updateRoomTypeRate(type.id, Number(event.target.value))} />
                   <span className="text-sm font-semibold text-slate-500">{form.currency}</span>
                 </div>
               </Field>
@@ -217,7 +246,7 @@ export function RatePlanDrawer({
 
         <div className="flex justify-end gap-3 border-t border-line pt-5">
           <ToolbarButton type="button" onClick={onClose} disabled={saving}>Cancel</ToolbarButton>
-          <ToolbarButton type="submit" tone="dark" disabled={!activeRoomTypes.length || saving}>{saving ? "Saving..." : "Save Rate Plan"}</ToolbarButton>
+          <ToolbarButton type="submit" tone="dark" disabled={!activeRoomTypes.length || saving || suggestionsLoading}>{saving ? "Saving..." : "Save Rate Plan"}</ToolbarButton>
         </div>
       </form>
     </Drawer>

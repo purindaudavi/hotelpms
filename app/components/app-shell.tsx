@@ -69,6 +69,32 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
   const [expanded, setExpanded] = useState(() => new Set(navigation.map((item) => item.title)));
 
   useEffect(() => {
+    const faviconId = "staypilot-property-favicon";
+    const existingFavicon = document.getElementById(faviconId);
+
+    if (!propertyBrand.logoUrl) {
+      existingFavicon?.remove();
+      return;
+    }
+
+    const favicon = existingFavicon instanceof HTMLLinkElement
+      ? existingFavicon
+      : document.createElement("link");
+
+    favicon.id = faviconId;
+    favicon.rel = "icon";
+    favicon.href = propertyBrand.logoUrl;
+
+    if (!favicon.isConnected) {
+      document.head.appendChild(favicon);
+    }
+
+    return () => {
+      favicon.remove();
+    };
+  }, [propertyBrand.logoUrl]);
+
+  useEffect(() => {
     if (!toast) return;
     const timeout = window.setTimeout(() => setToast(""), 2600);
     return () => window.clearTimeout(timeout);

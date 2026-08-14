@@ -114,7 +114,7 @@ export function RatesPage({ propertyId, roomTypes, ratePlans, setRatePlans, load
           {activeRoomTypes.map((roomType) => (
             <section key={roomType.id}>
               <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
-                <div><h2 className="text-xl font-semibold">{roomType.name}</h2><p className="text-sm text-slate-500">Base room-type rate: {roomType.baseRate.toLocaleString()}</p></div>
+                <div><h2 className="text-xl font-semibold">{roomType.name}</h2><p className="text-sm text-slate-500">Default room rate (reference/fallback): {roomType.baseRate.toLocaleString()}</p></div>
                 <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold">{roomType.rooms.length} physical rooms</span>
               </div>
               <div className="overflow-x-auto border-t border-line">

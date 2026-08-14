@@ -51,6 +51,22 @@ export type OccupancyPricing = {
   nightlySupplement: number;
 };
 
+export type DefaultRateSuggestion = {
+  roomTypeId: string;
+  roomTypeName: string;
+  suggestedAmount: number;
+  currency: string;
+  source: "room_type_default";
+};
+
+type ApiDefaultRateSuggestion = {
+  room_type_id: string;
+  room_type_name: string;
+  suggested_amount: number;
+  currency: string;
+  source: "room_type_default";
+};
+
 type ApiRatePlan = {
   _id: string;
   property_id: string;
@@ -141,6 +157,20 @@ export async function getRatePlans(propertyId: string): Promise<RatePlan[]> {
     params: { property_id: propertyId }
   });
   return response.data.rate_plans.map(mapRatePlan);
+}
+
+export async function getDefaultRateSuggestions(propertyId: string): Promise<DefaultRateSuggestion[]> {
+  const response = await api.get<{ suggestions: ApiDefaultRateSuggestion[] }>(
+    "/rates/default-suggestions",
+    { params: { property_id: propertyId } }
+  );
+  return response.data.suggestions.map((suggestion) => ({
+    roomTypeId: String(suggestion.room_type_id),
+    roomTypeName: suggestion.room_type_name,
+    suggestedAmount: suggestion.suggested_amount,
+    currency: suggestion.currency,
+    source: suggestion.source
+  }));
 }
 
 export async function createRatePlanRecord(propertyId: string, plan: RatePlan): Promise<RatePlan> {

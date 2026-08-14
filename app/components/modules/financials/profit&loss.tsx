@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { CalendarDays, Download } from "lucide-react";
 import {
   Area,
@@ -14,27 +14,18 @@ import {
   XAxis,
   YAxis
 } from "recharts";
-import { type FinancialTransaction } from "@/app/data/pms-data";
+import {
+  getTransactionsApiErrorMessage,
+  listAllFinancialTransactions,
+  type BackendFinancialTransaction
+} from "@/app/lib/transactions-api";
 
 type ProfitLossPeriod = "Monthly" | "Year" | "Today";
 type ProfitLossView = "Chart" | "Table";
 type ChartMode = "Area" | "Bar";
 
-type PurchaseLike = {
-  purchaseDate: string;
-  referenceAmount: number;
-  status: "Unpaid" | "Paid";
-};
-
-type ExpenseLike = {
-  date: string;
-  amount: number;
-};
-
 type ProfitLossPageProps = {
-  transactions: FinancialTransaction[];
-  purchases: PurchaseLike[];
-  expenses: ExpenseLike[];
+  propertyId: string;
   setToast: (message: string) => void;
 };
 
@@ -57,8 +48,8 @@ const monthlyBaseRows: ProfitLossRow[] = [
   { period: "Feb", revenue: 0, expenses: 0, profit: 0, target: 0 },
   { period: "Mar", revenue: 0, expenses: 0, profit: 0, target: 0 },
   { period: "Apr", revenue: 0, expenses: 0, profit: 0, target: 0 },
-  { period: "May", revenue: 8884, expenses: 0, profit: 8884, target: 9772 },
-  { period: "Jun", revenue: 4110, expenses: 0, profit: 4110, target: 4521 }
+  { period: "May", revenue: 0, expenses: 0, profit: 0, target: 0 },
+  { period: "Jun", revenue: 0, expenses: 0, profit: 0, target: 0 }
 ];
 
 const yearBaseRows: ProfitLossRow[] = [
@@ -66,19 +57,31 @@ const yearBaseRows: ProfitLossRow[] = [
   { period: "2023", revenue: 0, expenses: 0, profit: 0, target: 0 },
   { period: "2024", revenue: 0, expenses: 0, profit: 0, target: 0 },
   { period: "2025", revenue: 0, expenses: 0, profit: 0, target: 0 },
-  { period: "2026", revenue: 12994, expenses: 0, profit: 12994, target: 14293 }
+  { period: "2026", revenue: 0, expenses: 0, profit: 0, target: 0 }
 ];
 
-export function ProfitLossPage({ transactions, purchases, expenses, setToast }: ProfitLossPageProps) {
+export function ProfitLossPage({ propertyId, setToast }: ProfitLossPageProps) {
   const [period, setPeriod] = useState<ProfitLossPeriod>("Monthly");
   const [view, setView] = useState<ProfitLossView>("Chart");
   const [chartMode, setChartMode] = useState<ChartMode>("Area");
   const [filterOpen, setFilterOpen] = useState(false);
-  const [includePurchases, setIncludePurchases] = useState(true);
+  const [transactions, setTransactions] = useState<BackendFinancialTransaction[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    listAllFinancialTransactions(propertyId)
+      .then((savedTransactions) => {
+        if (active) setTransactions(savedTransactions);
+      })
+      .catch((error) => {
+        if (active) setToast(getTransactionsApiErrorMessage(error));
+      });
+    return () => { active = false; };
+  }, [propertyId, setToast]);
 
   const rows = useMemo(
-    () => buildRows(period, transactions, purchases, expenses, includePurchases),
-    [period, transactions, purchases, expenses, includePurchases]
+    () => buildRows(period, transactions),
+    [period, transactions]
   );
   const totals = useMemo(
     () =>
@@ -127,11 +130,8 @@ export function ProfitLossPage({ transactions, purchases, expenses, setToast }: 
       </div>
 
       {filterOpen ? (
-        <form className="rounded-lg border border-line bg-white p-4 shadow-sm" onSubmit={(event: FormEvent) => event.preventDefault()}>
-          <label className="flex items-center gap-2 text-sm font-semibold">
-            <input type="checkbox" checked={includePurchases} onChange={(event) => setIncludePurchases(event.target.checked)} />
-            Include purchases as expenses
-          </label>
+        <form className="rounded-lg border border-line bg-white p-4 text-sm text-slate-500 shadow-sm" onSubmit={(event: FormEvent) => event.preventDefault()}>
+          Profit &amp; Loss uses posted MongoDB ledger entries. Voided entries and cash-settlement entries are excluded.
         </form>
       ) : null}
 
@@ -318,23 +318,19 @@ function Button({ children, onClick }: { children: React.ReactNode; onClick: () 
   );
 }
 
-function buildRows(period: ProfitLossPeriod, transactions: FinancialTransaction[], purchases: PurchaseLike[], expenses: ExpenseLike[], includePurchases: boolean) {
+function buildRows(period: ProfitLossPeriod, transactions: BackendFinancialTransaction[]) {
   const baseRows = period === "Monthly" ? monthlyBaseRows : period === "Year" ? yearBaseRows : [{ period: "Today", revenue: 0, expenses: 0, profit: 0, target: 0 }];
   const rows = baseRows.map((row) => ({ ...row }));
 
-  for (const expense of expenses) {
-    addAmount(rows, period, expense.date, "expenses", expense.amount);
-  }
-
-  if (includePurchases) {
-    for (const purchase of purchases) {
-      addAmount(rows, period, purchase.purchaseDate, "expenses", purchase.referenceAmount);
-    }
-  }
-
   for (const transaction of transactions) {
-    if (!isSessionRevenue(transaction)) continue;
-    addAmount(rows, period, transaction.date, "revenue", transaction.value);
+    if (transaction.status !== "posted") continue;
+    if (transaction.source_type === "invoice") {
+      addAmount(rows, period, transaction.transaction_date, "revenue", transaction.amount);
+    } else if (transaction.source_type === "credit_note") {
+      addAmount(rows, period, transaction.transaction_date, "revenue", -transaction.amount);
+    } else if (transaction.source_type === "purchase" || transaction.source_type === "expense") {
+      addAmount(rows, period, transaction.transaction_date, "expenses", transaction.amount);
+    }
   }
 
   return rows.map((row) => {
@@ -352,11 +348,6 @@ function addAmount(rows: ProfitLossRow[], period: ProfitLossPeriod, date: string
   if (!label) return;
   const row = rows.find((item) => item.period === label);
   if (row) row[key] += amount;
-}
-
-function isSessionRevenue(transaction: FinancialTransaction) {
-  const type = transaction.type.toLowerCase();
-  return !/^tran-\d+$/.test(transaction.id) && (type.includes("invoice") || type.includes("receive payment"));
 }
 
 function periodLabel(period: ProfitLossPeriod, date: string) {

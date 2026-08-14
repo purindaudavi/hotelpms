@@ -180,11 +180,14 @@ function RoomCard({
 }) {
   const unavailable = room.status === "Maintenance" || room.status === "Out of Order";
   const isOccupied = room.status === "Occupied";
+  const needsAttendant = !room.hkAttendant && (room.hkStatus === "Dirty" || room.hkStatus === "WIP");
   const action =
     isOccupied
       ? { label: "Guest In House", disabled: true, onClick: undefined }
       : unavailable
         ? { label: room.status, disabled: true, onClick: undefined }
+        : needsAttendant
+          ? { label: "Assign Attendant First", disabled: false, onClick: onAssign }
         : room.hkStatus === "Dirty"
           ? { label: "Start Cleaning", disabled: false, onClick: onStart }
           : room.hkStatus === "WIP"
