@@ -1,5 +1,5 @@
 export type PropertyDetails = {
-  hotelName: string; hotelType: string; hotelGuid: string; starCategory: string; numberOfRooms: string;
+  hotelName: string; pmsName: string; hotelType: string; hotelGuid: string; starCategory: string; numberOfRooms: string;
   onTrial: boolean; plan: string; description: string; address: string; city: string; zipCode: string;
   country: string; phone: string; email: string; website: string; checkInTime: string; checkOutTime: string;
   homeCurrency: string; languageCode: string; timezone: string; logoWidth: string; logoHeight: string; ibeLogoWidth: string;

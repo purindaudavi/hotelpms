@@ -10,12 +10,14 @@ import { readPropertyDetails } from "@/app/lib/property-repository";
 
 export type PropertyBrand = {
   hotelName: string;
+  pmsName: string;
   logoUrl: string;
 };
 
 export function usePropertyBrand(propertyId: string, fallbackName: string) {
   const [brand, setBrand] = useState<PropertyBrand>(() => ({
     hotelName: fallbackName,
+    pmsName: "StayPilot",
     logoUrl: ""
   }));
 
@@ -29,11 +31,14 @@ export function usePropertyBrand(propertyId: string, fallbackName: string) {
     const hotelName = propertyResult.status === "fulfilled"
       ? propertyResult.value.details.hotelName
       : cached.hotelName || fallbackName;
+    const pmsName = propertyResult.status === "fulfilled"
+      ? propertyResult.value.details.pmsName
+      : cached.pmsName || "StayPilot";
     const logoUrl = imagesResult.status === "fulfilled"
       ? imagesResult.value.find((image) => image.imageType === "logo")?.url || ""
       : "";
 
-    setBrand({ hotelName, logoUrl });
+    setBrand({ hotelName, pmsName, logoUrl });
   }, [fallbackName, propertyId]);
 
   useEffect(() => {

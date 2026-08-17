@@ -18,7 +18,6 @@ import {
   X
 } from "lucide-react";
 import {
-  appName,
   dateLabel,
   FinancialTransaction,
   getActiveTitle,
@@ -93,6 +92,11 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
       favicon.remove();
     };
   }, [propertyBrand.logoUrl]);
+
+  useEffect(() => {
+    const pmsName = propertyBrand.pmsName.trim() || "StayPilot";
+    document.title = /\bPMS$/i.test(pmsName) ? pmsName : `${pmsName} PMS`;
+  }, [propertyBrand.pmsName]);
 
   useEffect(() => {
     if (!toast) return;
@@ -175,7 +179,7 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
             <BrandLogo logoUrl={propertyBrand.logoUrl} hotelName={propertyBrand.hotelName} className="h-9 w-9 rounded-md" />
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold" title={propertyBrand.hotelName}>{propertyBrand.hotelName}</p>
-              <p className="text-xs text-slate-500">{appName}</p>
+              <p className="truncate text-xs text-slate-500" title={propertyBrand.pmsName}>{propertyBrand.pmsName}</p>
             </div>
             <button className="rounded-md p-1 text-slate-500 hover:bg-slate-100" aria-label="Property menu">
               <ChevronDown className="h-4 w-4" />

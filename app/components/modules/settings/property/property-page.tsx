@@ -25,7 +25,7 @@ const tabs = ["Property Info", "Property Image", "Meal Allocation", "Payment Gat
 type Tab = (typeof tabs)[number];
 
 export const initialProperty: PropertyDetails = {
-  hotelName: "Ronaka Airport Transit Hotel", hotelType: "Hotel", hotelGuid: "2fe1e67a-5dc0-486d-8496-34fcdb233cf7", starCategory: "3",
+  hotelName: "Ronaka Airport Transit Hotel", pmsName: "StayPilot", hotelType: "Hotel", hotelGuid: "2fe1e67a-5dc0-486d-8496-34fcdb233cf7", starCategory: "3",
   numberOfRooms: "14", onTrial: false, plan: "", description: "Welcome to Ronaka Airport Transit Hotel in Katunayake, Sri Lanka—your ideal haven for a restful stay just minutes from Bandaranaike International Airport.",
   address: "Ronaka hotel, no 09, airport junction, 18th mile post, Liyanagemulla, Seeduwa", city: "Katunayake", zipCode: "11450", country: "LK",
   phone: "+94703551340", email: "ronakahotel@gmail.com", website: "", checkInTime: "14:00", checkOutTime: "11:00", homeCurrency: "LKR", languageCode: "EN", timezone: "Asia/Colombo",

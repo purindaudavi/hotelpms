@@ -16,6 +16,7 @@ type ApiActor = {
 
 type ApiPropertyInfo = {
   hotel_name: string;
+  pms_name: string;
   hotel_type: string;
   hotel_guid: string;
   star_category: number;
@@ -242,6 +243,7 @@ export function notifyPropertyBrandChanged(propertyId: string) {
 function propertyInfoPayload(details: PropertyDetails) {
   return {
     hotel_name: details.hotelName,
+    pms_name: details.pmsName,
     hotel_type: details.hotelType,
     hotel_guid: details.hotelGuid,
     star_category: numberOrZero(details.starCategory),
@@ -279,6 +281,7 @@ function mapProperty(property: ApiProperty, fallback: PropertyDetails): Property
     details: {
       ...fallback,
       hotelName: info.hotel_name,
+      pmsName: info.pms_name || fallback.pmsName,
       hotelType: info.hotel_type,
       hotelGuid: info.hotel_guid,
       starCategory: String(info.star_category),

@@ -15,6 +15,7 @@ export function PropertyInfo({ value, onChange, editing }: { value: PropertyDeta
       <div className="grid gap-6 xl:grid-cols-[1fr_1fr_1fr]">
         <div className="space-y-5">
           <Input label="Hotel Name" value={value.hotelName} onChange={(v) => set("hotelName", v)} disabled={!editing} />
+          <Input label="PMS Display Name" value={value.pmsName} onChange={(v) => set("pmsName", v)} disabled={!editing} />
           <Input label="Hotel GUID" value={value.hotelGuid} onChange={(v) => set("hotelGuid", v)} disabled={!editing} />
           <Input label="Number of Rooms" value={value.numberOfRooms} disabled type="number" />
           <Input label="Plan" value={value.plan} onChange={(v) => set("plan", v)} disabled={!editing} />
