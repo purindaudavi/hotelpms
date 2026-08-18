@@ -45,6 +45,7 @@ import {
   rooms as seedRooms
 } from "@/app/data/pms-data";
 import { appendActivity, upsertRecord } from "@/app/lib/supabase-data";
+import { reservationStatusClass } from "@/app/lib/property-theme";
 import { DashboardPage as DashboardModulePage } from "@/app/components/modules/dashboard/dashboard-page";
 import { FrontDeskPage } from "@/app/components/modules/front-desk/front-desk-page";
 import { ReservationPage as ReservationModulePage } from "@/app/components/modules/reservation/reservation-page";
@@ -81,16 +82,6 @@ type ModuleProps = {
   transactions: FinancialTransaction[];
   setTransactions: Dispatch<SetStateAction<FinancialTransaction[]>>;
   setToast: (message: string) => void;
-};
-
-const statusClass: Record<ReservationStatus, string> = {
-  Confirmed: "bg-cyan-100 text-cyan-700",
-  Tentative: "bg-amber-100 text-amber-700",
-  "Checked-in": "bg-emerald-100 text-emerald-700",
-  "Checked-out": "bg-pink-100 text-pink-700",
-  Cancelled: "bg-slate-200 text-slate-600",
-  "No Show": "bg-stone-200 text-stone-700",
-  Blocked: "bg-fuchsia-100 text-fuchsia-700"
 };
 
 const housekeepingClass: Record<Room["housekeeping"], string> = {
@@ -207,7 +198,7 @@ function Badge({ children, className = "" }: { children: React.ReactNode; classN
 }
 
 function StatusBadge({ status }: { status: ReservationStatus }) {
-  return <Badge className={statusClass[status]}>{status}</Badge>;
+  return <Badge className={reservationStatusClass(status, "pill")}>{status}</Badge>;
 }
 
 function MetricCard({

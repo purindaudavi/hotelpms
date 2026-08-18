@@ -6,6 +6,17 @@
   color-scheme: light;
   --background: #f8fafc;
   --foreground: #14161a;
+  --property-accent: #3b82f6;
+  --reservation-confirmed: #10b981;
+  --reservation-tentative: #f59e0b;
+  --reservation-checked-out: #ef4444;
+  --reservation-checked-in: #06b6d4;
+  --reservation-cancelled: #6b7280;
+  --reservation-no-show: #78716c;
+  --reservation-no-show-surcharge: #57534e;
+  --reservation-blocked: #a855f7;
+  --reservation-out-of-order: #1f2937;
+  --reservation-invalid-card: #be185d;
 }
 
 * {
@@ -60,6 +71,46 @@ button:disabled {
 }
 
 .focus-ring {
-  @apply focus:outline-none focus:ring-2 focus:ring-ocean/30 focus:border-ocean;
+  @apply focus:outline-none focus:ring-2;
 }
 
+.focus-ring:focus {
+  border-color: var(--property-accent);
+  --tw-ring-color: color-mix(in srgb, var(--property-accent) 30%, transparent);
+}
+
+.property-accent-bg {
+  background-color: var(--property-accent);
+}
+
+.property-accent-text {
+  color: var(--property-accent);
+}
+
+.property-accent-border {
+  border-color: var(--property-accent);
+}
+
+.property-accent-soft {
+  background-color: color-mix(in srgb, var(--property-accent) 14%, white);
+}
+
+.reservation-status-pill {
+  background-color: var(--reservation-status-color);
+  color: white;
+}
+
+.reservation-status-dot {
+  background-color: var(--reservation-status-color);
+}
+
+.reservation-status-confirmed { --reservation-status-color: var(--reservation-confirmed); }
+.reservation-status-tentative { --reservation-status-color: var(--reservation-tentative); }
+.reservation-status-checked-out { --reservation-status-color: var(--reservation-checked-out); }
+.reservation-status-checked-in { --reservation-status-color: var(--reservation-checked-in); }
+.reservation-status-cancelled { --reservation-status-color: var(--reservation-cancelled); }
+.reservation-status-no-show { --reservation-status-color: var(--reservation-no-show); }
+.reservation-status-no-show-surcharge { --reservation-status-color: var(--reservation-no-show-surcharge); }
+.reservation-status-blocked { --reservation-status-color: var(--reservation-blocked); }
+.reservation-status-out-of-order { --reservation-status-color: var(--reservation-out-of-order); }
+.reservation-status-invalid-card { --reservation-status-color: var(--reservation-invalid-card); }

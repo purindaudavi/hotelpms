@@ -9,7 +9,6 @@ import {
   ChevronRight,
   CircleHelp,
   Languages,
-  LogOut,
   Menu,
   MessageCircle,
   PanelLeft,
@@ -39,6 +38,9 @@ import { roomTypeStorageKey } from "@/app/components/modules/rooms-rates/constan
 import { getRoomCatalog } from "@/app/lib/rooms-api";
 import { getReservations } from "@/app/lib/bookings-api";
 import { usePropertyBrand } from "@/app/components/hooks/use-property-brand";
+import { usePropertyTheme } from "@/app/components/hooks/use-property-theme";
+import { CurrentUserProfileDrawer } from "@/app/components/current-user-profile-drawer";
+import { currentSessionUser } from "@/app/lib/current-user";
 
 type WorkspaceProps = {
   propertyId: string;
@@ -53,6 +55,7 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
   const sidebarScrollKey = `staypilot:${propertyId}:sidebar-scroll`;
   const homeCurrency = readPropertyHomeCurrency(propertyId);
   const propertyBrand = usePropertyBrand(propertyId, property.name);
+  usePropertyTheme(propertyId);
   const sidebarScrollRef = useRef<HTMLElement>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [toast, setToast] = useState("");
@@ -65,6 +68,7 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
   const [roomList, setRoomList] = useLocalStorageState<Room[]>(roomKey, seedRooms, isRoomArray);
   const [transactions, setTransactions] = useLocalStorageState<FinancialTransaction[]>(transactionKey, seedTransactions, isTransactionArray);
   const [dataSource, setDataSource] = useState("connecting");
+  const [profileOpen, setProfileOpen] = useState(false);
   const [expanded, setExpanded] = useState(() => new Set(navigation.map((item) => item.title)));
 
   useEffect(() => {
@@ -200,7 +204,7 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
                   href={`/properties/${propertyId}/${group.path}`}
                   onClick={closeSidebarForNavigation}
                   className={`mb-1 flex h-10 items-center gap-3 rounded-md px-3 text-sm transition ${
-                    active ? "bg-slate-200/80 font-semibold text-ink" : "text-slate-600 hover:bg-white"
+                    active ? "property-accent-soft property-accent-text font-semibold" : "text-slate-600 hover:bg-white"
                   }`}
                 >
                   <Icon className="h-4 w-4" />
@@ -215,7 +219,7 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
                   type="button"
                   onClick={() => toggleGroup(group.title)}
                   className={`flex h-10 w-full items-center gap-3 rounded-md px-3 text-left text-sm transition ${
-                    active ? "bg-slate-200/80 font-semibold text-ink" : "text-slate-600 hover:bg-white"
+                    active ? "property-accent-soft property-accent-text font-semibold" : "text-slate-600 hover:bg-white"
                   }`}
                 >
                   <Icon className="h-4 w-4" />
@@ -233,7 +237,7 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
                           href={`/properties/${propertyId}/${item.path}`}
                           onClick={closeSidebarForNavigation}
                           className={`mb-1 flex h-9 items-center gap-3 rounded-md px-3 text-sm transition ${
-                            childActive ? "bg-slate-200/80 font-semibold text-ink" : "text-slate-600 hover:bg-white"
+                            childActive ? "property-accent-soft property-accent-text font-semibold" : "text-slate-600 hover:bg-white"
                           }`}
                         >
                           <ChildIcon className="h-4 w-4 shrink-0" />
@@ -249,16 +253,30 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
         </nav>
 
         <div className="border-t border-line bg-white/70 p-3">
-          <div className="flex items-center gap-3 rounded-lg px-2 py-2">
+          <button
+            type="button"
+            onClick={() => setProfileOpen(true)}
+            className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-ocean"
+            aria-label="Open Asiri Perera profile"
+          >
             <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-slate-200 font-semibold">AP</div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold">ASIRI PERERA</p>
-              <p className="truncate text-xs text-slate-500">asiri.business@example.com</p>
+              <p className="truncate text-sm font-semibold">{currentSessionUser.name}</p>
+              <p className="truncate text-xs text-slate-500">{currentSessionUser.email}</p>
             </div>
-            <LogOut className="h-4 w-4 text-slate-500" />
-          </div>
+            <ChevronRight className="h-4 w-4 text-slate-500" />
+          </button>
         </div>
       </aside>
+
+      <CurrentUserProfileDrawer
+        open={profileOpen}
+        onClose={() => setProfileOpen(false)}
+        propertyId={propertyId}
+        propertyName={propertyBrand.hotelName}
+        currency={homeCurrency}
+        cachedTransactions={transactions}
+      />
 
       <div className="lg:pl-[292px]">
         <header className="sticky top-0 z-20 flex h-[70px] items-center justify-between border-b border-line bg-white/95 px-4 backdrop-blur lg:px-6">
@@ -275,7 +293,7 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
             <div className="min-w-0">
               <h1 className="truncate text-xl font-semibold lg:text-2xl">{pageTitle}</h1>
               <div className="group relative mt-1 flex items-center gap-2">
-                <span className="inline-flex max-w-[min(55vw,420px)] items-center gap-1.5 rounded bg-cyan-100 px-2 py-0.5 text-xs font-semibold uppercase text-ocean">
+                <span className="property-accent-soft property-accent-text inline-flex max-w-[min(55vw,420px)] items-center gap-1.5 rounded px-2 py-0.5 text-xs font-semibold uppercase">
                   <BrandLogo logoUrl={propertyBrand.logoUrl} hotelName={propertyBrand.hotelName} className="h-4 w-4 rounded-sm" />
                   <span className="truncate">{propertyBrand.hotelName}</span>
                 </span>
@@ -330,7 +348,7 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
       <button
         type="button"
         onClick={() => setToast("Support message panel opened")}
-        className="fixed bottom-5 right-5 z-30 grid h-14 w-14 place-items-center rounded-full bg-violet text-white shadow-lg shadow-violet/30"
+        className="property-accent-bg fixed bottom-5 right-5 z-30 grid h-14 w-14 place-items-center rounded-full text-white shadow-lg"
         aria-label="Open support"
       >
         <MessageCircle className="h-6 w-6" />
@@ -373,7 +391,7 @@ function BrandLogo({ logoUrl, hotelName, className }: { logoUrl: string; hotelNa
   const showImage = Boolean(logoUrl) && failedUrl !== logoUrl;
 
   return (
-    <div className={`grid shrink-0 place-items-center overflow-hidden bg-cyan-50 text-ocean ${className}`}>
+    <div className={`property-accent-soft property-accent-text grid shrink-0 place-items-center overflow-hidden ${className}`}>
       {showImage ? (
         <img
           src={logoUrl}

@@ -2,9 +2,11 @@ import axios from "axios";
 import type {
   PropertyDetails,
   PropertyImageRecord,
-  MealAllocation
+  MealAllocation,
+  ThemeSettings
 } from "@/app/components/modules/settings/property/property-types";
 import { api, getApiErrorMessage } from "./api";
+import { DEFAULT_PROPERTY_THEME, normalizePropertyTheme } from "./property-theme";
 
 export const propertyBrandChangedEvent = "staypilot:property-brand-changed";
 
@@ -59,10 +61,32 @@ type ApiProperty = {
     physical_room_count: number;
     room_type_count: number;
   };
+  theme?: ApiPropertyTheme;
+};
+
+type ApiPropertyTheme = {
+  accent_color: string;
+  reservation_status_colors: {
+    confirmed: string;
+    tentative: string;
+    checked_out: string;
+    checked_in: string;
+    cancelled: string;
+    no_show: string;
+    no_show_surcharge: string;
+    blocked: string;
+    out_of_order: string;
+    invalid_card: string;
+  };
 };
 
 type PropertyResponse = {
   property: ApiProperty;
+};
+
+type PropertyThemeResponse = {
+  theme: ApiPropertyTheme;
+  version?: number;
 };
 
 type ApiPropertyImage = {
@@ -103,8 +127,31 @@ type MealAllocationResponse = { meal_allocation: ApiMealAllocation };
 
 export type PropertyRecord = {
   details: PropertyDetails;
+  theme: ThemeSettings;
   version: number;
 };
+
+export async function getPropertyTheme(propertyId: string) {
+  const response = await api.get<PropertyThemeResponse>(
+    `/properties/${encodeURIComponent(propertyId)}/theme`
+  );
+  return mapPropertyTheme(response.data.theme);
+}
+
+export async function updatePropertyThemeRecord(
+  propertyId: string,
+  theme: ThemeSettings,
+  version: number
+) {
+  const response = await api.patch<PropertyThemeResponse>(
+    `/properties/${encodeURIComponent(propertyId)}/theme`,
+    { version, theme: propertyThemePayload(theme) }
+  );
+  return {
+    theme: mapPropertyTheme(response.data.theme),
+    version: response.data.version ?? version + 1
+  };
+}
 
 export async function getPropertyRecord(
   propertyId: string,
@@ -278,6 +325,7 @@ function mapProperty(property: ApiProperty, fallback: PropertyDetails): Property
   const updatedBy = property.updated_by?.name || property.updated_by?.email || "System";
   return {
     version: property.version,
+    theme: property.theme ? mapPropertyTheme(property.theme) : normalizePropertyTheme(DEFAULT_PROPERTY_THEME),
     details: {
       ...fallback,
       hotelName: info.hotel_name,
@@ -316,6 +364,45 @@ function mapProperty(property: ApiProperty, fallback: PropertyDetails): Property
       longitude: info.longitude === null ? "" : String(info.longitude)
     }
   };
+}
+
+function propertyThemePayload(theme: ThemeSettings): ApiPropertyTheme {
+  const normalized = normalizePropertyTheme(theme);
+  return {
+    accent_color: normalized.accent,
+    reservation_status_colors: {
+      confirmed: normalized.statusColors["Confirmed Reservation"],
+      tentative: normalized.statusColors.Tentative,
+      checked_out: normalized.statusColors["Checked-out"],
+      checked_in: normalized.statusColors["Checked-in"],
+      cancelled: normalized.statusColors.Cancelled,
+      no_show: normalized.statusColors["No Show"],
+      no_show_surcharge: normalized.statusColors["No-Show (Surcharge)"],
+      blocked: normalized.statusColors.Block,
+      out_of_order: normalized.statusColors["OUT OF ORDER"],
+      invalid_card: normalized.statusColors.InvalidCC
+    }
+  };
+}
+
+function mapPropertyTheme(theme: ApiPropertyTheme): ThemeSettings {
+  return normalizePropertyTheme({
+    mode: "light",
+    autoDetect: false,
+    accent: theme.accent_color,
+    statusColors: {
+      "Confirmed Reservation": theme.reservation_status_colors.confirmed,
+      Tentative: theme.reservation_status_colors.tentative,
+      "Checked-out": theme.reservation_status_colors.checked_out,
+      "Checked-in": theme.reservation_status_colors.checked_in,
+      Cancelled: theme.reservation_status_colors.cancelled,
+      "No Show": theme.reservation_status_colors.no_show,
+      "No-Show (Surcharge)": theme.reservation_status_colors.no_show_surcharge,
+      Block: theme.reservation_status_colors.blocked,
+      "OUT OF ORDER": theme.reservation_status_colors.out_of_order,
+      InvalidCC: theme.reservation_status_colors.invalid_card
+    }
+  });
 }
 
 function mapPropertyImage(image: ApiPropertyImage): PropertyImageRecord {

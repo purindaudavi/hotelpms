@@ -1,5 +1,6 @@
 import { property, type Reservation, type ReservationStatus } from "@/app/data/pms-data";
 import { createUuid } from "@/app/lib/record-ids";
+import { reservationStatusClass } from "@/app/lib/property-theme";
 import type { ReservationFormState } from "./types";
 
 export function mergeReservations(reservations: Reservation[]) {
@@ -47,13 +48,7 @@ export function statusLabel(status: ReservationStatus) {
 }
 
 export function statusTone(status: ReservationStatus) {
-  if (status === "Confirmed") return "bg-cyan-100 text-cyan-700";
-  if (status === "Tentative") return "bg-yellow-100 text-yellow-700";
-  if (status === "Checked-in") return "bg-emerald-100 text-emerald-700";
-  if (status === "Checked-out") return "bg-pink-100 text-pink-700";
-  if (status === "Cancelled") return "bg-slate-200 text-slate-600";
-  if (status === "No Show") return "bg-stone-200 text-stone-700";
-  return "bg-fuchsia-100 text-fuchsia-700";
+  return reservationStatusClass(status);
 }
 
 export function searchReservation(booking: Reservation, query: string) {

@@ -9,15 +9,17 @@ import {
   getPropertyImages,
   getPropertyRecord,
   isPropertyNotFound,
-  updatePropertyInfoRecord
+  updatePropertyInfoRecord,
+  updatePropertyThemeRecord
 } from "@/app/lib/property-api";
+import { DEFAULT_PROPERTY_THEME, normalizePropertyTheme } from "@/app/lib/property-theme";
 import { PropertyInfo } from "./propertyinfo";
 import { PropertyImages } from "./propertyimage";
 import { MealAllocationTab } from "./mealallocation";
 import { PaymentGatewayTab } from "./paymentagateway";
 import { CurrencyTab } from "./currency";
 import { TaxesTab } from "./taxes";
-import { ThemeTab } from "./theme";
+import { ThemeTab } from "./theme-colors";
 import { HotelFeaturesTab } from "./hotel features";
 import type { CurrencyRecord, GatewayName, GatewaySettings, PropertyDetails, PropertyImageRecord, TaxRecord, ThemeSettings } from "./property-types";
 
@@ -42,8 +44,6 @@ const initialCurrencies: CurrencyRecord[] = [
   { id: "EUR", code: "EUR", name: "Euro", symbol: "€", hotelToCurrency: 0.0026, isDefault: false },
   { id: "GBP", code: "GBP", name: "British Pound Sterling", symbol: "£", hotelToCurrency: 0.0022, isDefault: false }
 ];
-const defaultTheme: ThemeSettings = { mode: "light", autoDetect: false, accent: "#3b82f6", statusColors: { "Confirmed Reservation": "#10b981", Tentative: "#f59e0b", "Checked-out": "#ef4444", "Checked-in": "#06b6d4", Cancelled: "#6b7280", "No Show": "#78716c", "No-Show (Surcharge)": "#57534e", Block: "#a855f7", "OUT OF ORDER": "#1f2937", InvalidCC: "#be185d" } };
-
 export function PropertySettingsPage({ propertyId, setToast }: { propertyId: string; setToast: (message: string) => void }) {
   const key = (suffix: string) => `staypilot:${propertyId}:property:${suffix}`;
   const [activeTab, setActiveTab] = useState<Tab>("Property Info");
@@ -61,7 +61,12 @@ export function PropertySettingsPage({ propertyId, setToast }: { propertyId: str
   const [currencies, setCurrencies] = useLocalStorageState<CurrencyRecord[]>(key("currencies"), () => readLocalStorageValue("staypilot.property.currencies", initialCurrencies));
   const [manualRates, setManualRates] = useLocalStorageState(key("manualRates"), () => readLocalStorageValue("staypilot.property.manualRates", false));
   const [taxes, setTaxes] = useLocalStorageState<TaxRecord[]>(key("taxes"), () => readLocalStorageValue("staypilot.property.taxes", []));
-  const [theme, setTheme] = useLocalStorageState<ThemeSettings>(key("theme"), () => readLocalStorageValue("staypilot.property.theme", defaultTheme));
+  const [theme, setTheme] = useLocalStorageState<ThemeSettings>(
+    key("theme"),
+    () => readLocalStorageValue("staypilot.property.theme", DEFAULT_PROPERTY_THEME),
+    undefined,
+    normalizePropertyTheme
+  );
   const [features, setFeatures] = useLocalStorageState<string[]>(key("features"), () => readLocalStorageValue("staypilot.property.features", ["24-hour security", "Air conditioning & heating", "Airport shuttle", "Breakfast", "CCTV", "Daily housekeeping", "Free parking", "Free Wifi", "Front Desk"]));
 
   useEffect(() => {
@@ -76,6 +81,7 @@ export function PropertySettingsPage({ propertyId, setToast }: { propertyId: str
       .then((record) => {
         if (cancelled) return;
         setDetails(record.details);
+        setTheme(record.theme);
         setPropertyVersion(record.version);
         setPropertyExists(true);
         writeLocalStorageValue(key("details"), record.details);
@@ -159,6 +165,24 @@ export function PropertySettingsPage({ propertyId, setToast }: { propertyId: str
     }
   }
 
+  async function saveTheme(nextTheme: ThemeSettings) {
+    setTheme(nextTheme);
+    setPropertyError("");
+    if (!propertyExists) {
+      setPropertyError("Create the property in MongoDB from Property Info before saving theme colors.");
+      return;
+    }
+
+    try {
+      const record = await updatePropertyThemeRecord(propertyId, nextTheme, propertyVersion);
+      setTheme(record.theme);
+      setPropertyVersion(record.version);
+      setToast("Theme colors saved to MongoDB and applied across the PMS");
+    } catch (error) {
+      setPropertyError(getPropertyApiErrorMessage(error));
+    }
+  }
+
   return (
     <main className="p-4 lg:p-6">
       <section className="rounded-xl border border-line bg-white p-5 shadow-sm lg:p-7">
@@ -182,7 +206,7 @@ export function PropertySettingsPage({ propertyId, setToast }: { propertyId: str
         {activeTab === "Payment Gateway" ? <PaymentGatewayTab gateways={gateways} setGateways={setGateways} setToast={setToast} /> : null}
         {activeTab === "Taxes" ? <TaxesTab taxes={taxes} setTaxes={setTaxes} setToast={setToast} /> : null}
         {activeTab === "Currency" ? <CurrencyTab currencies={currencies} setCurrencies={setCurrencies} manualRates={manualRates} setManualRates={setManualRates} hotelCurrency={details.homeCurrency} setToast={setToast} /> : null}
-        {activeTab === "Theme" ? <ThemeTab value={theme} setValue={setTheme} defaults={defaultTheme} setToast={setToast} /> : null}
+        {activeTab === "Theme" ? <ThemeTab value={theme} setValue={setTheme} defaults={DEFAULT_PROPERTY_THEME} onSave={saveTheme} /> : null}
         {activeTab === "Hotel Features" ? <HotelFeaturesTab selected={features} setSelected={setFeatures} editing={editing} /> : null}
       </section>
     </main>
