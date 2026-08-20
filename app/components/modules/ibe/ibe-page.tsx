@@ -1445,7 +1445,7 @@ function SmartPricingTab({
       <div className="mb-7 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="text-2xl font-semibold">Smart Pricing</h2>
-          <p className="mt-1 text-sm text-slate-500">Session-only pricing rules for IBE rates. Supabase can store these rules later.</p>
+          <p className="mt-1 text-sm text-slate-500">Session-only pricing rules for IBE rates. These can move to the MongoDB backend later.</p>
         </div>
         <label className="inline-flex items-center gap-3 rounded-md border border-line px-4 py-3 text-sm font-semibold">
           <input

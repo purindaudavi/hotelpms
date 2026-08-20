@@ -13,14 +13,12 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { appName } from "@/app/data/pms-data";
-import { createClient } from "@/app/utils/supabase/client";
 import { LoginShowcase } from "./login-showcase";
 
 const rememberedEmailKey = "staypilot-remembered-email";
 
 export default function LoginPage() {
   const router = useRouter();
-  const supabase = createClient();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
@@ -48,31 +46,9 @@ export default function LoginPage() {
       return;
     }
 
-    setLoading(true);
-
-    const normalizedEmail = email.trim();
-    const { error } = await supabase.auth.signInWithPassword({
-      email: normalizedEmail,
-      password,
-    });
-
-    if (error) {
-      setMessage(error.message);
-      setLoading(false);
-      return;
-    }
-
-    if (rememberMe) {
-      window.localStorage.setItem(rememberedEmailKey, normalizedEmail);
-    } else {
-      window.localStorage.removeItem(rememberedEmailKey);
-    }
-
-    window.localStorage.setItem(
-      "staypilot-session",
-      JSON.stringify({ email: normalizedEmail, mode: "supabase" }),
+    setMessage(
+      "Sign-in is temporarily unavailable while backend authentication is being configured. Use the demo workspace for development.",
     );
-    router.push("/properties/demo/dashboard");
   }
 
   function openDemoWorkspace() {

@@ -44,7 +44,6 @@ import {
   Room,
   rooms as seedRooms
 } from "@/app/data/pms-data";
-import { appendActivity, upsertRecord } from "@/app/lib/supabase-data";
 import { reservationStatusClass } from "@/app/lib/property-theme";
 import { DashboardPage as DashboardModulePage } from "@/app/components/modules/dashboard/dashboard-page";
 import { FrontDeskPage } from "@/app/components/modules/front-desk/front-desk-page";
@@ -432,8 +431,6 @@ function AddReservationModal({
       total: type.baseRate,
       paid: 0
     };
-    await upsertRecord(propertyId, "reservations", booking);
-    await appendActivity(propertyId, `Reservation ${booking.resNo} created for ${booking.guest}`);
     setSaving(false);
     onSave(booking);
   }
@@ -634,7 +631,6 @@ function HousekeepingBoardPage({ propertyId, roomList, setRoomList, setToast }: 
   async function updateRoom(room: Room, housekeeping: Room["housekeeping"]) {
     const updated = { ...room, housekeeping };
     setRoomList((current) => current.map((item) => (item.id === room.id ? updated : item)));
-    await upsertRecord(propertyId, "rooms", updated);
     setToast(`Room ${room.code} marked ${housekeeping}`);
   }
 

@@ -22,7 +22,7 @@ This document is a snapshot, not live access to the repository. ChatGPT cannot o
 - Demo hotel currency: `LKR`
 - Seeded hotel room count: `14`
 - Seeded PMS system/business date: `2026-06-18`
-- Main objective: reproduce and improve HotelMate-style hotel management screens, make their client-side interactions work, and later replace prototype persistence with a proper Supabase backend.
+- Main objective: reproduce and improve HotelMate-style hotel management screens, make their interactions work, and connect production data to the MongoDB backend.
 
 The developer is still learning PMS concepts. Explain hotel terminology and workflows in plain language before assuming domain knowledge.
 
@@ -31,7 +31,7 @@ The developer is still learning PMS concepts. Explain hotel terminology and work
 - Keep the UI close to the supplied reference screenshots.
 - Interactions should work in the browser, not only look correct.
 - Prototype data should remain available while navigating between modules in the same browser session.
-- Supabase will be expanded later; do not pretend session-only behavior is production persistence.
+- MongoDB-backed APIs are authoritative where integrated; do not pretend browser-only fallback behavior is production persistence.
 - Keep TypeScript/React code readable and divided into identifiable sections/components.
 - Preserve existing work when changing a file; the worktree may contain user changes.
 - Clearly distinguish complete behavior, partial behavior, and visual/toast-only simulation.
@@ -46,8 +46,8 @@ The developer is still learning PMS concepts. Explain hotel terminology and work
 - Tailwind CSS `3.4`
 - Lucide React icons
 - Recharts for dashboard charts
-- Supabase JS `2.x` for authentication and a flexible JSON record table
-- Client-heavy architecture using shared React state and property-scoped browser `localStorage`, with selective Supabase JSON-record synchronization
+- Axios for calls to the Node/Express API backed by MongoDB
+- Client-heavy architecture using shared React state and property-scoped browser `localStorage` as a cache/fallback around backend APIs
 - EmailJS browser client for prototype reservation confirmation emails
 
 Useful commands from the repository root:
@@ -66,14 +66,14 @@ There is no automated test script currently configured in `package.json`.
 ## Application entry and routing
 
 - `/` redirects to `/login`.
-- `/login` contains Supabase email/password sign-in plus an **Open demo workspace** option.
+- `/login` currently provides an **Open demo workspace** option; production sign-in is disabled until backend authentication is configured.
 - Main property routes use `/properties/{propertyId}/{module-path}`.
 - The catch-all property route is implemented in `app/properties/[id]/[[...slug]]/page.tsx`.
 - `app/components/app-shell.tsx` renders the sidebar, header, global toast, shared state, and selected module.
 - `app/components/module-pages.tsx` chooses the module component based on the URL path.
 - Navigation definitions and the main seed records live in `app/data/pms-data.ts`.
 
-Important authentication limitation: the login page can call Supabase Auth, but property routes do not currently enforce a server-side session or route guard. Opening a property URL directly is not securely protected. The local `staypilot-session` value is only a browser marker, not authorization.
+Important authentication limitation: property routes do not currently enforce a server-side session or route guard. Opening a property URL directly is not securely protected. The local `staypilot-session` value is only a browser marker, not authorization.
 
 ---
 
@@ -97,7 +97,7 @@ staypilot:{propertyId}:transactions
 
 These values now use the reusable local-storage implementation in `app/components/hooks/use-local-storage-state.ts`. The old `useSessionState` module is a compatibility re-export, so existing modules receive localStorage persistence without duplicating direct storage calls. Valid legacy sessionStorage values are migrated once when no local value exists. Shared reservation, room and transaction arrays use runtime validators and fall back to seed state when JSON is invalid.
 
-`localStorage` survives navigation, refreshes and browser restarts on the same browser profile. It is still not a database, does not provide cross-device synchronization or safe concurrent writes, and should later be replaced by Supabase repositories.
+`localStorage` survives navigation, refreshes and browser restarts on the same browser profile. It is still not a database and does not provide cross-device synchronization or safe concurrent writes. Production features should use the MongoDB-backed repositories.
 
 ### Module-specific state
 
@@ -115,42 +115,15 @@ staypilot:{propertyId}:ibe:...
 
 Property settings, settings email templates, employees, Front Desk rate plans and reservation detail state now use property-scoped localStorage keys. Older unscoped settings values are used as one-time migration fallbacks.
 
-### Supabase
+### MongoDB backend
 
-Environment variable names expected by the browser client:
-
-```text
-NEXT_PUBLIC_SUPABASE_URL
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
-```
-
-Do not place real keys or passwords in this context file.
-
-The current database design is a generic JSON record store:
+The browser client connects to the Node/Express backend with:
 
 ```text
-public.staypilot_records
-- id
-- property_id
-- record_type
-- payload jsonb
-- created_at
-- updated_at
+NEXT_PUBLIC_API_URL=http://localhost:3500/api
 ```
 
-Supported record types include reservations, rooms, housekeeping, transactions, POS orders, activity logs, and settings. The SQL is in `supabase/schema.sql`.
-
-Current Supabase integration is selective:
-
-- The app shell attempts to load **reservations** and **rooms** from Supabase only when corresponding session state does not already exist.
-- Reservation creation/update in major reservation screens attempts a generic Supabase upsert.
-- Some room changes attempt an upsert.
-- Activity messages can be appended as generic records.
-- There is no general delete helper, so some UI deletes remove only client/session data.
-- Transactions are initialized from seed/session state and are not loaded from Supabase by the shell.
-- Most module-specific entities are not stored in Supabase.
-
-The current schema is useful for prototyping but not a production PMS relational model. It lacks proper foreign keys, booking-room-night allocation tables, folios, charges, payments, users/roles, audit immutability, and transactional concurrency controls.
+The app shell loads reservations and rooms from the backend and labels the live source as MongoDB. Feature repositories under `app/lib/*-api.ts` handle the other integrated modules. Browser storage remains a cache or prototype fallback for screens that have not yet been migrated.
 
 ---
 
@@ -292,7 +265,7 @@ Known important limitations:
 - The day-use grid shows 24 hours, but reservations contain dates rather than arrival/departure times. A same-day booking can repeat across all hourly cells.
 - Grid/list toggle controls do not currently provide genuinely different views.
 - Pagination controls are incomplete.
-- Reservation deletion is local/session-only and does not delete its Supabase record.
+- Reservation deletion should use the booking API; any remaining prototype-only delete is local to that screen.
 - Some detail drawer actions only display toast messages.
 
 #### Reservation editor fields
@@ -320,7 +293,7 @@ Subpages:
 - Travel Agents
 - Guest Profile
 
-Bookings can be searched, filtered, exported, created, edited, checked in, and checked out. The booking screen attempts Supabase upserts and appends activity records. Business blocks, events, cross-book links, travel agents, and guest profiles are primarily session-backed. Movement pages export CSV files.
+Bookings can be searched, filtered, exported, created, edited, checked in, and checked out through the MongoDB-backed booking API. Movement pages export CSV files.
 
 Reservations created here update the shared reservation array, so they can appear in other shared-reservation screens. Several booking-detail operations and attachment/payment helpers remain simplified.
 
@@ -350,7 +323,7 @@ Subpages:
 - Housekeeping Board
 - Information
 
-Tracks room cleaning status, attendants, assignments, activity records, and a day-end workflow. Status changes also update the shared room list, so other screens can see the new housekeeping status. Most housekeeping-specific records are session-only and are not written through the generic Supabase layer.
+Tracks room cleaning status, attendants, assignments, activity records, and a day-end workflow through the MongoDB-backed housekeeping API. Status changes also update the shared room list, so other screens can see the new housekeeping status.
 
 Maturity: **connected session prototype**.
 
@@ -366,7 +339,7 @@ Subpages:
 
 Supports outlets, categories, menu items, cart lines, order creation, settlement, and kitchen/bar ticket status progression. Settled POS orders add a `POS Sale` to the shared transactions array, which affects financial/dashboard views in the same session.
 
-There is no real payment processor, receipt printer, kitchen display server, tax engine, stock deduction, or Supabase order persistence.
+There is no real payment processor, receipt printer, kitchen display server, tax engine, or stock deduction.
 
 Maturity: **connected session prototype**.
 
@@ -511,11 +484,11 @@ Downloads a CSV template and reads selected CSV text to build a row count/payloa
 
 #### Activity Logs
 
-Has username/activity/platform/date filters and CSV export over seeded rows. It is not currently connected to the generic Supabase activity records written by other modules.
+Has username/activity/platform/date filters and CSV export over seeded rows. It is not yet fully connected to backend audit records from every module.
 
 #### Employee
 
-Search plus view/create/edit/delete employee records in browser state. No Supabase persistence, payroll, scheduling, or user-account link exists.
+Search plus view/create/edit/delete employee records in browser state. No backend persistence, payroll, scheduling, or user-account link exists yet.
 
 Maturity: primarily **session prototypes**.
 
@@ -545,14 +518,14 @@ Maturity: primarily **session prototypes**.
 - Channel Manager sync does not contact OTA APIs.
 - IBE configuration is not connected to a public booking engine.
 - Payment gateway configuration is not connected to payment SDKs.
-- Activity Logs UI does not read the generic Supabase activity records.
-- Client-side deletes generally do not delete corresponding generic Supabase records.
+- Activity Logs UI does not yet read all backend audit records.
+- Some prototype-only client-side deletes do not yet call backend delete routes.
 
 ---
 
 ## Highest-priority production gaps
 
-1. Design a relational Supabase/Postgres schema instead of one generic JSON table.
+1. Continue migrating prototype-only browser state to validated MongoDB-backed APIs.
 2. Enforce authentication, property membership, and role/permission checks server-side.
 3. Use one authoritative property/business date across all modules.
 4. Remove separate fake reservation datasets or clearly isolate demo mode.
@@ -577,9 +550,9 @@ app/data/pms-data.ts
 app/components/app-shell.tsx
 app/components/module-pages.tsx
 app/components/hooks/use-session-state.ts
-app/lib/supabase-data.ts
-app/utils/supabase/client.ts
-supabase/schema.sql
+app/lib/api.ts
+app/lib/bookings-api.ts
+app/lib/rooms-api.ts
 
 app/components/modules/dashboard/
 app/components/modules/front-desk/
