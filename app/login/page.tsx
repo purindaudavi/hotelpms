@@ -1,169 +1,276 @@
 "use client";
 
-import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { FormEvent, useState } from "react";
-import { ArrowRight, BedDouble, Building2, LockKeyhole, Mail, ShieldCheck } from "lucide-react";
+import { FormEvent, useEffect, useState } from "react";
+import {
+  BedDouble,
+  Building2,
+  Eye,
+  EyeOff,
+  LockKeyhole,
+  Mail,
+  Monitor,
+  ShieldCheck,
+} from "lucide-react";
 import { appName } from "@/app/data/pms-data";
 import { createClient } from "@/app/utils/supabase/client";
+import { LoginShowcase } from "./login-showcase";
+
+const rememberedEmailKey = "staypilot-remembered-email";
 
 export default function LoginPage() {
   const router = useRouter();
+  const supabase = createClient();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [message, setMessage] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+
+  const brandName = appName.replace(/\s+PMS$/i, "");
+
+  useEffect(() => {
+    const rememberedEmail = window.localStorage.getItem(rememberedEmailKey);
+
+    if (rememberedEmail) {
+      setEmail(rememberedEmail);
+      setRememberMe(true);
+    }
+  }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage("");
 
-    if (!email || !password) {
-      setMessage("Enter your email and password.");
+    if (!email.trim() || !password) {
+      setMessage("Enter your email address and password.");
       return;
     }
 
     setLoading(true);
-    try {
-      const supabase = createClient();
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
 
-      if (error) {
-        setMessage("Supabase Auth did not accept those details. You can still open the demo workspace.");
-        return;
-      }
+    const normalizedEmail = email.trim();
+    const { error } = await supabase.auth.signInWithPassword({
+      email: normalizedEmail,
+      password,
+    });
 
-      window.localStorage.setItem("staypilot-session", JSON.stringify({ email, mode: "supabase" }));
-      router.push("/properties/demo/dashboard");
-    } catch {
-      setMessage("Supabase is not reachable from this browser. You can still open the demo workspace.");
-    } finally {
+    if (error) {
+      setMessage(error.message);
       setLoading(false);
+      return;
     }
-  }
 
-  function openDemo() {
-    window.localStorage.setItem("staypilot-session", JSON.stringify({ email: "demo@staypilot.local", mode: "demo" }));
+    if (rememberMe) {
+      window.localStorage.setItem(rememberedEmailKey, normalizedEmail);
+    } else {
+      window.localStorage.removeItem(rememberedEmailKey);
+    }
+
+    window.localStorage.setItem(
+      "staypilot-session",
+      JSON.stringify({ email: normalizedEmail, mode: "supabase" }),
+    );
     router.push("/properties/demo/dashboard");
   }
 
+  function openDemoWorkspace() {
+    window.localStorage.setItem(
+      "staypilot-session",
+      JSON.stringify({ email: "demo@staypilot.local", mode: "demo" }),
+    );
+    router.push("/properties/demo/dashboard");
+  }
+
+  function handleForgotPassword() {
+    setMessage(
+      "Password reset is not configured yet. Contact your property administrator.",
+    );
+  }
+
   return (
-    <main className="min-h-screen bg-[#f6f8fb] text-ink">
-      <div className="grid min-h-screen lg:grid-cols-[1.05fr_0.95fr]">
-        <section className="relative hidden overflow-hidden bg-ink lg:block">
-          <Image
-            src="/assets/direct-bookings.jpg"
-            alt="Direct booking promotion"
-            fill
-            priority
-            sizes="50vw"
-            className="object-cover opacity-55"
-          />
-          <div className="absolute inset-0 bg-[linear-gradient(120deg,rgba(20,22,26,0.92),rgba(20,22,26,0.46))]" />
-          <div className="relative z-10 flex h-full flex-col justify-between p-12 text-white">
-            <div className="flex items-center gap-3">
-              <div className="grid h-11 w-11 place-items-center rounded-lg bg-white text-ink">
-                <BedDouble className="h-6 w-6" />
-              </div>
-              <div>
-                <p className="text-xl font-semibold">{appName}</p>
-                <p className="text-sm text-white/70">Cloud PMS workspace</p>
-              </div>
-            </div>
-            <div className="max-w-xl">
-              <p className="mb-4 inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-sm text-white/85">
-                <ShieldCheck className="h-4 w-4" />
-                Front desk, bookings, housekeeping, financials, and channel operations
+    <main className="grid min-h-screen bg-[#f7f9fc] lg:grid-cols-[minmax(0,1.08fr)_minmax(500px,0.92fr)]">
+      <section className="relative hidden overflow-hidden bg-[#02070c] px-[clamp(28px,3.1vw,54px)] py-10 text-white lg:flex lg:items-center">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_45%_64%,rgba(0,119,255,0.2),transparent_45%),radial-gradient(circle_at_78%_20%,rgba(0,196,255,0.07),transparent_35%)]" />
+        <div className="pointer-events-none absolute inset-0 opacity-[0.045] [background-image:linear-gradient(rgba(255,255,255,0.2)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.2)_1px,transparent_1px)] [background-size:46px_46px]" />
+
+        <div className="relative z-10 mx-auto w-full max-w-[815px]">
+          <div className="flex items-center gap-4">
+            <span className="grid size-14 place-items-center rounded-xl border border-white/20 bg-white/[0.025] shadow-[0_10px_30px_rgba(0,119,255,0.12)]">
+              <BedDouble className="size-8 text-[#0086ff]" strokeWidth={1.8} />
+            </span>
+            <div>
+              <p className="text-[28px] font-bold leading-none tracking-[-0.04em]">
+                {brandName}
               </p>
-              <h1 className="text-5xl font-semibold leading-tight">Run daily hotel operations from one focused console.</h1>
-              <div className="mt-8 grid grid-cols-3 gap-3 text-sm">
-                {["Live room grid", "Direct bookings", "Financial control"].map((item) => (
-                  <div key={item} className="rounded-lg border border-white/15 bg-white/10 p-4">
-                    {item}
-                  </div>
-                ))}
-              </div>
+              <p className="mt-2 text-sm text-slate-400">
+                Cloud Property Management System
+              </p>
             </div>
           </div>
-        </section>
 
-        <section className="flex min-h-screen items-center justify-center px-5 py-10">
-          <div className="w-full max-w-md">
-            <div className="mb-8 flex items-center gap-3 lg:hidden">
-              <div className="grid h-11 w-11 place-items-center rounded-lg bg-ink text-white">
-                <BedDouble className="h-6 w-6" />
-              </div>
-              <div>
-                <p className="text-xl font-semibold">{appName}</p>
-                <p className="text-sm text-slate-500">Cloud PMS workspace</p>
-              </div>
-            </div>
+          <h1 className="mt-8 max-w-[670px] text-[clamp(36px,3vw,51px)] font-bold leading-[1.08] tracking-[-0.045em]">
+            Everything your property
+            <br />
+            needs, in <span className="text-[#087cff]">one workspace.</span>
+          </h1>
+          <p className="mt-4 max-w-[590px] text-[clamp(15px,1.15vw,19px)] leading-relaxed text-slate-400">
+            Manage reservations, rooms, rates, availability, guests, invoices
+            and daily hotel operations with clarity.
+          </p>
 
-            <div className="rounded-lg border border-line bg-white p-6 shadow-panel">
-              <div className="mb-6">
-                <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-lg bg-cyan-50 text-ocean">
-                  <Building2 className="h-6 w-6" />
-                </div>
-                <h2 className="text-2xl font-semibold">Sign in</h2>
-                <p className="mt-1 text-sm text-slate-500">Access your property workspace.</p>
-              </div>
+          <LoginShowcase />
 
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <label className="block">
-                  <span className="mb-1 block text-sm font-medium text-slate-700">Email</span>
-                  <span className="relative block">
-                    <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                    <input
-                      value={email}
-                      onChange={(event) => setEmail(event.target.value)}
-                      type="email"
-                      autoComplete="email"
-                      className="focus-ring h-11 w-full rounded-md border border-line bg-white pl-10 pr-3 text-sm"
-                      placeholder="name@property.com"
-                    />
-                  </span>
-                </label>
-
-                <label className="block">
-                  <span className="mb-1 block text-sm font-medium text-slate-700">Password</span>
-                  <span className="relative block">
-                    <LockKeyhole className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                    <input
-                      value={password}
-                      onChange={(event) => setPassword(event.target.value)}
-                      type="password"
-                      autoComplete="current-password"
-                      className="focus-ring h-11 w-full rounded-md border border-line bg-white pl-10 pr-3 text-sm"
-                      placeholder="Your password"
-                    />
-                  </span>
-                </label>
-
-                {message ? (
-                  <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">{message}</div>
-                ) : null}
-
-                <button
-                  disabled={loading}
-                  className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-ink px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60"
-                >
-                  {loading ? "Checking..." : "Sign in"}
-                  <ArrowRight className="h-4 w-4" />
-                </button>
-              </form>
-
-              <button
-                type="button"
-                onClick={openDemo}
-                className="mt-3 inline-flex h-11 w-full items-center justify-center gap-2 rounded-md border border-line bg-white px-4 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
+          <div className="mt-5 grid grid-cols-3 gap-4">
+            {[
+              ["bg-[#087cff]", "Live operations"],
+              ["bg-emerald-400", "Rates & inventory"],
+              ["bg-orange-400", "Channel-ready workflows"],
+            ].map(([dotClass, label]) => (
+              <div
+                className="flex min-w-0 items-center justify-center gap-3 rounded-xl border border-white/15 bg-white/[0.025] px-3 py-3 text-center text-sm font-medium text-slate-200"
+                key={label}
               >
-                Open demo workspace
-                <ArrowRight className="h-4 w-4" />
+                <span className={`size-2.5 shrink-0 rounded-full ${dotClass}`} />
+                <span>{label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="relative flex min-h-screen items-center justify-center overflow-hidden px-5 py-10 sm:px-8 lg:px-10">
+        <div className="pointer-events-none absolute -left-24 top-[-120px] size-[380px] rounded-full bg-cyan-100/45 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-40 -right-28 size-[460px] rounded-full bg-blue-100/40 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-24 -right-24 size-[390px] rotate-[-8deg] opacity-30 [background-image:repeating-linear-gradient(135deg,rgba(52,114,210,0.2)_0,rgba(52,114,210,0.2)_1px,transparent_1px,transparent_15px)]" />
+
+        <div className="relative z-10 w-full max-w-[515px] rounded-2xl border border-slate-200/80 bg-white p-7 shadow-[0_24px_70px_rgba(15,23,42,0.13)] sm:p-10 lg:p-[42px]">
+          <div className="mb-8 flex items-center gap-3 lg:hidden">
+            <span className="grid size-11 place-items-center rounded-xl bg-cyan-50">
+              <BedDouble className="size-6 text-blue-600" />
+            </span>
+            <div>
+              <p className="text-xl font-bold tracking-tight text-slate-950">
+                {brandName}
+              </p>
+              <p className="text-xs text-slate-500">Property Management System</p>
+            </div>
+          </div>
+
+          <span className="grid size-[70px] place-items-center rounded-xl bg-cyan-100/80">
+            <Building2 className="size-9 text-[#087cff]" strokeWidth={1.8} />
+          </span>
+
+          <h2 className="mt-6 text-[35px] font-bold leading-none tracking-[-0.04em] text-[#071635]">
+            Welcome back
+          </h2>
+          <p className="mt-3 text-[15px] text-slate-500">
+            Sign in to access your property workspace.
+          </p>
+
+          <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
+            <label className="block">
+              <span className="mb-2 block text-sm font-semibold text-slate-600">
+                Email address
+              </span>
+              <span className="flex h-[50px] items-center rounded-lg border border-slate-300 bg-white px-4 transition focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-100">
+                <Mail className="mr-3 size-[18px] shrink-0 text-slate-400" />
+                <input
+                  autoComplete="email"
+                  className="h-full min-w-0 flex-1 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="name@property.com"
+                  type="email"
+                  value={email}
+                />
+              </span>
+            </label>
+
+            <label className="block">
+              <span className="mb-2 block text-sm font-semibold text-slate-600">
+                Password
+              </span>
+              <span className="flex h-[50px] items-center rounded-lg border border-slate-300 bg-white px-4 transition focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-100">
+                <LockKeyhole className="mr-3 size-[18px] shrink-0 text-slate-400" />
+                <input
+                  autoComplete="current-password"
+                  className="h-full min-w-0 flex-1 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="Enter your password"
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                />
+                <button
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  className="ml-2 rounded-md p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                  onClick={() => setShowPassword((current) => !current)}
+                  type="button"
+                >
+                  {showPassword ? (
+                    <EyeOff className="size-[18px]" />
+                  ) : (
+                    <Eye className="size-[18px]" />
+                  )}
+                </button>
+              </span>
+            </label>
+
+            <div className="flex items-center justify-between gap-4 text-sm">
+              <label className="flex cursor-pointer items-center gap-2.5 text-slate-500">
+                <input
+                  checked={rememberMe}
+                  className="size-5 rounded border-slate-300 accent-blue-600"
+                  onChange={(event) => setRememberMe(event.target.checked)}
+                  type="checkbox"
+                />
+                Remember me
+              </label>
+              <button
+                className="font-medium text-blue-600 transition hover:text-blue-800 hover:underline"
+                onClick={handleForgotPassword}
+                type="button"
+              >
+                Forgot password?
               </button>
             </div>
+
+            {message ? (
+              <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-800">
+                {message}
+              </p>
+            ) : null}
+
+            <button
+              className="flex h-[50px] w-full items-center justify-center rounded-lg bg-gradient-to-r from-[#0868ef] to-[#087cff] text-sm font-semibold text-white shadow-[0_10px_25px_rgba(8,124,255,0.23)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-65"
+              disabled={loading}
+              type="submit"
+            >
+              {loading ? "Signing in..." : "Sign in"}
+            </button>
+          </form>
+
+          <div className="my-6 flex items-center gap-4 text-xs text-slate-400">
+            <span className="h-px flex-1 bg-slate-200" />
+            <span>or</span>
+            <span className="h-px flex-1 bg-slate-200" />
           </div>
-        </section>
-      </div>
+
+          <button
+            className="flex h-[50px] w-full items-center justify-center gap-2.5 rounded-lg border border-slate-300 bg-white text-sm font-semibold text-[#102044] transition hover:border-blue-300 hover:bg-blue-50/50"
+            onClick={openDemoWorkspace}
+            type="button"
+          >
+            <Monitor className="size-[18px]" />
+            Explore demo workspace
+          </button>
+
+          <p className="mt-7 flex items-center justify-center gap-2 text-xs text-slate-500">
+            <ShieldCheck className="size-4" />
+            Secure access <span aria-hidden="true">•</span> Activity audited
+          </p>
+        </div>
+      </section>
     </main>
   );
 }
