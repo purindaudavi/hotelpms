@@ -45,9 +45,15 @@ function MetricCard({
         <span className={`grid size-10 place-items-center rounded-[10px] border border-white/10 bg-[#07131f] ${accentClasses}`}>
           <Icon size={21} strokeWidth={2} />
         </span>
-        <strong className={`text-[clamp(18px,2vw,31px)] font-bold tracking-tight ${accentClasses}`}>
-          {value}
-        </strong>
+        <strong
+  className={`font-bold tracking-tight ${accentClasses} ${
+    title === "Revenue"
+      ? "text-[17px]"
+      : "text-[clamp(18px,2vw,31px)]"
+  }`}
+>
+  {value}
+</strong>
       </div>
       <p className="mt-3 text-[13px] font-semibold text-white">{title}</p>
       <p className={`mt-1 text-[11px] ${accent === "green" ? "text-[#45e184]" : "text-slate-400"}`}>
