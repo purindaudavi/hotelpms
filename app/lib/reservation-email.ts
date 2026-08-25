@@ -163,7 +163,32 @@ function buildPayload(booking: Reservation, category: EmailCategory, options: Em
     }
   };
 
-  return payloads[category];
+  return {
+    ...payloads[category],
+    property_id: booking.propertyId || "demo",
+    template_variables: {
+      guestName: name,
+      hotelName: hotel.hotelName,
+      hotelPhone: hotel.phone,
+      reservationNo: booking.resNo,
+      bookingSource: booking.travelAgentName || booking.bookingSource || booking.source || "Direct",
+      payment,
+      checkInDate: booking.checkIn,
+      checkOutDate: booking.checkOut,
+      nights: String(nights),
+      roomsCount: rooms,
+      totalAmount: booking.total.toFixed(2),
+      currency,
+      guestEmail: to,
+      guestCountry: booking.country || "",
+      specialRequests: specialRequest,
+      timeLocation: `${hotel.checkInTime || "Check-in time unavailable"} - ${hotel.address}`,
+      wifiName: "Contact Front Desk",
+      wifiPassword: "Provided at check-in",
+      subject: options.subject?.trim() || "General Information",
+      message: options.message?.trim() || ""
+    }
+  };
 }
 
 function roomSummary(booking: Reservation) {
