@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Bell,
@@ -40,7 +41,16 @@ import { getReservations } from "@/app/lib/bookings-api";
 import { usePropertyBrand } from "@/app/components/hooks/use-property-brand";
 import { usePropertyTheme } from "@/app/components/hooks/use-property-theme";
 import { CurrentUserProfileDrawer } from "@/app/components/current-user-profile-drawer";
-import { currentSessionUser } from "@/app/lib/current-user";
+import { getAuthenticatedUser, logoutUser } from "@/app/lib/auth-api";
+import {
+  clearAuthSession,
+  currentSessionUser,
+  getUserInitials,
+  loadCurrentSessionUser,
+  readAccessToken,
+  readRefreshToken,
+  storeCurrentSessionUser
+} from "@/app/lib/current-user";
 
 type WorkspaceProps = {
   propertyId: string;
@@ -48,6 +58,7 @@ type WorkspaceProps = {
 };
 
 export function Workspace({ propertyId, slug }: WorkspaceProps) {
+  const router = useRouter();
   const activePath = slug.join("/") || "dashboard";
   const reservationKey = reservationStorageKey(propertyId);
   const roomKey = `staypilot:${propertyId}:rooms`;
@@ -69,7 +80,42 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
   const [transactions, setTransactions] = useLocalStorageState<FinancialTransaction[]>(transactionKey, seedTransactions, isTransactionArray);
   const [dataSource, setDataSource] = useState("connecting");
   const [profileOpen, setProfileOpen] = useState(false);
+  const [authChecking, setAuthChecking] = useState(true);
+  const [currentUser, setCurrentUser] = useState(() => ({ ...currentSessionUser }));
   const [expanded, setExpanded] = useState(() => new Set(navigation.map((item) => item.title)));
+
+  useEffect(() => {
+    let cancelled = false;
+    const storedUser = loadCurrentSessionUser();
+    setCurrentUser({ ...storedUser });
+
+    if (storedUser.mode === "demo") {
+      setAuthChecking(false);
+      return;
+    }
+
+    if (!readAccessToken() && !readRefreshToken()) {
+      router.replace("/login");
+      return;
+    }
+
+    getAuthenticatedUser()
+      .then((user) => {
+        if (cancelled) return;
+        storeCurrentSessionUser(user);
+        setCurrentUser({ ...user });
+        setAuthChecking(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        clearAuthSession();
+        router.replace("/login?reason=session-expired");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
 
   useEffect(() => {
     const faviconId = "staypilot-property-favicon";
@@ -110,6 +156,7 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
 
   useEffect(() => {
     let cancelled = false;
+    if (authChecking) return;
 
     Promise.all([getRoomCatalog(propertyId), getReservations(propertyId)])
       .then(([catalog, savedReservations]) => {
@@ -128,7 +175,7 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
     return () => {
       cancelled = true;
     };
-  }, [propertyId, setReservations, setRoomList]);
+  }, [authChecking, propertyId, setReservations, setRoomList]);
 
   useLayoutEffect(() => {
     const sidebar = sidebarScrollRef.current;
@@ -161,6 +208,29 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
       window.sessionStorage.setItem(sidebarScrollKey, String(sidebar.scrollTop));
     }
     setSidebarOpen(false);
+  }
+
+  async function handleSignOut() {
+    await logoutUser().catch(() => undefined);
+    router.replace("/login");
+  }
+
+  function handlePasswordChanged() {
+    clearAuthSession();
+    router.replace("/login?reason=password-reset");
+  }
+
+  if (authChecking) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-[#f8fafc] px-6 text-center text-slate-600">
+        <div>
+          <div className="mx-auto grid h-14 w-14 place-items-center rounded-xl border border-line bg-white text-blue-600 shadow-sm">
+            <PanelLeft className="h-6 w-6" />
+          </div>
+          <p className="mt-4 text-sm font-semibold">Opening your workspace...</p>
+        </div>
+      </main>
+    );
   }
 
   return (
@@ -257,12 +327,12 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
             type="button"
             onClick={() => setProfileOpen(true)}
             className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-ocean"
-            aria-label="Open Asiri Perera profile"
+            aria-label={`Open ${currentUser.name} profile`}
           >
-            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-slate-200 font-semibold">AP</div>
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-slate-200 font-semibold">{getUserInitials(currentUser)}</div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold">{currentSessionUser.name}</p>
-              <p className="truncate text-xs text-slate-500">{currentSessionUser.email}</p>
+              <p className="truncate text-sm font-semibold">{currentUser.name}</p>
+              <p className="truncate text-xs text-slate-500">{currentUser.email}</p>
             </div>
             <ChevronRight className="h-4 w-4 text-slate-500" />
           </button>
@@ -272,6 +342,9 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
       <CurrentUserProfileDrawer
         open={profileOpen}
         onClose={() => setProfileOpen(false)}
+        user={currentUser}
+        onPasswordChanged={handlePasswordChanged}
+        onSignOut={handleSignOut}
         propertyId={propertyId}
         propertyName={propertyBrand.hotelName}
         currency={homeCurrency}
