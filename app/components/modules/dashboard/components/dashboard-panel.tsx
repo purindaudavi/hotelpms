@@ -3,13 +3,15 @@ export function DashboardPanel({
   subtitle,
   children,
   action,
-  className = ""
+  className = "",
+  bodyClassName = ""
 }: {
   title: string;
   subtitle?: string;
   children: React.ReactNode;
   action?: React.ReactNode;
   className?: string;
+  bodyClassName?: string;
 }) {
   return (
     <section className={`rounded-lg border border-line bg-white shadow-sm ${className}`}>
@@ -20,7 +22,7 @@ export function DashboardPanel({
         </div>
         {action}
       </div>
-      <div className="p-5">{children}</div>
+      <div className={`p-5 ${bodyClassName}`}>{children}</div>
     </section>
   );
 }

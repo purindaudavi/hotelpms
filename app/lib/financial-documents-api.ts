@@ -224,6 +224,8 @@ export type InvoiceFilters = {
   reservationId?: string;
   page?: number;
   limit?: number;
+  dateFrom?: string;
+  dateTo?: string;
 };
 
 export type CreditFilters = {
@@ -232,6 +234,8 @@ export type CreditFilters = {
   invoiceId?: string;
   page?: number;
   limit?: number;
+  dateFrom?: string;
+  dateTo?: string;
 };
 
 export type RefundFilters = {
@@ -241,6 +245,8 @@ export type RefundFilters = {
   reservationId?: string;
   page?: number;
   limit?: number;
+  dateFrom?: string;
+  dateTo?: string;
 };
 
 export async function listInvoices(propertyId: string, filters: InvoiceFilters = {}) {
@@ -250,6 +256,8 @@ export async function listInvoices(propertyId: string, filters: InvoiceFilters =
       status: filters.status,
       search: filters.search,
       reservation_id: filters.reservationId,
+      date_from: filters.dateFrom || undefined,
+      date_to: filters.dateTo || undefined,
       page: filters.page,
       limit: filters.limit
     }
@@ -341,6 +349,8 @@ export async function listCreditNotes(propertyId: string, filters: CreditFilters
       status: filters.status,
       search: filters.search,
       invoice_id: filters.invoiceId,
+      date_from: filters.dateFrom || undefined,
+      date_to: filters.dateTo || undefined,
       page: filters.page,
       limit: filters.limit
     }
@@ -416,6 +426,8 @@ export async function listRefunds(propertyId: string, filters: RefundFilters = {
       search: filters.search,
       invoice_id: filters.invoiceId,
       reservation_id: filters.reservationId,
+      date_from: filters.dateFrom || undefined,
+      date_to: filters.dateTo || undefined,
       page: filters.page,
       limit: filters.limit
     }

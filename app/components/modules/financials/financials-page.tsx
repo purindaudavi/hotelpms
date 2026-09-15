@@ -24,10 +24,11 @@ import { useSessionState } from "@/app/components/hooks/use-session-state";
 import { dateLabel, type FinancialTransaction, property, type Reservation } from "@/app/data/pms-data";
 import { IntegrationsPage } from "./integrations";
 import { ProfitLossPage } from "./profit&loss";
-import { TransferFundsPage } from "./transferfunds";
 import { CreditNotesPage, InvoicesPage, RefundsPage } from "./financial-documents-page";
 import { WithdrawalsPage } from "./withdrawals-page";
+import { DateRangeFilter } from "./date-range-filter";
 import { getBookingsApiErrorMessage, getReservationDetails } from "@/app/lib/bookings-api";
+import { postInvoicePayment } from "@/app/lib/financial-documents-api";
 import {
   type BackendFinancialTransaction,
   getTransactionsApiErrorMessage,
@@ -43,6 +44,11 @@ import {
   listPurchases,
   payPurchase as payBackendPurchase
 } from "@/app/lib/purchases-expenses-api";
+import {
+  type BackendReceivable,
+  getReceivablesApiErrorMessage,
+  listReceivables
+} from "@/app/lib/receivables-api";
 
 type FinancialsPageProps = {
   activePath: string;
@@ -199,6 +205,7 @@ type ReceivableStatus = "To be Paid" | "Paid";
 
 type Receivable = {
   id: string;
+  invoiceId: string;
   docNo: string;
   resNo: string;
   name: string;
@@ -210,6 +217,7 @@ type Receivable = {
   balance: number;
   age: number;
   status: ReceivableStatus;
+  currency: string;
 };
 
 type TravelAgent = {
@@ -252,22 +260,24 @@ const initialFrontOfficeTransactions: FrontOfficeTransaction[] = [
 
 const initialSuppliers: Supplier[] = [];
 
-const initialReceivables: Receivable[] = [
-  {
-    id: "rec-1052171005",
-    docNo: "1052171005",
-    resNo: "1052711005",
-    name: "Agoda",
-    tourNo: "2016815254",
-    date: "2026-05-28T00:00:00",
-    invValue: 5188.91,
-    bookerName: "-",
-    paid: 0,
-    balance: 5188.91,
-    age: 19,
-    status: "To be Paid"
-  }
-];
+function fromBackendReceivable(receivable: BackendReceivable): Receivable {
+  return {
+    id: receivable._id,
+    invoiceId: receivable.invoice_id,
+    docNo: receivable.invoice_no,
+    resNo: receivable.reservation_no,
+    name: receivable.name,
+    tourNo: "-",
+    date: receivable.invoice_date,
+    invValue: receivable.invoice_value,
+    bookerName: receivable.email || "-",
+    paid: receivable.paid_amount,
+    balance: receivable.balance_due,
+    age: receivable.age,
+    status: receivable.status === "paid" ? "Paid" : "To be Paid",
+    currency: receivable.currency
+  };
+}
 
 const supplierCategories = ["Food & Beverage", "Laundry", "Utilities", "Maintenance", "Room Amenities", "Other"];
 const expenseAccounts = ["Electricity", "Water", "Internet", "Laundry", "Room Amenities", "Repairs", "Staff Meal", "Other"];
@@ -280,24 +290,15 @@ export function FinancialsPage(props: FinancialsPageProps) {
   const [purchases, setPurchases] = useSessionState<Purchase[]>(`${keyPrefix}:purchases`, []);
   const [expenses, setExpenses] = useSessionState<Expense[]>(`${keyPrefix}:expenses`, []);
   const [suppliers, setSuppliers] = useSessionState<Supplier[]>(`${keyPrefix}:suppliers`, initialSuppliers);
-  const [receivables, setReceivables] = useSessionState<Receivable[]>(`${keyPrefix}:receivables`, initialReceivables);
+  const [receivables, setReceivables] = useState<Receivable[]>([]);
   const [agents, setAgents] = useSessionState<TravelAgent[]>(`${keyPrefix}:travel-agents`, []);
-  useEffect(() => {
-    let active = true;
-    Promise.all([listPurchases(props.propertyId), listExpenses(props.propertyId)])
-      .then(([savedPurchases, savedExpenses]) => {
-        if (!active) return;
-        setPurchases(savedPurchases.map(fromBackendPurchase));
-        setExpenses(savedExpenses.map(fromBackendExpense));
-      })
-      .catch((error) => {
-        if (active) props.setToast(getPurchasesExpensesApiErrorMessage(error));
-      });
-    return () => { active = false; };
-  }, [props.propertyId, props.setToast, setExpenses, setPurchases]);
   const path = props.activePath;
+  const pathParts = path.split("/").filter(Boolean);
+  const section = pathParts[1] || "transactions";
+  const initialReference = pathParts[2] ? decodeURIComponent(pathParts[2]) : "";
   const shared = {
     ...props,
+    initialReference,
     purchases,
     setPurchases,
     expenses,
@@ -310,8 +311,8 @@ export function FinancialsPage(props: FinancialsPageProps) {
     setAgents
   };
 
-  if (path.endsWith("purchases")) return <PurchasesPage {...shared} />;
-  if (path.endsWith("invoices")) return <InvoicesPage propertyId={props.propertyId} reservations={props.reservations} setToast={props.setToast} onReservationChanged={async (reservationId) => {
+  if (section === "purchases") return <PurchasesPage key={initialReference || "purchases"} {...shared} />;
+  if (section === "invoices") return <InvoicesPage key={initialReference || "invoices"} initialReference={initialReference} propertyId={props.propertyId} reservations={props.reservations} setToast={props.setToast} onReservationChanged={async (reservationId) => {
     try {
       const details = await getReservationDetails(props.propertyId, reservationId);
       props.setReservations((current) => current.map((item) => item.id === reservationId ? details.reservation : item));
@@ -319,20 +320,20 @@ export function FinancialsPage(props: FinancialsPageProps) {
       props.setToast(getBookingsApiErrorMessage(error));
     }
   }} />;
-  if (path.endsWith("credit-notes")) return <CreditNotesPage propertyId={props.propertyId} reservations={props.reservations} setToast={props.setToast} />;
-  if (path.endsWith("refunds")) return <RefundsPage propertyId={props.propertyId} reservations={props.reservations} setToast={props.setToast} />;
-  if (path.endsWith("withdrawals")) return <WithdrawalsPage propertyId={props.propertyId} setToast={props.setToast} />;
-  if (path.endsWith("expenses")) return <ExpensesPage {...shared} />;
-  if (path.endsWith("payables")) return <PayablesPage {...shared} />;
-  if (path.endsWith("receivables")) return <ReceivablesPage {...shared} />;
-  if (path.endsWith("profit-loss")) return <ProfitLossPage propertyId={props.propertyId} setToast={props.setToast} />;
-  if (path.endsWith("transfer-funds")) return <TransferFundsPage propertyId={props.propertyId} setTransactions={props.setTransactions} setToast={props.setToast} />;
-  if (path.endsWith("integrations")) return <IntegrationsPage />;
+  if (section === "credit-notes") return <CreditNotesPage key={initialReference || "credit-notes"} initialReference={initialReference} propertyId={props.propertyId} reservations={props.reservations} setToast={props.setToast} />;
+  if (section === "refunds") return <RefundsPage key={initialReference || "refunds"} initialReference={initialReference} propertyId={props.propertyId} reservations={props.reservations} setToast={props.setToast} />;
+  if (section === "withdrawals") return <WithdrawalsPage key={initialReference || "withdrawals"} initialReference={initialReference} propertyId={props.propertyId} setToast={props.setToast} />;
+  if (section === "expenses") return <ExpensesPage key={initialReference || "expenses"} {...shared} />;
+  if (section === "payables") return <PayablesPage {...shared} />;
+  if (section === "receivables") return <ReceivablesPage {...shared} />;
+  if (section === "profit-loss") return <ProfitLossPage propertyId={props.propertyId} setToast={props.setToast} />;
+  if (section === "integrations") return <IntegrationsPage />;
 
-  return <TransactionsPage {...props} frontOfficeTransactions={frontOfficeTransactions} />;
+  return <TransactionsPage key={initialReference || "transactions"} {...props} initialReference={initialReference} frontOfficeTransactions={frontOfficeTransactions} />;
 }
 
 type SharedFinancialState = FinancialsPageProps & {
+  initialReference: string;
   purchases: Purchase[];
   setPurchases: Dispatch<SetStateAction<Purchase[]>>;
   expenses: Expense[];
@@ -349,12 +350,14 @@ function TransactionsPage({
   transactions,
   frontOfficeTransactions,
   propertyId,
-  setToast
+  setToast,
+  initialReference = ""
 }: FinancialsPageProps & {
   frontOfficeTransactions: FrontOfficeTransaction[];
+  initialReference?: string;
 }) {
   const [activeTab, setActiveTab] = useState<"financial" | "front-office">("financial");
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(initialReference);
   const [financialPage, setFinancialPage] = useState(1);
   const [frontOfficePage, setFrontOfficePage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -362,17 +365,20 @@ function TransactionsPage({
   const [viewingFrontOffice, setViewingFrontOffice] = useState<FrontOfficeTransaction | null>(null);
   const [backendTransactions, setBackendTransactions] = useState<BackendFinancialTransaction[]>([]);
   const [loadingTransactions, setLoadingTransactions] = useState(false);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   const loadBackendTransactions = useCallback(async () => {
     setLoadingTransactions(true);
+    setBackendTransactions([]);
     try {
-      setBackendTransactions(await listAllFinancialTransactions(propertyId));
+      setBackendTransactions(await listAllFinancialTransactions(propertyId, { dateFrom, dateTo }));
     } catch (error) {
       setToast(getTransactionsApiErrorMessage(error));
     } finally {
       setLoadingTransactions(false);
     }
-  }, [propertyId, setToast]);
+  }, [dateFrom, dateTo, propertyId, setToast]);
 
   useEffect(() => {
     void loadBackendTransactions();
@@ -381,7 +387,7 @@ function TransactionsPage({
   const financialRows = useMemo(() => {
     const backendRows = backendTransactions.map(toDisplayBackendTransaction);
     const mongoBackedTypes = ["invoice", "receive payment", "payment", "credit note", "refund", "withdrawal", "purchase", "supplier payment", "expense"];
-    const localRows = transactions
+    const localRows = dateFrom || dateTo ? [] : transactions
       .filter((transaction) => !mongoBackedTypes.some((type) => normalize(transaction.type).includes(type)))
       .map(toDisplayLocalTransaction);
     const combined = [...backendRows, ...localRows];
@@ -401,7 +407,7 @@ function TransactionsPage({
       tran.description,
       tran.sourceNumber
     ].join(" ")).includes(needle));
-  }, [backendTransactions, transactions, search]);
+  }, [backendTransactions, dateFrom, dateTo, transactions, search]);
 
   const frontOfficeRows = useMemo(() => {
     const needle = normalize(search);
@@ -437,6 +443,10 @@ function TransactionsPage({
           </ActionButton>
         ) : null}
       </div>
+
+      {activeTab === "financial" ? (
+        <DateRangeFilter dateFrom={dateFrom} dateTo={dateTo} onDateFromChange={setDateFrom} onDateToChange={setDateTo} disabled={loadingTransactions} />
+      ) : null}
 
       {activeTab === "financial" ? (
         <DataPanel title="Transactions">
@@ -516,22 +526,41 @@ function TransactionsPage({
   );
 }
 
-function PurchasesPage({ propertyId, purchases, setPurchases, suppliers, setSuppliers, setToast }: SharedFinancialState) {
-  const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<"To be paid" | "Paid" | "All">("To be paid");
+function PurchasesPage({ propertyId, purchases, setPurchases, suppliers, setSuppliers, setToast, initialReference }: SharedFinancialState) {
+  const [search, setSearch] = useState(initialReference);
+  const [status, setStatus] = useState<"To be paid" | "Paid" | "All">(initialReference ? "All" : "To be paid");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [viewing, setViewing] = useState<Purchase | null>(null);
   const [page, setPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [loading, setLoading] = useState(true);
 
-  const visiblePurchases = useMemo(() => {
-    const needle = normalize(search);
-    return purchases.filter((purchase) => {
-      const matchesStatus = status === "All" || (status === "To be paid" ? purchase.status === "Unpaid" : purchase.status === "Paid");
-      const text = normalize([purchase.supplier, purchase.invoiceNumber, purchase.referenceAmount, purchase.narration, purchase.status].join(" "));
-      return matchesStatus && (!needle || text.includes(needle));
-    });
-  }, [purchases, search, status]);
+  const loadPurchases = useCallback(async () => {
+    setLoading(true);
+    setPurchases([]);
+    try {
+      const saved = await listPurchases(propertyId, {
+        status: status === "All" ? "all" : status === "Paid" ? "paid" : "to_be_paid",
+        search: search.trim(),
+        dateFrom,
+        dateTo
+      });
+      setPurchases(saved.map(fromBackendPurchase));
+    } catch (error) {
+      setToast(getPurchasesExpensesApiErrorMessage(error));
+    } finally {
+      setLoading(false);
+    }
+  }, [dateFrom, dateTo, propertyId, search, setPurchases, setToast, status]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void loadPurchases(), 250);
+    return () => window.clearTimeout(timer);
+  }, [loadPurchases]);
+
+  const visiblePurchases = purchases;
 
   const paged = paginate(visiblePurchases, page, rowsPerPage);
 
@@ -547,9 +576,9 @@ function PurchasesPage({ propertyId, purchases, setPurchases, suppliers, setSupp
         attachments: purchase.attachments,
         glLines: purchase.glLines.filter((line) => line.account && line.amount > 0).map(({ account, amount, memo }) => ({ account, amount, memo }))
       });
-      setPurchases((current) => [fromBackendPurchase(saved), ...current.filter((item) => item.id !== saved._id)]);
       setDrawerOpen(false);
       setToast(`Purchase ${saved.purchase_no} saved to MongoDB`);
+      await loadPurchases();
     } catch (error) {
       setToast(getPurchasesExpensesApiErrorMessage(error));
     }
@@ -558,8 +587,8 @@ function PurchasesPage({ propertyId, purchases, setPurchases, suppliers, setSupp
   async function markPurchasePaid(purchase: Purchase) {
     try {
       const saved = await payBackendPurchase(propertyId, purchase.id, property.systemDate);
-      setPurchases((current) => current.map((item) => item.id === saved._id ? fromBackendPurchase(saved) : item));
       setToast(`${purchase.invoiceNumber} marked paid in MongoDB`);
+      await loadPurchases();
     } catch (error) {
       setToast(getPurchasesExpensesApiErrorMessage(error));
     }
@@ -575,6 +604,7 @@ function PurchasesPage({ propertyId, purchases, setPurchases, suppliers, setSupp
       </PageActionBar>
 
       <SearchInput value={search} onChange={setSearch} />
+      <DateRangeFilter dateFrom={dateFrom} dateTo={dateTo} onDateFromChange={setDateFrom} onDateToChange={setDateTo} disabled={loading} />
 
       <DataPanel
         title="Purchases"
@@ -652,27 +682,44 @@ function PurchasesPage({ propertyId, purchases, setPurchases, suppliers, setSupp
   );
 }
 
-function ExpensesPage({ propertyId, expenses, setExpenses, setToast }: SharedFinancialState) {
-  const [search, setSearch] = useState("");
+function ExpensesPage({ propertyId, expenses, setExpenses, setToast, initialReference }: SharedFinancialState) {
+  const [search, setSearch] = useState(initialReference);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [viewing, setViewing] = useState<Expense | null>(null);
   const [page, setPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [loading, setLoading] = useState(true);
 
-  const visibleExpenses = useMemo(() => {
-    const needle = normalize(search);
-    if (!needle) return expenses;
-    return expenses.filter((expense) => normalize([expense.date, expense.expenseType, expense.paidUsing, expense.description, expense.amount, expense.remark].join(" ")).includes(needle));
-  }, [expenses, search]);
+  const loadExpenses = useCallback(async () => {
+    setLoading(true);
+    setExpenses([]);
+    try {
+      const saved = await listExpenses(propertyId, { status: "all", search: search.trim(), dateFrom, dateTo });
+      setExpenses(saved.map(fromBackendExpense));
+    } catch (error) {
+      setToast(getPurchasesExpensesApiErrorMessage(error));
+    } finally {
+      setLoading(false);
+    }
+  }, [dateFrom, dateTo, propertyId, search, setExpenses, setToast]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void loadExpenses(), 250);
+    return () => window.clearTimeout(timer);
+  }, [loadExpenses]);
+
+  const visibleExpenses = expenses;
 
   const paged = paginate(visibleExpenses, page, rowsPerPage);
 
   async function saveExpense(expense: Expense) {
     try {
       const saved = await createExpense(propertyId, expense);
-      setExpenses((current) => [fromBackendExpense(saved), ...current.filter((item) => item.id !== saved._id)]);
       setDrawerOpen(false);
       setToast(`Expense ${saved.expense_no} saved to MongoDB`);
+      await loadExpenses();
     } catch (error) {
       setToast(getPurchasesExpensesApiErrorMessage(error));
     }
@@ -688,6 +735,7 @@ function ExpensesPage({ propertyId, expenses, setExpenses, setToast }: SharedFin
       </PageActionBar>
 
       <SearchInput value={search} onChange={setSearch} />
+      <DateRangeFilter dateFrom={dateFrom} dateTo={dateTo} onDateFromChange={setDateFrom} onDateToChange={setDateTo} disabled={loading} />
 
       <DataPanel title="Expenses">
         {visibleExpenses.length ? (
@@ -747,8 +795,37 @@ function PayablesPage({ propertyId, purchases, setPurchases, suppliers, setSuppl
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [loading, setLoading] = useState(true);
 
-  const payableRows = purchases.map((purchase) => ({
+  const loadPayables = useCallback(async () => {
+    setLoading(true);
+    setPurchases([]);
+    try {
+      const saved = await listPurchases(propertyId, {
+        status: status === "Paid" ? "paid" : "to_be_paid",
+        search: search.trim(),
+        dateFrom,
+        dateTo,
+        dateField: "due_date",
+        overdueOnly,
+        asOf: property.systemDate
+      });
+      setPurchases(saved.map(fromBackendPurchase));
+    } catch (error) {
+      setToast(getPurchasesExpensesApiErrorMessage(error));
+    } finally {
+      setLoading(false);
+    }
+  }, [dateFrom, dateTo, overdueOnly, propertyId, search, setPurchases, setToast, status]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void loadPayables(), 250);
+    return () => window.clearTimeout(timer);
+  }, [loadPayables]);
+
+  const visiblePayables = purchases.map((purchase) => ({
     id: purchase.id,
     supplier: purchase.supplier,
     invoiceNumber: purchase.invoiceNumber,
@@ -757,17 +834,6 @@ function PayablesPage({ propertyId, purchases, setPurchases, suppliers, setSuppl
     status: purchase.status,
     purchase
   }));
-
-  const visiblePayables = useMemo(() => {
-    const needle = normalize(search);
-    return payableRows.filter((row) => {
-      const matchesStatus = status === "Paid" ? row.status === "Paid" : row.status === "Unpaid";
-      const dueAge = daysBetween(row.dueDate, property.systemDate);
-      const matchesOverdue = !overdueOnly || (row.status !== "Paid" && dueAge > 0);
-      const matchesSearch = !needle || normalize([row.supplier, row.invoiceNumber, row.amount, row.status].join(" ")).includes(needle);
-      return matchesStatus && matchesOverdue && matchesSearch;
-    });
-  }, [payableRows, search, status, overdueOnly]);
 
   const paged = paginate(visiblePayables, page, rowsPerPage);
 
@@ -779,9 +845,9 @@ function PayablesPage({ propertyId, purchases, setPurchases, suppliers, setSuppl
 
   async function payPurchase(purchase: Purchase) {
     try {
-      const saved = await payBackendPurchase(propertyId, purchase.id, property.systemDate);
-      setPurchases((current) => current.map((item) => item.id === saved._id ? fromBackendPurchase(saved) : item));
+      await payBackendPurchase(propertyId, purchase.id, property.systemDate);
       setToast(`${purchase.invoiceNumber} marked paid in MongoDB`);
+      await loadPayables();
     } catch (error) {
       setToast(getPurchasesExpensesApiErrorMessage(error));
     }
@@ -802,7 +868,7 @@ function PayablesPage({ propertyId, purchases, setPurchases, suppliers, setSuppl
             setPage(1);
           }}
         />
-        <ActionButton onClick={() => setToast("Payables refreshed")}>
+        <ActionButton onClick={() => void loadPayables()} disabled={loading}>
           <RefreshCw className="h-4 w-4" />
           Refresh
         </ActionButton>
@@ -819,6 +885,7 @@ function PayablesPage({ propertyId, purchases, setPurchases, suppliers, setSuppl
           Filter
         </ActionButton>
       </div>
+      <DateRangeFilter dateFrom={dateFrom} dateTo={dateTo} onDateFromChange={setDateFrom} onDateToChange={setDateTo} disabled={loading} />
 
       {filterOpen ? (
         <div className="rounded-lg border border-line bg-white p-4 shadow-sm">
@@ -878,39 +945,56 @@ function PayablesPage({ propertyId, purchases, setPurchases, suppliers, setSuppl
   );
 }
 
-function ReceivablesPage({ receivables, setReceivables, agents, setAgents, setTransactions, setToast }: SharedFinancialState) {
+function ReceivablesPage({ propertyId, receivables, setReceivables, agents, setAgents, setToast }: SharedFinancialState) {
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<ReceivableStatus>("To be Paid");
+  const [status, setStatus] = useState<ReceivableStatus | "All">("To be Paid");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [loading, setLoading] = useState(true);
 
-  const counts = {
-    "To be Paid": receivables.filter((row) => row.status === "To be Paid").length,
-    Paid: receivables.filter((row) => row.status === "Paid").length
-  };
+  const loadReceivables = useCallback(async () => {
+    setLoading(true);
+    setReceivables([]);
+    try {
+      const response = await listReceivables(propertyId, {
+        status: status === "All" ? "all" : status === "Paid" ? "paid" : "to_be_paid",
+        search: search.trim(),
+        dateFrom,
+        dateTo,
+        limit: 100
+      });
+      setReceivables(response.receivables.map(fromBackendReceivable));
+    } catch (error) {
+      setToast(getReceivablesApiErrorMessage(error));
+    } finally {
+      setLoading(false);
+    }
+  }, [dateFrom, dateTo, propertyId, search, setReceivables, setToast, status]);
 
-  const visibleReceivables = useMemo(() => {
-    const needle = normalize(search);
-    return receivables.filter((row) => {
-      const matchesStatus = row.status === status;
-      const matchesSearch = !needle || normalize([row.docNo, row.resNo, row.name, row.tourNo, row.date, row.invValue, row.bookerName, row.paid, row.balance, row.age].join(" ")).includes(needle);
-      return matchesStatus && matchesSearch;
-    });
-  }, [receivables, search, status]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => void loadReceivables(), 250);
+    return () => window.clearTimeout(timer);
+  }, [loadReceivables]);
+
+  const visibleReceivables = receivables;
 
   const paged = paginate(visibleReceivables, page, rowsPerPage);
 
-  function receive(row: Receivable) {
-    const updated = {
-      ...row,
-      paid: row.invValue,
-      balance: 0,
-      status: "Paid" as const
-    };
-    setReceivables((current) => current.map((item) => (item.id === row.id ? updated : item)));
-    setTransactions((current) => [makeTransaction("Receive Payment", property.systemDate, row.docNo, row.balance, row.resNo, "-", "ASIRI PERERA"), ...current]);
-    setToast(`${row.docNo} received`);
+  async function receive(row: Receivable) {
+    try {
+      await postInvoicePayment(propertyId, row.invoiceId, {
+        amount: row.balance,
+        paymentMethod: "other",
+        paymentReference: "Receivables workspace"
+      });
+      setToast(`${row.docNo} received in MongoDB`);
+      await loadReceivables();
+    } catch (error) {
+      setToast(getReceivablesApiErrorMessage(error));
+    }
   }
 
   function saveAgent(agent: TravelAgent) {
@@ -931,7 +1015,7 @@ function ReceivablesPage({ receivables, setReceivables, agents, setAgents, setTr
   return (
     <FinancialFrame>
       <PageActionBar title="Receivable">
-        <ActionButton onClick={() => setToast("Receivables refreshed")}>
+        <ActionButton onClick={() => void loadReceivables()} disabled={loading}>
           <RefreshCw className="h-4 w-4" />
           Refresh
         </ActionButton>
@@ -946,14 +1030,16 @@ function ReceivablesPage({ receivables, setReceivables, agents, setAgents, setTr
       </PageActionBar>
 
       <SearchInput value={search} onChange={setSearch} />
+      <DateRangeFilter dateFrom={dateFrom} dateTo={dateTo} onDateFromChange={setDateFrom} onDateToChange={setDateTo} disabled={loading} />
 
       <DataPanel
         action={
           <SegmentedControl
             compact
             tabs={[
-              { label: `To be Paid (${counts["To be Paid"]})`, value: "To be Paid" },
-              { label: `Paid (${counts.Paid})`, value: "Paid" }
+              { label: "To be Paid", value: "To be Paid" },
+              { label: "Paid", value: "Paid" },
+              { label: "All", value: "All" }
             ]}
             value={status}
             onChange={(value) => {
@@ -990,7 +1076,7 @@ function ReceivablesPage({ receivables, setReceivables, agents, setAgents, setTr
                       <IconButton label="Print" onClick={() => window.print()}>
                         <Printer className="h-4 w-4" />
                       </IconButton>
-                      {row.status === "To be Paid" ? <SmallButton dark onClick={() => receive(row)}>Receive</SmallButton> : <SmallButton>View</SmallButton>}
+                      {row.status === "To be Paid" ? <SmallButton dark onClick={() => void receive(row)}>Receive</SmallButton> : <SmallButton>View</SmallButton>}
                     </div>
                   </td>
                 </tr>

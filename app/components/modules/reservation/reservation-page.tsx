@@ -10,14 +10,17 @@ import type { ReservationModuleProps } from "./types";
 
 export function ReservationPage(props: ReservationModuleProps) {
   const path = props.activePath;
+  const pathParts = path.split("/").filter(Boolean);
+  const section = pathParts[1] || "bookings";
+  const initialReference = pathParts[2] ? decodeURIComponent(pathParts[2]) : "";
 
-  if (path.endsWith("create-event")) return <EventBookingsPage {...props} />;
-  if (path.endsWith("cross-booking")) return <CrossBookingPage {...props} />;
-  if (path.endsWith("arrivals")) return <MovementPage {...props} kind="arrivals" />;
-  if (path.endsWith("departures")) return <MovementPage {...props} kind="departures" />;
-  if (path.endsWith("in-house")) return <MovementPage {...props} kind="in-house" />;
-  if (path.endsWith("travel-agents")) return <TravelAgentsPage {...props} />;
-  if (path.endsWith("guest-profile")) return <GuestProfilesPage {...props} />;
+  if (section === "create-event") return <EventBookingsPage {...props} />;
+  if (section === "cross-booking") return <CrossBookingPage {...props} />;
+  if (section === "arrivals") return <MovementPage {...props} kind="arrivals" />;
+  if (section === "departures") return <MovementPage {...props} kind="departures" />;
+  if (section === "in-house") return <MovementPage {...props} kind="in-house" />;
+  if (section === "travel-agents") return <TravelAgentsPage {...props} />;
+  if (section === "guest-profile") return <GuestProfilesPage {...props} />;
 
-  return <BookingsPage {...props} />;
+  return <BookingsPage key={initialReference || "bookings"} {...props} initialReference={initialReference} />;
 }

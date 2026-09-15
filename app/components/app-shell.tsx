@@ -4,14 +4,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
-  Bell,
   Calendar,
   ChevronDown,
   ChevronRight,
-  CircleHelp,
-  Languages,
   Menu,
   MessageCircle,
+  Moon,
   PanelLeft,
   Search,
   Sun,
@@ -40,6 +38,7 @@ import { getRoomCatalog } from "@/app/lib/rooms-api";
 import { getReservations } from "@/app/lib/bookings-api";
 import { usePropertyBrand } from "@/app/components/hooks/use-property-brand";
 import { usePropertyTheme } from "@/app/components/hooks/use-property-theme";
+import { useColorScheme } from "@/app/components/hooks/use-color-scheme";
 import { CurrentUserProfileDrawer } from "@/app/components/current-user-profile-drawer";
 import { getAuthenticatedUser, logoutUser } from "@/app/lib/auth-api";
 import {
@@ -51,6 +50,8 @@ import {
   readRefreshToken,
   storeCurrentSessionUser
 } from "@/app/lib/current-user";
+
+import { NotificationMenu } from "@/app/components/notification-menu";
 
 type WorkspaceProps = {
   propertyId: string;
@@ -67,6 +68,7 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
   const homeCurrency = readPropertyHomeCurrency(propertyId);
   const propertyBrand = usePropertyBrand(propertyId, property.name);
   usePropertyTheme(propertyId);
+  const { colorScheme, toggleColorScheme } = useColorScheme();
   const sidebarScrollRef = useRef<HTMLElement>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [toast, setToast] = useState("");
@@ -178,6 +180,8 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
   }, [authChecking, propertyId, setReservations, setRoomList]);
 
   useLayoutEffect(() => {
+    if (authChecking) return;
+
     const sidebar = sidebarScrollRef.current;
     if (!sidebar) return;
 
@@ -189,7 +193,7 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
     return () => {
       window.sessionStorage.setItem(sidebarScrollKey, String(sidebar.scrollTop));
     };
-  }, [sidebarScrollKey]);
+  }, [authChecking, sidebarScrollKey]);
 
   const pageTitle = useMemo(() => getActiveTitle(activePath), [activePath]);
 
@@ -210,6 +214,13 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
     setSidebarOpen(false);
   }
 
+  function rememberSidebarScroll() {
+    const sidebar = sidebarScrollRef.current;
+    if (sidebar) {
+      window.sessionStorage.setItem(sidebarScrollKey, String(sidebar.scrollTop));
+    }
+  }
+
   async function handleSignOut() {
     await logoutUser().catch(() => undefined);
     router.replace("/login");
@@ -222,7 +233,7 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
 
   if (authChecking) {
     return (
-      <main className="grid min-h-screen place-items-center bg-[#f8fafc] px-6 text-center text-slate-600">
+      <main className="app-shell-root grid min-h-screen place-items-center bg-[#f8fafc] px-6 text-center text-slate-600">
         <div>
           <div className="mx-auto grid h-14 w-14 place-items-center rounded-xl border border-line bg-white text-blue-600 shadow-sm">
             <PanelLeft className="h-6 w-6" />
@@ -234,7 +245,7 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
   }
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-ink">
+    <div className="app-shell-root min-h-screen bg-[#f8fafc] text-ink">
       {sidebarOpen ? (
         <button
           aria-label="Close sidebar overlay"
@@ -244,7 +255,7 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
       ) : null}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-40 flex w-[292px] flex-col border-r border-line bg-[#f4f8fe] transition-transform lg:translate-x-0 ${
+        className={`app-sidebar fixed inset-y-0 left-0 z-40 flex w-[292px] flex-col border-r border-line bg-[#f4f8fe] transition-transform lg:translate-x-0 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -261,7 +272,7 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
           </div>
         </div>
 
-        <nav ref={sidebarScrollRef} className="table-scroll flex-1 overflow-y-auto px-2 py-3">
+        <nav ref={sidebarScrollRef} onScroll={rememberSidebarScroll} className="table-scroll flex-1 overflow-y-auto px-2 py-3">
           {navigation.map((group) => {
             const Icon = group.icon;
             const active = isGroupActive(group, activePath);
@@ -300,7 +311,7 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
                   <div className="ml-5 mt-1 border-l border-line pl-2">
                     {group.children.map((item) => {
                       const ChildIcon = item.icon;
-                      const childActive = item.path === activePath;
+                      const childActive = item.path === activePath || activePath.startsWith(`${item.path}/`);
                       return (
                         <Link
                           key={item.path}
@@ -352,7 +363,7 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
       />
 
       <div className="lg:pl-[292px]">
-        <header className="sticky top-0 z-20 flex h-[70px] items-center justify-between border-b border-line bg-white/95 px-4 backdrop-blur lg:px-6">
+        <header className="app-header sticky top-0 z-20 flex h-[70px] items-center justify-between border-b border-line bg-white/95 px-4 backdrop-blur lg:px-6">
           <div className="flex min-w-0 items-center gap-3">
             <button
               type="button"
@@ -385,23 +396,17 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
             <TopIcon label="Calendar">
               <Calendar className="h-4 w-4" />
             </TopIcon>
-            <TopIcon label="Alerts">
-              <Bell className="h-4 w-4" />
-            </TopIcon>
+            <NotificationMenu propertyId={propertyId} />
             <TopIcon label="Search">
               <Search className="h-4 w-4" />
             </TopIcon>
-            <button className="hidden h-9 items-center gap-2 rounded-md border border-line bg-white px-3 text-sm font-semibold hover:bg-slate-50 md:inline-flex">
-              <CircleHelp className="h-4 w-4" />
-              Support
-            </button>
-            <TopIcon label="Theme">
-              <Sun className="h-4 w-4" />
+            <TopIcon
+              label={colorScheme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+              onClick={toggleColorScheme}
+              pressed={colorScheme === "dark"}
+            >
+              {colorScheme === "dark" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
             </TopIcon>
-            <button className="hidden h-9 items-center gap-2 rounded-md border border-line bg-white px-3 text-sm font-semibold hover:bg-slate-50 sm:inline-flex">
-              <Languages className="h-4 w-4" />
-              English
-            </button>
           </div>
         </header>
 
@@ -440,11 +445,24 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
   );
 }
 
-function TopIcon({ label, children }: { label: string; children: React.ReactNode }) {
+function TopIcon({
+  label,
+  children,
+  onClick,
+  pressed
+}: {
+  label: string;
+  children: React.ReactNode;
+  onClick?: () => void;
+  pressed?: boolean;
+}) {
   return (
     <button
       type="button"
       aria-label={label}
+      aria-pressed={pressed}
+      onClick={onClick}
+      title={label}
       className="grid h-9 w-9 place-items-center rounded-md border border-line bg-white text-slate-700 hover:bg-slate-50"
     >
       {children}

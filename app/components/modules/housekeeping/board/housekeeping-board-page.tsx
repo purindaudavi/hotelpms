@@ -12,7 +12,7 @@ import {
   statusClass,
   statusPillClass
 } from "../utils";
-import { Field, HelpVideoButton, HelpVideoModal, HkButton, RightDrawer, SearchField, SegmentedTabs } from "../components/housekeeping-ui";
+import { Field, HkButton, RightDrawer, SearchField, SegmentedTabs } from "../components/housekeeping-ui";
 
 type BoardProps = HousekeepingModuleProps & {
   roomStatuses: Record<string, HousekeepingStatus>;
@@ -53,7 +53,6 @@ export function HousekeepingBoardPage({
   const [query, setQuery] = useState("");
   const [assignRoom, setAssignRoom] = useState<Room | null>(null);
   const [showNewEmployee, setShowNewEmployee] = useState(false);
-  const [showHelp, setShowHelp] = useState(false);
 
   const roomRows = useMemo(
     () =>
@@ -113,7 +112,6 @@ export function HousekeepingBoardPage({
           <MetricBadge label="WIP" value={counts.WIP} className="bg-blue-100 text-blue-700" />
         </div>
         <div className="flex items-center gap-4">
-          <HelpVideoButton onClick={() => setShowHelp(true)} />
           <SearchField value={query} onChange={setQuery} placeholder="Search by room code / type / attendant" />
         </div>
       </section>
@@ -158,7 +156,6 @@ export function HousekeepingBoardPage({
         />
       ) : null}
 
-      {showHelp ? <HelpVideoModal onClose={() => setShowHelp(false)} /> : null}
     </main>
   );
 }

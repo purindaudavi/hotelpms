@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { FormEvent, useEffect, useState } from "react";
 import {
   BedDouble,
@@ -13,17 +14,20 @@ import {
   LogIn,
   Mail,
   Monitor,
+  Moon,
   Phone,
   ShieldCheck,
+  Sun,
   UserPlus,
   UserRound
 } from "lucide-react";
 import type { Dispatch, SetStateAction } from "react";
 import type { LucideIcon } from "lucide-react";
 import { appName } from "@/app/data/pms-data";
+import { useColorScheme } from "@/app/components/hooks/use-color-scheme";
 import { getAuthErrorMessage, loginUser, registerUser } from "@/app/lib/auth-api";
 import { hasStoredWorkspaceSession, storeDemoSession } from "@/app/lib/current-user";
-import { LoginShowcase } from "./login-showcase";
+
 
 const rememberedEmailKey = "staypilot-remembered-email";
 const workspacePath = "/properties/demo/dashboard";
@@ -42,6 +46,7 @@ const initialRegisterForm = {
 
 export default function LoginPage() {
   const router = useRouter();
+  const { colorScheme, toggleColorScheme } = useColorScheme();
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -163,59 +168,58 @@ export default function LoginPage() {
     : "Add a user that can sign in through your auth API.";
 
   return (
-    <main className="grid min-h-screen bg-[#f7f9fc] lg:grid-cols-[minmax(0,1.08fr)_minmax(500px,0.92fr)]">
-      <section className="relative hidden overflow-hidden bg-[#02070c] px-[clamp(28px,3.1vw,54px)] py-10 text-white lg:flex lg:items-center">
-        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,rgba(8,124,255,0.22),transparent_28%),linear-gradient(315deg,rgba(16,185,129,0.14),transparent_32%)]" />
-        <div className="pointer-events-none absolute inset-0 opacity-[0.045] [background-image:linear-gradient(rgba(255,255,255,0.2)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.2)_1px,transparent_1px)] [background-size:46px_46px]" />
+    <main className="login-root grid min-h-screen bg-[#f7f9fc] lg:grid-cols-[minmax(0,1.08fr)_minmax(500px,0.92fr)]">
+      <section className="relative hidden overflow-hidden bg-[#02070c] px-[clamp(28px,3.1vw,54px)] text-white lg:block">
+        <Image
+          alt="StayPilot dashboard with live arrivals, occupancy, revenue, and operations overview"
+          className="pointer-events-none object-cover object-center"
+          fill
+          priority
+          sizes="54vw"
+          src="/assets/login-dashboard-showcase.png"
+        />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-[38%] bg-gradient-to-b from-[#02070c]/45 via-[#02070c]/10 to-transparent" />
 
-        <div className="relative z-10 mx-auto w-full max-w-[815px]">
+        <div className="relative z-10 mx-auto w-full max-w-[815px] pt-[clamp(28px,4.8vh,62px)]">
           <div className="flex items-center gap-4">
-            <span className="grid size-14 place-items-center rounded-xl border border-white/20 bg-white/[0.025] shadow-[0_10px_30px_rgba(0,119,255,0.12)]">
-              <BedDouble className="size-8 text-[#0086ff]" strokeWidth={1.8} />
+            <span className="grid size-12 place-items-center rounded-xl border border-white/20 bg-white/[0.025] shadow-[0_10px_30px_rgba(0,119,255,0.12)] xl:size-14">
+              <BedDouble className="size-7 text-[#0086ff] xl:size-8" strokeWidth={1.8} />
             </span>
             <div>
-              <p className="text-[28px] font-bold leading-none tracking-tight">
+              <p className="text-[24px] font-bold leading-none tracking-[-0.04em] xl:text-[28px]">
                 {brandName}
               </p>
-              <p className="mt-2 text-sm text-slate-400">
+              <p className="mt-1.5 text-xs text-slate-400 xl:mt-2 xl:text-sm">
                 Cloud Property Management System
               </p>
             </div>
           </div>
 
-          <h1 className="mt-8 max-w-[670px] text-[clamp(36px,3vw,51px)] font-bold leading-[1.08] tracking-tight">
+          <h1 className="mt-5 max-w-[670px] text-[clamp(34px,3vw,51px)] font-bold leading-[1.08] tracking-[-0.045em] xl:mt-7">
             Everything your property
             <br />
             needs, in <span className="text-[#087cff]">one workspace.</span>
           </h1>
-          <p className="mt-4 max-w-[590px] text-[clamp(15px,1.15vw,19px)] leading-relaxed text-slate-400">
+          <p className="mt-3 max-w-[590px] text-[clamp(14px,1.15vw,19px)] leading-relaxed text-slate-400 xl:mt-4">
             Manage reservations, rooms, rates, availability, guests, invoices
             and daily hotel operations with clarity.
           </p>
-
-          <LoginShowcase />
-
-          <div className="mt-5 grid grid-cols-3 gap-4">
-            {[
-              ["bg-[#087cff]", "Live operations"],
-              ["bg-emerald-400", "Rates & inventory"],
-              ["bg-orange-400", "Channel-ready workflows"]
-            ].map(([dotClass, label]) => (
-              <div
-                className="flex min-w-0 items-center justify-center gap-3 rounded-xl border border-white/15 bg-white/[0.025] px-3 py-3 text-center text-sm font-medium text-slate-200"
-                key={label}
-              >
-                <span className={`size-2.5 shrink-0 rounded-full ${dotClass}`} />
-                <span>{label}</span>
-              </div>
-            ))}
-          </div>
         </div>
       </section>
 
-      <section className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_52%,#edf5ff_100%)] px-5 py-10 sm:px-8 lg:px-10">
+      <section className="login-auth-pane relative flex min-h-screen items-center justify-center overflow-hidden bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_52%,#edf5ff_100%)] px-5 py-10 sm:px-8 lg:px-10">
         <div className="pointer-events-none absolute inset-x-0 top-0 h-2 bg-[linear-gradient(90deg,#087cff,#14b8a6,#f59e0b)]" />
-        <div className="relative z-10 w-full max-w-[515px] rounded-2xl border border-slate-200/80 bg-white p-7 shadow-[0_24px_70px_rgba(15,23,42,0.13)] sm:p-10 lg:p-[42px]">
+        <button
+          aria-label={colorScheme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          aria-pressed={colorScheme === "dark"}
+          className="absolute right-5 top-6 z-20 grid size-11 place-items-center rounded-lg border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 sm:right-8"
+          onClick={toggleColorScheme}
+          title={colorScheme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          type="button"
+        >
+          {colorScheme === "dark" ? <Moon className="size-5" /> : <Sun className="size-5" />}
+        </button>
+        <div className="login-card relative z-10 w-full max-w-[515px] rounded-2xl border border-slate-200/80 bg-white p-7 shadow-[0_24px_70px_rgba(15,23,42,0.13)] sm:p-10 lg:p-[42px]">
           <div className="mb-8 flex items-center gap-3 lg:hidden">
             <span className="grid size-11 place-items-center rounded-xl bg-cyan-50">
               <BedDouble className="size-6 text-blue-600" />
@@ -232,12 +236,12 @@ export default function LoginPage() {
             <Building2 className="size-9 text-[#087cff]" strokeWidth={1.8} />
           </span>
 
-          <div className="mt-6 flex rounded-lg border border-slate-200 bg-slate-50 p-1">
+          <div className="login-mode-switch mt-6 flex rounded-lg border border-slate-200 bg-slate-50 p-1">
             <ModeButton active={authMode === "login"} icon={LogIn} label="Sign in" onClick={() => setAuthMode("login")} />
             <ModeButton active={authMode === "register"} icon={UserPlus} label="Register" onClick={() => setAuthMode("register")} />
           </div>
 
-          <h2 className="mt-6 text-[35px] font-bold leading-none tracking-tight text-[#071635]">
+          <h2 className="login-panel-title mt-6 text-[35px] font-bold leading-none tracking-tight text-[#071635]">
             {panelTitle}
           </h2>
           <p className="mt-3 text-[15px] text-slate-500">
@@ -379,7 +383,7 @@ export default function LoginPage() {
           </div>
 
           <button
-            className="flex h-[50px] w-full items-center justify-center gap-2.5 rounded-lg border border-slate-300 bg-white text-sm font-semibold text-[#102044] transition hover:border-blue-300 hover:bg-blue-50/50"
+            className="login-demo-button flex h-[50px] w-full items-center justify-center gap-2.5 rounded-lg border border-slate-300 bg-white text-sm font-semibold text-[#102044] transition hover:border-blue-300 hover:bg-blue-50/50"
             onClick={openDemoWorkspace}
             type="button"
           >

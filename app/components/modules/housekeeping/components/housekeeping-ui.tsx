@@ -1,4 +1,4 @@
-import { Play, X } from "lucide-react";
+import { X } from "lucide-react";
 import type { ReactNode } from "react";
 
 export function HkButton({
@@ -68,42 +68,6 @@ export function RightDrawer({ title, subtitle, children, onClose, width = "max-w
         </header>
         {children}
       </aside>
-    </div>
-  );
-}
-
-export function HelpVideoButton({ onClick }: { onClick: () => void }) {
-  return (
-    <button onClick={onClick} className="grid h-20 w-20 place-items-center rounded-full bg-cyan-100 text-ink shadow-sm" aria-label="Open help video">
-      <Play className="h-5 w-5" />
-    </button>
-  );
-}
-
-export function HelpVideoModal({ onClose }: { onClose: () => void }) {
-  return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/75 p-6">
-      <button onClick={onClose} className="absolute right-[22%] top-[24%] inline-flex items-center gap-2 rounded-full bg-ink px-4 py-2 text-sm font-semibold text-white">
-        <X className="h-4 w-4" />
-        Close
-      </button>
-      <section className="relative aspect-video w-full max-w-5xl overflow-hidden rounded-xl border-8 border-white bg-white shadow-2xl">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_86%_45%,#ffffff_0_28%,transparent_29%),linear-gradient(135deg,#020617_0%,#041785_58%,#f8fafc_59%)]" />
-        <div className="relative z-10 flex h-full items-center">
-          <div className="ml-16 text-white">
-            <p className="text-2xl font-bold">STAYPILOT PMS - hk act</p>
-            <p className="text-sm">StayPilot PMS</p>
-            <h3 className="mt-28 text-3xl font-extrabold">HOUSEKEEPING ACTIVITIES</h3>
-          </div>
-          <div className="absolute left-1/2 top-1/2 grid h-16 w-24 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-2xl bg-red-600 text-white">
-            <Play className="h-9 w-9 fill-current" />
-          </div>
-          <div className="absolute bottom-8 left-8 flex gap-4 rounded-full bg-slate-950/50 px-5 py-3 text-white">
-            <Play className="h-6 w-6" />
-            <span className="font-semibold">Watch on video</span>
-          </div>
-        </div>
-      </section>
     </div>
   );
 }

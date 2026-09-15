@@ -15,6 +15,7 @@ export type DashboardSummary = {
   period: { date_from: string; date_to: string };
   currency: string;
   generated_at: string;
+  room_statuses?: Array<{ status: string; count: number }>;
   overview: {
     arrivals: number;
     arrival_guests: number;
@@ -46,9 +47,22 @@ export type DashboardSummary = {
 
 type DashboardResponse = { dashboard: DashboardSummary };
 
-export async function getDashboardSummary(propertyId: string, asOf: string, currency: string) {
+export type DashboardDateRange = DashboardSummary["period"];
+
+export async function getDashboardSummary(
+  propertyId: string,
+  asOf: string,
+  currency: string,
+  period?: DashboardDateRange
+) {
   const response = await api.get<DashboardResponse>("/reports/dashboard", {
-    params: { property_id: propertyId, as_of: asOf, currency }
+    params: {
+      property_id: propertyId,
+      as_of: asOf,
+      currency,
+      date_from: period?.date_from,
+      date_to: period?.date_to
+    }
   });
   return response.data.dashboard;
 }

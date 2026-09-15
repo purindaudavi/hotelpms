@@ -1,6 +1,6 @@
 export function DeskButton({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-ink px-5 text-sm font-semibold text-white hover:bg-slate-800">
+    <button type="button" onClick={onClick} className="front-desk-action inline-flex h-11 items-center justify-center gap-2 rounded-md bg-ink px-5 text-sm font-semibold text-white hover:bg-slate-800">
       {children}
     </button>
   );

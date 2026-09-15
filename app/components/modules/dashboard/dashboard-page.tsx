@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { property } from "@/app/data/pms-data";
-import { getDashboardApiErrorMessage, getDashboardSummary, type DashboardSummary } from "@/app/lib/dashboard-api";
+import { getDashboardApiErrorMessage, getDashboardSummary, type DashboardDateRange, type DashboardSummary } from "@/app/lib/dashboard-api";
 import { DashboardAnalytics } from "./analytics/live-dashboard-analytics";
 import { createDemoDashboardSummary } from "./demo-data";
 import { DashboardOverview } from "./overview/dashboard-overview";
@@ -36,6 +36,17 @@ export function DashboardPage({ propertyId, setToast }: DashboardProps) {
 
   useEffect(() => { void loadLiveData(); }, [loadLiveData]);
 
+  const loadRangeData = useCallback(async (period: DashboardDateRange) => {
+    if (demoMode) return createDemoDashboardSummary(property.systemDate, period);
+    try {
+      return await getDashboardSummary(propertyId, property.systemDate, property.currency, period);
+    } catch (requestError) {
+      const message = getDashboardApiErrorMessage(requestError);
+      setToast(message);
+      throw new Error(message);
+    }
+  }, [demoMode, propertyId, setToast]);
+
   const data = demoMode ? demoData : liveData;
 
   return (
@@ -65,7 +76,7 @@ export function DashboardPage({ propertyId, setToast }: DashboardProps) {
 
       {data ? <>
         <p className="text-xs text-slate-500">{demoMode ? "Source: Demo data" : `Source: MongoDB · Updated ${new Date(data.generated_at).toLocaleString()}`}</p>
-        {activeTab === "Overview" ? <DashboardOverview data={data} /> : null}
+        {activeTab === "Overview" ? <DashboardOverview data={data} loadRangeData={loadRangeData} /> : null}
         {activeTab === "Analytics" ? <DashboardAnalytics data={data.analytics} currency={data.currency} /> : null}
         {activeTab === "Travel Agents" ? <DashboardTravelAgents data={data.travel_agents} period={data.period} /> : null}
       </> : null}

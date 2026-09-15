@@ -3,6 +3,7 @@
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { CreditCard, FileMinus2, FileText, RefreshCw, Search, X } from "lucide-react";
 import type { Reservation } from "@/app/data/pms-data";
+import { DateRangeFilter } from "./date-range-filter";
 import {
   type CreditNote,
   type CreditNoteDetails,
@@ -37,6 +38,7 @@ type PageProps = {
   propertyId: string;
   reservations: Reservation[];
   setToast: (message: string) => void;
+  initialReference?: string;
 };
 
 type InvoicePageProps = PageProps & {
@@ -49,25 +51,28 @@ const invoiceStatuses: Array<InvoiceStatus | "all"> = [
 const creditStatuses: Array<CreditNoteStatus | "all"> = ["all", "draft", "issued", "voided"];
 const refundStatuses: Array<RefundStatus | "all"> = ["all", "pending", "completed", "voided"];
 
-export function InvoicesPage({ propertyId, reservations, setToast, onReservationChanged }: InvoicePageProps) {
+export function InvoicesPage({ propertyId, reservations, setToast, onReservationChanged, initialReference = "" }: InvoicePageProps) {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(initialReference);
   const [status, setStatus] = useState<InvoiceStatus | "all">("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setInvoices([]);
     try {
-      const response = await listInvoices(propertyId, { status, search: search.trim(), limit: 100 });
+      const response = await listInvoices(propertyId, { status, search: search.trim(), dateFrom, dateTo, limit: 100 });
       setInvoices(response.invoices);
     } catch (error) {
       setToast(getFinancialApiErrorMessage(error));
     } finally {
       setLoading(false);
     }
-  }, [propertyId, search, setToast, status]);
+  }, [dateFrom, dateTo, propertyId, search, setToast, status]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => void load(), 250);
@@ -82,7 +87,7 @@ export function InvoicesPage({ propertyId, reservations, setToast, onReservation
       onRefresh={() => void load()}
       action={<button type="button" onClick={() => setShowCreate(true)} className="rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white">+ Create Invoice</button>}
     />
-    <Filters search={search} onSearch={setSearch} status={status} statuses={invoiceStatuses} onStatus={(value) => setStatus(value as InvoiceStatus | "all")} />
+    <Filters search={search} onSearch={setSearch} status={status} statuses={invoiceStatuses} onStatus={(value) => setStatus(value as InvoiceStatus | "all")} dateFrom={dateFrom} dateTo={dateTo} onDateFrom={setDateFrom} onDateTo={setDateTo} loading={loading} />
     <section className="overflow-hidden rounded-lg border border-line bg-white">
       <div className="overflow-x-auto">
         <table className="min-w-[1180px] w-full text-left text-sm">
@@ -112,24 +117,27 @@ export function InvoicesPage({ propertyId, reservations, setToast, onReservation
   </div>;
 }
 
-export function CreditNotesPage({ propertyId, setToast }: PageProps) {
+export function CreditNotesPage({ propertyId, setToast, initialReference = "" }: PageProps) {
   const [credits, setCredits] = useState<CreditNote[]>([]);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(initialReference);
   const [status, setStatus] = useState<CreditNoteStatus | "all">("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setCredits([]);
     try {
-      const response = await listCreditNotes(propertyId, { status, search: search.trim(), limit: 100 });
+      const response = await listCreditNotes(propertyId, { status, search: search.trim(), dateFrom, dateTo, limit: 100 });
       setCredits(response.credits);
     } catch (error) {
       setToast(getFinancialApiErrorMessage(error));
     } finally {
       setLoading(false);
     }
-  }, [propertyId, search, setToast, status]);
+  }, [dateFrom, dateTo, propertyId, search, setToast, status]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => void load(), 250);
@@ -139,7 +147,7 @@ export function CreditNotesPage({ propertyId, setToast }: PageProps) {
   return <div className="space-y-5">
     <PageHeader title="Credit Notes" description="Correct issued invoices while keeping a complete financial history." loading={loading} onRefresh={() => void load()} />
     <p className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">Create a credit note from an issued invoice in Financials → Invoices. A credit note reduces the invoice balance; it is not a payment.</p>
-    <Filters search={search} onSearch={setSearch} status={status} statuses={creditStatuses} onStatus={(value) => setStatus(value as CreditNoteStatus | "all")} />
+    <Filters search={search} onSearch={setSearch} status={status} statuses={creditStatuses} onStatus={(value) => setStatus(value as CreditNoteStatus | "all")} dateFrom={dateFrom} dateTo={dateTo} onDateFrom={setDateFrom} onDateTo={setDateTo} loading={loading} />
     <section className="overflow-hidden rounded-lg border border-line bg-white">
       <div className="overflow-x-auto"><table className="min-w-[980px] w-full text-left text-sm">
         <thead><tr className="border-b border-line bg-slate-50 text-slate-500">{['Credit Note', 'Invoice', 'Reservation', 'Guest', 'Date', 'Reason', 'Value', 'Status', 'Action'].map((heading) => <th key={heading} className="px-4 py-3 font-semibold">{heading}</th>)}</tr></thead>
@@ -153,24 +161,27 @@ export function CreditNotesPage({ propertyId, setToast }: PageProps) {
   </div>;
 }
 
-export function RefundsPage({ propertyId, setToast }: PageProps) {
+export function RefundsPage({ propertyId, setToast, initialReference = "" }: PageProps) {
   const [refunds, setRefunds] = useState<Refund[]>([]);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(initialReference);
   const [status, setStatus] = useState<RefundStatus | "all">("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setRefunds([]);
     try {
-      const response = await listRefunds(propertyId, { status, search: search.trim(), limit: 100 });
+      const response = await listRefunds(propertyId, { status, search: search.trim(), dateFrom, dateTo, limit: 100 });
       setRefunds(response.refunds);
     } catch (error) {
       setToast(getFinancialApiErrorMessage(error));
     } finally {
       setLoading(false);
     }
-  }, [propertyId, search, setToast, status]);
+  }, [dateFrom, dateTo, propertyId, search, setToast, status]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => void load(), 250);
@@ -180,12 +191,12 @@ export function RefundsPage({ propertyId, setToast }: PageProps) {
   return <div className="space-y-5">
     <PageHeader title="Refunds" description="Track money returned against posted invoice payments." loading={loading} onRefresh={() => void load()} />
     <p className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">Start a refund from an invoice when its Refund Due amount is greater than zero. Complete it only after the money has actually been returned.</p>
-    <Filters search={search} onSearch={setSearch} status={status} statuses={refundStatuses} onStatus={(value) => setStatus(value as RefundStatus | "all")} />
+    <Filters search={search} onSearch={setSearch} status={status} statuses={refundStatuses} onStatus={(value) => setStatus(value as RefundStatus | "all")} dateFrom={dateFrom} dateTo={dateTo} onDateFrom={setDateFrom} onDateTo={setDateTo} loading={loading} />
     <section className="overflow-hidden rounded-lg border border-line bg-white">
       <div className="overflow-x-auto"><table className="min-w-[980px] w-full text-left text-sm">
-        <thead><tr className="border-b border-line bg-slate-50 text-slate-500">{["Refund No", "Invoice", "Reservation", "Requested", "Method", "Reason", "Amount", "Status", "Action"].map((heading) => <th key={heading} className="px-4 py-3 font-semibold">{heading}</th>)}</tr></thead>
+        <thead><tr className="border-b border-line bg-slate-50 text-slate-500">{["Refund No", "Invoice", "Reservation", "Requested", "Completed", "Method", "Reason", "Amount", "Status", "Action"].map((heading) => <th key={heading} className="px-4 py-3 font-semibold">{heading}</th>)}</tr></thead>
         <tbody>{refunds.map((refund) => <tr key={refund._id} className="border-b border-line last:border-0 hover:bg-slate-50">
-          <td className="px-4 py-4 font-semibold">{refund.refund_no}</td><td className="px-4 py-4">{refund.invoice_no}</td><td className="px-4 py-4">{refund.reservation_no}</td><td className="px-4 py-4">{dateOnly(refund.requested_at)}</td><td className="px-4 py-4">{readable(refund.refund_method)}</td><td className="max-w-[260px] truncate px-4 py-4">{refund.reason}</td><td className="px-4 py-4 font-semibold">{money(refund.amount, refund.currency)}</td><td className="px-4 py-4"><DocumentStatus value={refund.status} /></td><td className="px-4 py-4"><button type="button" onClick={() => setSelectedId(refund._id)} className="rounded border border-line px-3 py-2 font-semibold">View</button></td>
+          <td className="px-4 py-4 font-semibold">{refund.refund_no}</td><td className="px-4 py-4">{refund.invoice_no}</td><td className="px-4 py-4">{refund.reservation_no}</td><td className="px-4 py-4">{dateOnly(refund.requested_at)}</td><td className="px-4 py-4">{refund.completed_at ? dateOnly(refund.completed_at) : "—"}</td><td className="px-4 py-4">{readable(refund.refund_method)}</td><td className="max-w-[260px] truncate px-4 py-4">{refund.reason}</td><td className="px-4 py-4 font-semibold">{money(refund.amount, refund.currency)}</td><td className="px-4 py-4"><DocumentStatus value={refund.status} /></td><td className="px-4 py-4"><button type="button" onClick={() => setSelectedId(refund._id)} className="rounded border border-line px-3 py-2 font-semibold">View</button></td>
         </tr>)}</tbody>
       </table></div>
       <EmptyState loading={loading} empty={!refunds.length} label="No refunds match these filters." />
@@ -419,7 +430,12 @@ function CreateRefundDialog({ propertyId, invoice, payments, refunds, maxAmount,
 }
 
 function PageHeader({ title, description, loading, onRefresh, action }: { title: string; description: string; loading: boolean; onRefresh: () => void; action?: React.ReactNode }) { return <header className="flex flex-wrap items-start justify-between gap-4"><div><h2 className="text-2xl font-bold">{title}</h2><p className="mt-1 text-sm text-slate-500">{description}</p></div><div className="flex gap-2"><button type="button" onClick={onRefresh} disabled={loading} className="flex items-center gap-2 rounded-md border border-line px-4 py-2 text-sm font-semibold disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />Refresh</button>{action}</div></header>; }
-function Filters({ search, onSearch, status, statuses, onStatus }: { search: string; onSearch: (value: string) => void; status: string; statuses: string[]; onStatus: (value: string) => void }) { return <div className="grid gap-3 sm:grid-cols-[1fr_260px]"><label className="flex items-center gap-2 rounded-md border border-line bg-white px-3"><Search className="h-4 w-4 text-slate-400"/><input value={search} onChange={(event) => onSearch(event.target.value)} placeholder="Search number, guest, reservation or email" className="h-11 w-full bg-transparent outline-none" /></label><select value={status} onChange={(event) => onStatus(event.target.value)} className="h-11 rounded-md border border-line bg-white px-3">{statuses.map((item) => <option key={item} value={item}>{readable(item)}</option>)}</select></div>; }
+function Filters({ search, onSearch, status, statuses, onStatus, dateFrom, dateTo, onDateFrom, onDateTo, loading }: { search: string; onSearch: (value: string) => void; status: string; statuses: string[]; onStatus: (value: string) => void; dateFrom: string; dateTo: string; onDateFrom: (value: string) => void; onDateTo: (value: string) => void; loading: boolean }) {
+  return <div className="space-y-3">
+    <div className="grid gap-3 sm:grid-cols-[1fr_260px]"><label className="flex items-center gap-2 rounded-md border border-line bg-white px-3"><Search className="h-4 w-4 text-slate-400"/><input value={search} onChange={(event) => onSearch(event.target.value)} placeholder="Search number, guest, reservation or email" className="h-11 w-full bg-transparent outline-none" /></label><select value={status} onChange={(event) => onStatus(event.target.value)} className="h-11 rounded-md border border-line bg-white px-3">{statuses.map((item) => <option key={item} value={item}>{readable(item)}</option>)}</select></div>
+    <DateRangeFilter dateFrom={dateFrom} dateTo={dateTo} onDateFromChange={onDateFrom} onDateToChange={onDateTo} disabled={loading} />
+  </div>;
+}
 function MoneySummary({ invoice }: { invoice: Invoice }) { return <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">{[["Total", invoice.grand_total], ["Paid", invoice.paid_amount], ["Credited", invoice.credited_amount], ["Balance", invoice.balance_due], ["Refund Due", invoice.refund_due]].map(([label, value]) => <div key={String(label)} className={`rounded-md border p-3 ${label === "Refund Due" && Number(value) > 0 ? "border-amber-300 bg-amber-50" : "border-line bg-slate-50"}`}><p className="text-xs text-slate-500">{label}</p><p className="mt-2 font-bold">{money(Number(value), invoice.currency)}</p></div>)}</div>; }
 function DocumentStatus({ value }: { value: string }) { const tone = value === "paid" || value === "issued" || value === "completed" ? "bg-emerald-100 text-emerald-700" : value === "draft" || value === "pending" ? "bg-amber-100 text-amber-700" : value === "partially_paid" ? "bg-blue-100 text-blue-700" : value === "voided" ? "bg-slate-200 text-slate-600" : "bg-purple-100 text-purple-700"; return <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${tone}`}>{readable(value)}</span>; }
 function EmptyState({ loading, empty, label }: { loading: boolean; empty: boolean; label: string }) { if (!loading && !empty) return null; return <p className="p-8 text-center text-sm text-slate-500">{loading ? "Loading from MongoDB..." : label}</p>; }

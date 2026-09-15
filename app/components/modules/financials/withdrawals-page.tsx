@@ -3,6 +3,7 @@
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { CircleDollarSign, Eye, Plus, RefreshCw, Search, X } from "lucide-react";
 import { currentSessionUser } from "@/app/lib/current-user";
+import { DateRangeFilter } from "./date-range-filter";
 import {
   type Withdrawal,
   type WithdrawalAuditLog,
@@ -19,6 +20,7 @@ import {
 type Props = {
   propertyId: string;
   setToast: (message: string) => void;
+  initialReference?: string;
 };
 
 const sourceAccounts: Array<{ value: WithdrawalSourceAccount; label: string }> = [
@@ -34,19 +36,23 @@ const paymentMethods: Array<{ value: WithdrawalPaymentMethod; label: string }> =
   { value: "other", label: "Other" }
 ];
 
-export function WithdrawalsPage({ propertyId, setToast }: Props) {
+export function WithdrawalsPage({ propertyId, setToast, initialReference = "" }: Props) {
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
   const [totals, setTotals] = useState<Array<{ currency: string; amount: number; count: number }>>([]);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(initialReference);
   const [status, setStatus] = useState<WithdrawalStatus | "all">("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [selected, setSelected] = useState<{ withdrawal: Withdrawal; logs: WithdrawalAuditLog[] } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setWithdrawals([]);
+    setTotals([]);
     try {
-      const response = await listWithdrawals(propertyId, { search: search.trim(), status, limit: 100 });
+      const response = await listWithdrawals(propertyId, { search: search.trim(), status, dateFrom, dateTo, limit: 100 });
       setWithdrawals(response.withdrawals);
       setTotals(response.totals);
     } catch (error) {
@@ -54,7 +60,7 @@ export function WithdrawalsPage({ propertyId, setToast }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [propertyId, search, setToast, status]);
+  }, [dateFrom, dateTo, propertyId, search, setToast, status]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void load(), 250);
@@ -115,6 +121,7 @@ export function WithdrawalsPage({ propertyId, setToast }: Props) {
         <option value="voided">Voided</option>
       </select>
     </div>
+    <DateRangeFilter dateFrom={dateFrom} dateTo={dateTo} onDateFromChange={setDateFrom} onDateToChange={setDateTo} disabled={loading} />
 
     <section className="overflow-hidden rounded-lg border border-line bg-white">
       <div className="overflow-x-auto">

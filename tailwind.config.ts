@@ -1,13 +1,14 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
+  darkMode: "class",
   content: ["./app/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}"],
   theme: {
     extend: {
       colors: {
-        ink: "#14161a",
-        mist: "#f4f7fb",
-        line: "#e6ebf2",
+        ink: "rgb(var(--theme-ink-rgb) / <alpha-value>)",
+        mist: "rgb(var(--theme-mist-rgb) / <alpha-value>)",
+        line: "rgb(var(--theme-line-rgb) / <alpha-value>)",
         ocean: "#0ea5e9",
         violet: "#6d5dfc",
         amber: "#f59e0b",
@@ -22,4 +23,3 @@ const config: Config = {
 };
 
 export default config;
-

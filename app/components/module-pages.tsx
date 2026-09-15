@@ -731,7 +731,6 @@ function HousekeepingInfoPage({ roomList }: ModuleProps) {
 function FinancialsModule(props: ModuleProps) {
   const path = props.activePath;
   if (path.endsWith("profit-loss")) return <ProfitLossPage {...props} />;
-  if (path.endsWith("transfer-funds")) return <TransferFundsPage setToast={props.setToast} />;
   if (path.endsWith("integrations")) return <FinancialIntegrationsPage setToast={props.setToast} />;
   if (path.endsWith("purchases")) return <FinancialListPage title="Purchases" type="Purchase Order" />;
   if (path.endsWith("expenses")) return <FinancialListPage title="Expenses" type="Expense" />;
@@ -811,27 +810,6 @@ function ProfitLossPage({ transactions }: ModuleProps) {
 
 function TrendingIcon() {
   return <BarChart3 className="h-5 w-5" />;
-}
-
-function TransferFundsPage({ setToast }: { setToast: (message: string) => void }) {
-  return (
-    <Page>
-      <Panel title="Transfer Funds" subtitle="Move funds between cash, bank, and payment gateway accounts">
-        <div className="grid gap-4 lg:grid-cols-2">
-          <Field label="From Account" value="Cash on Hand" onChange={() => undefined} />
-          <Field label="To Account" value="Bank - Main" onChange={() => undefined} />
-          <Field label="Amount" value="25000" onChange={() => undefined} type="number" />
-          <Field label="Reference" value="TRF-20260618" onChange={() => undefined} />
-        </div>
-        <div className="mt-4 flex justify-end">
-          <ToolbarButton variant="primary" onClick={() => setToast("Transfer posted")}>
-            <Check className="h-4 w-4" />
-            Post Transfer
-          </ToolbarButton>
-        </div>
-      </Panel>
-    </Page>
-  );
 }
 
 function FinancialIntegrationsPage({ setToast }: { setToast: (message: string) => void }) {

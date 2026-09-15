@@ -319,7 +319,6 @@ export const navigation: NavGroup[] = [
       { title: "Payables", path: "financials/payables", icon: CircleDollarSign },
       { title: "Receivables", path: "financials/receivables", icon: CircleDollarSign },
       { title: "Profit & Loss", path: "financials/profit-loss", icon: TrendingUp },
-      { title: "Transfer Funds", path: "financials/transfer-funds", icon: Repeat },
       { title: "Integrations", path: "financials/integrations", icon: Plug }
     ]
   },
@@ -601,13 +600,13 @@ export function dateLabel(value: string) {
 
 export function getActiveTitle(path: string) {
   for (const group of navigation) {
-    if (group.path === path) return group.title;
-    const child = group.children?.find((item) => item.path === path);
+    if (group.path === path || path.startsWith(`${group.path}/`)) return group.title;
+    const child = group.children?.find((item) => item.path === path || path.startsWith(`${item.path}/`));
     if (child) return child.title;
   }
   return "Dashboard";
 }
 
 export function isGroupActive(group: NavGroup, path: string) {
-  return group.path === path || Boolean(group.children?.some((item) => item.path === path));
+  return group.path === path || path.startsWith(`${group.path}/`) || Boolean(group.children?.some((item) => item.path === path || path.startsWith(`${item.path}/`)));
 }

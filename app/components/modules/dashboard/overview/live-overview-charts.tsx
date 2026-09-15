@@ -1,8 +1,9 @@
 "use client";
 
+import { TrendingDown, TrendingUp } from "lucide-react";
+
 import {
   Area,
-  AreaChart,
   Bar,
   CartesianGrid,
   Cell,
@@ -49,6 +50,8 @@ export function TrendChart({ data }: { data: OccupancyPoint[] }) {
         <CartesianGrid stroke="#e8edf4" strokeDasharray="4 4" vertical={false} />
         <XAxis
           dataKey="label"
+          interval="preserveStartEnd"
+          minTickGap={28}
           tickLine={false}
           axisLine={{ stroke: "#94a3b8" }}
           tick={{ fill: "#64748b", fontSize: 11 }}
@@ -86,23 +89,26 @@ export function TrendChart({ data }: { data: OccupancyPoint[] }) {
 
 export function Gauge({ label, value }: { label: string; value: number }) {
   const clamped = Math.max(0, Math.min(value, 100));
-  const angle = Math.PI - (clamped / 100) * Math.PI;
-  const needleX = 120 + 76 * Math.cos(angle);
-  const needleY = 110 - 76 * Math.sin(angle);
+  const status = clamped < 50
+    ? { label: "Needs Attention", color: "#ff5141", Icon: TrendingDown }
+    : clamped < 80
+      ? { label: "On Track", color: "#0ea5a5", Icon: TrendingUp }
+      : { label: "High Occupancy", color: "#4db08b", Icon: TrendingUp };
 
   return (
     <div className="rounded-lg bg-slate-50 p-4">
-      <div className="mb-3 flex items-center justify-between gap-3">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <p className="font-semibold text-slate-700">{label}</p>
-        <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600 shadow-sm">
-          Projection
+        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600 shadow-sm" title="Below 50%: Needs Attention; 50–79.9%: On Track; 80% and above: High Occupancy. Based on existing bookings.">
+          <status.Icon className="h-3.5 w-3.5" style={{ color: status.color }} aria-hidden="true" />
+          {status.label}
         </span>
       </div>
 
-      <div className="relative mx-auto h-36 w-full max-w-60 overflow-hidden">
+      <div className="relative mx-auto w-full max-w-60 text-center">
         <svg
-          viewBox="0 0 240 144"
-          className="h-full w-full"
+          viewBox="0 0 240 120"
+          className="block h-auto w-full"
           role="img"
           aria-label={`${value.toFixed(1)} percent occupancy`}
         >
@@ -114,33 +120,29 @@ export function Gauge({ label, value }: { label: string; value: number }) {
             strokeLinecap="butt"
             className="text-slate-200"
           />
-          <line
-            x1="120"
-            y1="110"
-            x2={needleX}
-            y2={needleY}
+          <path
+            d="M 25 110 A 95 95 0 0 1 215 110"
+            fill="none"
+            pathLength="100"
+            strokeDasharray={`${clamped} 100`}
             stroke="currentColor"
-            strokeWidth="5"
-            strokeLinecap="round"
-            className="text-cyan-500"
-          />
-          <circle
-            cx="120"
-            cy="110"
-            r="6"
-            fill="currentColor"
-            className="text-cyan-500"
+            strokeWidth="12"
+            strokeLinecap="butt"
+            style={{ color: status.color }}
           />
         </svg>
 
+        <div className="absolute inset-x-0 bottom-2">
         <p
-          className="pointer-events-none absolute inset-x-0 top-[58px] text-center text-3xl font-semibold text-cyan-600"
+          className="text-3xl font-semibold tabular-nums"
+          style={{ color: status.color }}
         >
           {value.toFixed(1)}%
         </p>
-        <p className="pointer-events-none absolute inset-x-0 top-[122px] text-center text-xs text-slate-500">
+        <p className="mt-1 text-xs text-slate-500">
           Occupancy Rate
         </p>
+        </div>
       </div>
     </div>
   );
@@ -154,7 +156,7 @@ export function PlatformBookingsDonut({ data }: { data: RoomNightGroup[] }) {
     color: colors[index % colors.length]
   }));
 
-  if (!data.length) {
+  if (!data.length || total <= 0) {
     return <Empty label="No booking-source room nights for this period" />;
   }
 
@@ -169,24 +171,33 @@ export function PlatformBookingsDonut({ data }: { data: RoomNightGroup[] }) {
           <PieChart>
             <Pie
               data={chartData}
-              dataKey="value"
+              dataKey="room_nights"
               nameKey="label"
               cx="50%"
               cy="50%"
-              innerRadius={54}
-              outerRadius={90}
-              stroke="#fff"
+              innerRadius="48%"
+              outerRadius="68%"
+              paddingAngle={data.length > 1 ? 2 : 0}
+              label={({ percent }) => `${Math.round(Number(percent ?? 0) * 100)}%`}
+              labelLine={{ stroke: "#94a3b8" }}
+              stroke="var(--theme-panel)"
               strokeWidth={2}
             >
               {chartData.map((item) => (
                 <Cell key={item.label} fill={item.color} />
               ))}
             </Pie>
-            <Tooltip />
+            <Tooltip
+              formatter={(value, name) => {
+                const nights = Number(value);
+                return [`${nights.toLocaleString()} room ${nights === 1 ? "night" : "nights"} (${(nights / total * 100).toFixed(1)}%)`, name];
+              }}
+              contentStyle={{ backgroundColor: "var(--theme-panel)", borderColor: "rgb(var(--theme-line-rgb))", borderRadius: 8, whiteSpace: "normal" }}
+            />
           </PieChart>
         </ResponsiveContainer>
       </div>
-      <Legend data={chartData} />
+      <Legend data={chartData.map((item) => ({ ...item, label: `${item.label} (${Math.round(item.value)}%)` }))} />
     </div>
   );
 }
@@ -202,18 +213,20 @@ export function MonthlyRoomNightChart({ data }: { data: RoomNightPoint[] }) {
     <div className="min-h-[310px]">
       <div className="h-[285px]">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart
+          <ComposedChart
             data={chartData}
-            margin={{ top: 8, right: 18, left: 0, bottom: 8 }}
+            margin={{ top: 8, right: 18, left: 12, bottom: 24 }}
           >
             <CartesianGrid stroke="#e8edf4" vertical={false} />
             <XAxis
               dataKey="label"
               tickLine={false}
               tick={{ fill: "#64748b", fontSize: 11 }}
+              label={{ value: "Stay month", position: "insideBottom", offset: -14, fill: "#94a3b8" }}
+              interval="preserveStartEnd"
             />
-            <YAxis tickLine={false} tick={{ fill: "#64748b", fontSize: 11 }} />
-            <Tooltip />
+            <YAxis allowDecimals={false} tickLine={false} tick={{ fill: "#64748b", fontSize: 11 }} label={{ value: "Count", angle: -90, position: "insideLeft", fill: "#94a3b8" }} />
+            <Tooltip formatter={(value, name) => [`${Number(value).toLocaleString()} ${name === "Room nights" ? "room nights" : "reservations"}`, name]} />
             <Area
               type="monotone"
               dataKey="room_nights"
@@ -221,6 +234,7 @@ export function MonthlyRoomNightChart({ data }: { data: RoomNightPoint[] }) {
               stroke="#67c9e8"
               fill="#67c9e8"
               fillOpacity={0.2}
+              dot={{ r: 3 }}
             />
             <Line
               type="monotone"
@@ -234,9 +248,49 @@ export function MonthlyRoomNightChart({ data }: { data: RoomNightPoint[] }) {
               name="No show"
               stroke="#ffb84c"
             />
-          </AreaChart>
+          </ComposedChart>
         </ResponsiveContainer>
       </div>
+      <div className="flex flex-wrap justify-center gap-3 text-xs text-slate-600">
+        {[
+          { label: "Room nights", color: "#67c9e8" },
+          { label: "Cancelled reservations", color: "#ff6269" },
+          { label: "No-show reservations", color: "#ffb84c" }
+        ].map((item) => <span key={item.label} className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />{item.label}</span>)}
+      </div>
+      <p className="mt-3 text-xs text-slate-500">Room nights count rooms × nights stayed or booked. Cancellations and no-shows count reservations overlapping each month.</p>
+    </div>
+  );
+}
+
+export function RoomStatusChart({ data }: { data?: Array<{ status: string; count: number }> }) {
+  if (!data) return <Empty label="Room status data is unavailable. Refresh after updating the server." />;
+  const styles: Record<string, { label: string; color: string }> = {
+    available: { label: "Available", color: "#51b18c" },
+    occupied: { label: "Occupied", color: "#5ec4e0" },
+    out_of_order: { label: "Out of order", color: "#ff6269" },
+    maintenance: { label: "Maintenance", color: "#ffb84c" }
+  };
+  const total = data.reduce((sum, item) => sum + item.count, 0);
+  if (!total) return <Empty label="No active rooms configured" />;
+  const chartData = data.map((item) => ({ ...item, ...(styles[item.status] ?? { label: item.status, color: "#94a3b8" }) }));
+  return (
+    <div className="min-h-[310px]">
+      <div className="text-center"><p className="text-sm text-slate-500">Total active rooms</p><p className="text-3xl font-semibold">{total}</p></div>
+      <div className="h-[230px]">
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie data={chartData.filter((item) => item.count > 0)} dataKey="count" nameKey="label" innerRadius="48%" outerRadius="68%" stroke="var(--theme-panel)" strokeWidth={2} label={({ percent }) => `${Math.round(Number(percent ?? 0) * 100)}%`}>
+              {chartData.filter((item) => item.count > 0).map((item) => <Cell key={item.status} fill={item.color} />)}
+            </Pie>
+            <Tooltip formatter={(value, name) => [`${Number(value)} ${Number(value) === 1 ? "room" : "rooms"} (${(Number(value) / total * 100).toFixed(1)}%)`, name]} contentStyle={{ backgroundColor: "var(--theme-panel)", borderColor: "rgb(var(--theme-line-rgb))", borderRadius: 8 }} />
+          </PieChart>
+        </ResponsiveContainer>
+      </div>
+      <div className="grid gap-2 text-sm">
+        {chartData.map((item) => <div key={item.status} className="flex items-center justify-between gap-2"><span className="inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />{item.label}</span><span className="text-slate-500">{item.count} rooms · {(item.count / total * 100).toFixed(1)}%</span></div>)}
+      </div>
+      <p className="mt-3 text-xs text-slate-500">Current room records. Available rooms may still need housekeeping.</p>
     </div>
   );
 }

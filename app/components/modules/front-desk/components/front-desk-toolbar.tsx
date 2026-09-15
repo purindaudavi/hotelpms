@@ -1,4 +1,4 @@
-import { Bot, PlaySquare, Plus, Share2 } from "lucide-react";
+import { Plus, Share2 } from "lucide-react";
 import { DeskButton } from "./controls";
 import { DeskTab, deskTabs } from "../types";
 
@@ -47,13 +47,6 @@ export function FrontDeskToolbar({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <button className="grid h-11 w-20 place-items-center rounded-xl bg-cyan-100 text-slate-800" onClick={() => setToast("Rate hunt preview opened")}>
-          <PlaySquare className="h-5 w-5" />
-        </button>
-        <Bot className="h-10 w-10 text-sky-500" />
-        <button className="h-10 px-2 text-sm font-semibold" onClick={() => setToast("Nearest hotel rates checked")}>
-          Hunt Nearest Hotel Rates
-        </button>
         <DeskButton onClick={() => setToast("Grid share link copied")}>
           <Share2 className="h-4 w-4" />
           Share

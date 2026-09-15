@@ -12,8 +12,6 @@ import type {
 } from "../types";
 import { reservationPillClass, statusLabel } from "../utils";
 import {
-  HelpVideoButton,
-  HelpVideoModal,
   HkButton,
   SearchField,
   SegmentedTabs
@@ -51,7 +49,6 @@ export function HousekeepingInformationPage({
   const [dateTo, setDateTo] = useState(property.systemDate);
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState("");
-  const [showHelp, setShowHelp] = useState(false);
 
   const rows = useMemo(
     () => buildHousekeepingReservations(
@@ -107,7 +104,6 @@ export function HousekeepingInformationPage({
       <section className="flex flex-wrap items-start justify-between gap-4">
         <TitleBlock activeTab={activeTab} count={visibleRows.length} dateFrom={dateFrom} dateTo={dateTo} />
         <div className="flex items-center gap-3">
-          <HelpVideoButton onClick={() => setShowHelp(true)} />
           <button type="button" aria-label="Card view" onClick={() => setView("grid")} className={`grid h-12 w-12 place-items-center rounded-md border border-line ${view === "grid" ? "bg-ink text-white" : "bg-white text-ink"}`}><Table2 className="h-5 w-5" /></button>
           <button type="button" aria-label="List view" onClick={() => setView("list")} className={`grid h-12 w-12 place-items-center rounded-md border border-line ${view === "list" ? "bg-ink text-white" : "bg-white text-ink"}`}><List className="h-5 w-5" /></button>
           <HkButton disabled={!visibleRows.length} onClick={() => downloadReservations(visibleRows, activeTab, dateFrom, dateTo)}><Download className="h-4 w-4" />Export CSV</HkButton>
@@ -122,7 +118,6 @@ export function HousekeepingInformationPage({
       />
 
       {selected ? <ReservationInformationDrawer row={selected} onClose={() => setSelectedId("")} /> : null}
-      {showHelp ? <HelpVideoModal onClose={() => setShowHelp(false)} /> : null}
     </main>
   );
 }

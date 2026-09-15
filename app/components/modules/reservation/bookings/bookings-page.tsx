@@ -28,14 +28,14 @@ import { EmptyState, Field, Panel, ReservationPageFrame, SearchBox, SegmentedTab
 import { BusinessBlockForm } from "./business-block-form";
 import { BusinessBlockDetailDrawer } from "./business-block-detail-drawer";
 
-export function BookingsPage(props: ReservationModuleProps) {
+export function BookingsPage(props: ReservationModuleProps & { initialReference?: string }) {
   const { propertyId, reservations, setReservations, roomList, setRoomList, setToast } = props;
   const { businessDate, homeCurrency, roomTypes, ratePlans, setRatePlans } = useReservationEditorResources(propertyId);
   const reservationActions = useReservationActions({ propertyId, businessDate, reservations, setReservations, roomList, setRoomList, ratePlans, setToast });
   const [blocks, setBlocks] = useState<BusinessBlock[]>([]);
   const [blockLogs, setBlockLogs] = useState<BusinessBlockLogEntry[]>([]);
   const [tab, setTab] = useState<BookingTab>("reservations");
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(props.initialReference || "");
   const [dateFilter, setDateFilter] = useState<"checkIn" | "checkOut" | "reservationDate">("checkIn");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");

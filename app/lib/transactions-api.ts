@@ -35,21 +35,22 @@ export type TransactionListResponse = {
 
 export async function listFinancialTransactions(
   propertyId: string,
-  params: { page?: number; limit?: number; status?: BackendTransactionStatus | "all" } = {}
+  params: { page?: number; limit?: number; status?: BackendTransactionStatus | "all"; dateFrom?: string; dateTo?: string } = {}
 ) {
+  const { dateFrom, dateTo, ...query } = params;
   const response = await api.get<TransactionListResponse>("/transactions", {
-    params: { property_id: propertyId, status: "all", limit: 100, ...params }
+    params: { property_id: propertyId, status: "all", limit: 100, ...query, date_from: dateFrom || undefined, date_to: dateTo || undefined }
   });
   return response.data;
 }
 
-export async function listAllFinancialTransactions(propertyId: string) {
-  const first = await listFinancialTransactions(propertyId, { page: 1, limit: 100, status: "all" });
+export async function listAllFinancialTransactions(propertyId: string, filters: { dateFrom?: string; dateTo?: string } = {}) {
+  const first = await listFinancialTransactions(propertyId, { page: 1, limit: 100, status: "all", ...filters });
   if (first.pages <= 1) return first.transactions;
 
   const remaining = await Promise.all(
     Array.from({ length: first.pages - 1 }, (_, index) =>
-      listFinancialTransactions(propertyId, { page: index + 2, limit: 100, status: "all" })
+      listFinancialTransactions(propertyId, { page: index + 2, limit: 100, status: "all", ...filters })
     )
   );
   return [first.transactions, ...remaining.map((page) => page.transactions)].flat();

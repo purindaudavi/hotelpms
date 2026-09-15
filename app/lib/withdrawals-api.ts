@@ -69,13 +69,15 @@ export type CreateWithdrawalInput = {
 
 export async function listWithdrawals(
   propertyId: string,
-  options: { status?: WithdrawalStatus | "all"; search?: string; limit?: number } = {}
+  options: { status?: WithdrawalStatus | "all"; search?: string; limit?: number; dateFrom?: string; dateTo?: string } = {}
 ) {
   const response = await api.get<WithdrawalListResponse>("/withdrawals", {
     params: {
       property_id: propertyId,
       status: options.status ?? "all",
       search: options.search || undefined,
+      date_from: options.dateFrom || undefined,
+      date_to: options.dateTo || undefined,
       limit: options.limit ?? 100
     }
   });

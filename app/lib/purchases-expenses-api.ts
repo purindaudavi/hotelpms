@@ -37,8 +37,34 @@ export type BackendExpense = {
   created_at: string;
 };
 
-export async function listPurchases(propertyId: string) {
-  const response = await api.get<{ purchases: BackendPurchase[] }>("/purchases", { params: { property_id: propertyId } });
+export type PurchaseFilters = {
+  status?: "to_be_paid" | "paid" | "voided" | "all";
+  search?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  overdueOnly?: boolean;
+  asOf?: string;
+  dateField?: "purchase_date" | "due_date";
+};
+
+export type ExpenseFilters = {
+  status?: "posted" | "voided" | "all";
+  search?: string;
+  dateFrom?: string;
+  dateTo?: string;
+};
+
+export async function listPurchases(propertyId: string, filters: PurchaseFilters = {}) {
+  const response = await api.get<{ purchases: BackendPurchase[] }>("/purchases", { params: {
+    property_id: propertyId,
+    status: filters.status || "all",
+    search: filters.search || undefined,
+    date_from: filters.dateFrom || undefined,
+    date_to: filters.dateTo || undefined,
+    overdue_only: filters.overdueOnly || undefined,
+    as_of: filters.asOf || undefined,
+    date_field: filters.dateField || undefined
+  } });
   return response.data.purchases;
 }
 
@@ -71,8 +97,14 @@ export async function payPurchase(propertyId: string, purchaseId: string, paidAt
   return response.data.purchase;
 }
 
-export async function listExpenses(propertyId: string) {
-  const response = await api.get<{ expenses: BackendExpense[] }>("/expenses", { params: { property_id: propertyId } });
+export async function listExpenses(propertyId: string, filters: ExpenseFilters = {}) {
+  const response = await api.get<{ expenses: BackendExpense[] }>("/expenses", { params: {
+    property_id: propertyId,
+    status: filters.status || "all",
+    search: filters.search || undefined,
+    date_from: filters.dateFrom || undefined,
+    date_to: filters.dateTo || undefined
+  } });
   return response.data.expenses;
 }
 

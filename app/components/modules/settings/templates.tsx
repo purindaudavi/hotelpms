@@ -150,7 +150,7 @@ export function SettingsTemplatesPage({ propertyId, setToast }: { propertyId: st
     <div className="grid gap-6 lg:grid-cols-[230px_1fr]">
       <aside className="border-r border-line pr-4">
         <h2 className="mb-3 font-semibold text-slate-500">Email Category</h2>
-        <nav className="space-y-1">{categories.map((item) => <button key={item} onClick={() => setCategory(item)} className={`flex w-full items-center gap-3 rounded-md px-4 py-3 text-left text-sm font-semibold ${category === item ? "bg-ink text-white" : "hover:bg-slate-100"}`}><Mail className="h-4 w-4" />{item}</button>)}</nav>
+        <nav className="space-y-1">{categories.map((item) => <button key={item} onClick={() => setCategory(item)} className={`flex w-full items-center gap-3 rounded-md px-4 py-3 text-left text-sm font-semibold ${category === item ? "template-category-selected bg-ink text-white" : "hover:bg-slate-100"}`}><Mail className="h-4 w-4" />{item}</button>)}</nav>
       </aside>
       <section className="min-w-0">
         <header className="mb-5 flex flex-wrap items-center justify-between gap-3">
@@ -160,7 +160,7 @@ export function SettingsTemplatesPage({ propertyId, setToast }: { propertyId: st
               <input type="checkbox" checked={useDefaults} disabled={loading || saving} onChange={(event) => void toggleDefaults(event.target.checked)} className="h-5 w-5 rounded accent-ink" />
               Use default email templates
             </label>
-            <button onClick={() => setEditing("new")} disabled={loading || !defaultTemplate} className="inline-flex h-11 items-center gap-2 rounded-md bg-ink px-5 text-sm font-semibold text-white disabled:opacity-50"><Plus className="h-4 w-4" />Create Template</button>
+            <button onClick={() => setEditing("new")} disabled={loading || !defaultTemplate} className="template-create-button inline-flex h-11 items-center gap-2 rounded-md bg-ink px-5 text-sm font-semibold text-white disabled:opacity-50"><Plus className="h-4 w-4" />Create Template</button>
           </div>
         </header>
         {error ? <div className="mb-5 rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{error}</div> : null}
@@ -179,7 +179,7 @@ function TemplateCard({ template, saving, onUse, onEdit }: { template: EmailTemp
   return <article className={`rounded-lg border p-5 ${template.active ? "border-emerald-400 bg-emerald-50/40" : "border-line"}`}>
     <div className="flex justify-between gap-3">
       <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="font-semibold">{template.name}</h3>{template.active ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-700"><Check className="h-3 w-3" />In use</span> : null}</div><p className="mt-1 text-sm text-slate-500">{template.blocks.length} blocks · Updated {template.updatedAt ? new Date(template.updatedAt).toLocaleString() : "just now"}</p><p className="mt-2 truncate text-xs text-slate-500">Subject: {template.subject}</p></div>
-      <div className="flex shrink-0 flex-col gap-2"><button onClick={onUse} disabled={template.active || saving} className="h-10 rounded-md bg-ink px-4 text-sm font-semibold text-white disabled:bg-slate-300">{template.active ? "Selected" : "Use template"}</button><button onClick={onEdit} className="h-10 rounded-md border border-line bg-white px-4 text-sm font-semibold">View / Edit</button></div>
+      <div className="flex shrink-0 flex-col gap-2"><button onClick={onUse} disabled={template.active || saving} className={`h-10 rounded-md bg-ink px-4 text-sm font-semibold text-white disabled:bg-slate-300 ${template.active ? "template-selected-button" : ""}`}>{template.active ? "Selected" : "Use template"}</button><button onClick={onEdit} className="h-10 rounded-md border border-line bg-white px-4 text-sm font-semibold">View / Edit</button></div>
     </div>
   </article>;
 }

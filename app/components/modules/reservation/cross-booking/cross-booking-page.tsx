@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useSessionState } from "@/app/components/hooks/use-session-state";
-import { Link2, RefreshCw } from "lucide-react";
+import { Check, Link2, RefreshCw } from "lucide-react";
 import type { ReservationModuleProps } from "../types";
 import { Panel, ReservationPageFrame, SearchBox, ToolbarButton } from "../components/reservation-ui";
 import { crossBookedRoomCodes } from "@/app/lib/cross-booking";
@@ -155,7 +155,7 @@ export function CrossBookingPage({ propertyId, roomList, setToast }: Reservation
         </Panel>
 
         <Panel title="Cross-book to" subtitle={`Rooms that cannot be sold together with ${primaryRoom}`}>
-          <div className={`mb-4 rounded-md border px-4 py-3 text-sm ${linkedRooms.length ? "border-amber-200 bg-amber-50 text-amber-900" : "border-slate-200 bg-slate-50 text-slate-600"}`}>
+          <div className={`cross-booking-notice mb-4 rounded-md border px-4 py-3 text-sm ${linkedRooms.length ? "border-amber-200 bg-amber-50 text-amber-900" : "border-slate-200 bg-slate-50 text-slate-600"}`}>
             {linkedRooms.length
               ? `Room ${primaryRoom} conflicts with ${linkedRooms.join(", ")}. Booking either side makes the other unavailable for the same dates.`
               : `Room ${primaryRoom} has no cross-book relationships. This is the safe default for an independent physical room.`}
@@ -187,12 +187,13 @@ function RoomCard({ checked, code, type, onClick, disabled = false }: { checked:
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`flex min-h-16 items-start gap-3 rounded-lg border p-4 text-left transition ${
+      aria-pressed={checked}
+      className={`cross-booking-room flex min-h-16 items-start gap-3 rounded-lg border p-4 text-left transition ${
         checked ? "border-slate-950 bg-slate-100" : "border-line bg-white hover:border-slate-300"
       } disabled:cursor-not-allowed disabled:opacity-60`}
     >
-      <span className={`mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded border ${checked ? "border-slate-950 bg-slate-950" : "border-slate-400 bg-white"}`}>
-        {checked ? <span className="h-2 w-2 rounded-sm bg-white" /> : null}
+      <span aria-hidden="true" className={`cross-booking-checkbox mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border ${checked ? "border-slate-950 bg-slate-950" : "border-slate-400 bg-white"}`}>
+        {checked ? <Check className="h-3.5 w-3.5 text-white" strokeWidth={3} /> : null}
       </span>
       <span>
         <span className="block text-base font-semibold">{code}</span>

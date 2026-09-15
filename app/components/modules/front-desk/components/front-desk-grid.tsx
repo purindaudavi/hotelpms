@@ -54,7 +54,7 @@ export function FrontDeskGrid({
   const roomsByType = groupRooms(roomList);
 
   return (
-    <section className="overflow-hidden rounded-lg border border-line bg-white shadow-sm">
+    <section className="front-desk-grid overflow-hidden rounded-lg border border-line bg-white shadow-sm" data-day-use={dayUse}>
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
         <div className="flex flex-wrap items-center gap-2">
           <IconButton label="Previous range" onClick={onPreviousRange}>

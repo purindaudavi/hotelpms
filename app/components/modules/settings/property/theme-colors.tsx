@@ -51,7 +51,9 @@ export function ThemeTab({ value, setValue, defaults, onSave }: ThemeTabProps) {
     <div className="space-y-7">
       <div>
         <h2 className="flex items-center gap-2 text-2xl font-semibold"><Palette />Theme Colors</h2>
-        <p className="mt-1 text-sm text-slate-500">Light and dark mode controls will be added later. These colors apply throughout the PMS.</p>
+        <p className="mt-1 text-sm text-slate-500">
+          Use the sun or moon button in the top bar to switch appearance. These colors apply in both modes.
+        </p>
       </div>
 
       <Section title="Accent Color" subtitle="Used for shared buttons, active navigation and highlights across the PMS.">
