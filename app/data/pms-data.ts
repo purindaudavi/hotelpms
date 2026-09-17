@@ -235,7 +235,7 @@ export type Employee = {
   status: "Active" | "Invited" | "Disabled";
 };
 
-export const appName = "StayPilot";
+export const appName = "DMS Desk";
 
 export function currentPropertyDate(date = new Date()) {
   const dateParts = new Intl.DateTimeFormat("en", {

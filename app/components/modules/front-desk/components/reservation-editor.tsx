@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Bot, Maximize2, Pencil, PlaySquare, Plus, Trash2, X } from "lucide-react";
+import { Maximize2, Minimize2, Pencil, Plus, Trash2, X } from "lucide-react";
 import { Reservation, ReservationStatus, Room } from "@/app/data/pms-data";
 import { createUuid } from "@/app/lib/record-ids";
 import { isValidEmail } from "@/app/lib/reservation-email";
@@ -48,6 +48,7 @@ export function ReservationEditor(props: ReservationEditorProps) {
     return initialForm ? structuredClone(initialForm) : bookingToForm(booking, defaultDate, propertyId, ratePlans, homeCurrency, roomTypes);
   });
   const [saving, setSaving] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const submitLock = useRef(false);
   const [error, setError] = useState("");
   const [rateDialogOpen, setRateDialogOpen] = useState(false);
@@ -370,11 +371,11 @@ export function ReservationEditor(props: ReservationEditorProps) {
 
   return (
     <div className="fixed inset-0 z-50 bg-black/45">
-      <form onSubmit={submit} className="ml-auto flex h-full w-full max-w-[1380px] flex-col rounded-l-2xl bg-white shadow-2xl">
+      <form onSubmit={submit} className={`ml-auto flex h-full w-full flex-col bg-white shadow-2xl transition-[max-width,border-radius] ${expanded ? "max-w-none rounded-none" : "max-w-[1380px] rounded-l-2xl"}`}>
         <header className="flex items-center justify-between border-b border-line px-6 py-4">
-          <div className="flex items-center gap-8"><h2 className="text-xl font-semibold">Reservation</h2><Bot className="h-11 w-11 text-sky-500" /><span className="text-sm font-semibold text-slate-700">Hi, need help?</span></div>
-          <div className="flex gap-4"><IconButton label="Expand" onClick={() => setToast("Reservation panel expanded")}><Maximize2 className="h-4 w-4" /></IconButton>
-            <button type="button" className="grid h-12 w-12 place-items-center rounded-full bg-cyan-300" onClick={() => setToast("Reservation guide opened")}><PlaySquare className="h-5 w-5" /></button>
+          <div className="flex items-center gap-8"><h2 className="text-xl font-semibold">Reservation</h2></div>
+          <div className="flex gap-4"><IconButton label={expanded ? "Restore reservation panel" : "Expand reservation panel"} onClick={() => setExpanded((value) => !value)}>{expanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}</IconButton>
+            
             <IconButton label="Close" onClick={onClose}><X className="h-5 w-5" /></IconButton></div>
         </header>
 
@@ -451,7 +452,7 @@ export function ReservationEditor(props: ReservationEditorProps) {
           </div>
         </div>
 
-        <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-6 py-4"><label className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={form.checkInNow} onChange={(e) => update("checkInNow", e.target.checked)} />Check in guest immediately</label><label className={`flex items-center gap-2 text-sm ${isValidEmail(form.email) ? "text-slate-600" : "text-slate-400"}`}><input type="checkbox" disabled={!isValidEmail(form.email)} checked={form.sendEmail} onChange={(e) => update("sendEmail", e.target.checked)} />Send confirmation email to guest</label><div className="flex gap-2">{booking ? <button type="button" disabled={saving} className="rounded-md border border-red-200 px-4 text-sm text-red-600 disabled:opacity-60" onClick={() => { if (window.confirm("Delete this reservation?")) void onDelete(booking.id); }}>Delete</button> : null}<button type="submit" disabled={saving} className="h-12 rounded-md bg-ink px-8 text-sm font-semibold text-white disabled:opacity-60">{saving ? "Saving..." : booking ? "Update" : "Reserve"}</button></div></footer>
+        <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-6 py-4"><label className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={form.checkInNow} onChange={(e) => update("checkInNow", e.target.checked)} />Check in guest immediately</label><label className={`flex items-center gap-2 text-sm ${isValidEmail(form.email) ? "text-slate-600" : "text-slate-400"}`}><input type="checkbox" disabled={!isValidEmail(form.email)} checked={form.sendEmail} onChange={(e) => update("sendEmail", e.target.checked)} />Send confirmation email to guest</label><div className="flex gap-2">{booking ? <button type="button" disabled={saving} className="rounded-md border border-red-200 px-4 text-sm text-red-600 disabled:opacity-60" onClick={() => { if (window.confirm("Delete this reservation?")) void onDelete(booking.id); }}>Delete</button> : null}<button type="submit" disabled={saving} className="reservation-primary-action h-12 rounded-md bg-ink px-8 text-sm font-semibold text-white disabled:opacity-60">{saving ? "Saving..." : booking ? "Update" : "Reserve"}</button></div></footer>
       </form>
       {rateDialogOpen ? <RatePlanDialog propertyId={propertyId} homeCurrency={homeCurrency} defaultDate={defaultDate} roomTypes={roomTypes} onClose={() => setRateDialogOpen(false)} onCreate={(plan) => { setRatePlans((current) => [...current, plan]); if (plan.active) applyRatePlan(plan); setRateDialogOpen(false); }} /> : null}
     </div>

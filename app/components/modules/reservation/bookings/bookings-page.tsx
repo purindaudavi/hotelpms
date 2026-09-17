@@ -28,13 +28,13 @@ import { EmptyState, Field, Panel, ReservationPageFrame, SearchBox, SegmentedTab
 import { BusinessBlockForm } from "./business-block-form";
 import { BusinessBlockDetailDrawer } from "./business-block-detail-drawer";
 
-export function BookingsPage(props: ReservationModuleProps & { initialReference?: string }) {
+export function BookingsPage(props: ReservationModuleProps & { initialReference?: string; initialTab?: BookingTab }) {
   const { propertyId, reservations, setReservations, roomList, setRoomList, setToast } = props;
   const { businessDate, homeCurrency, roomTypes, ratePlans, setRatePlans } = useReservationEditorResources(propertyId);
   const reservationActions = useReservationActions({ propertyId, businessDate, reservations, setReservations, roomList, setRoomList, ratePlans, setToast });
   const [blocks, setBlocks] = useState<BusinessBlock[]>([]);
   const [blockLogs, setBlockLogs] = useState<BusinessBlockLogEntry[]>([]);
-  const [tab, setTab] = useState<BookingTab>("reservations");
+  const [tab, setTab] = useState<BookingTab>(props.initialTab ?? "reservations");
   const [query, setQuery] = useState(props.initialReference || "");
   const [dateFilter, setDateFilter] = useState<"checkIn" | "checkOut" | "reservationDate">("checkIn");
   const [dateFrom, setDateFrom] = useState("");
@@ -50,6 +50,24 @@ export function BookingsPage(props: ReservationModuleProps & { initialReference?
   const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [blockFormOpen, setBlockFormOpen] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const sharedTab = params.get("view");
+    const sharedDateFilter = params.get("dateFilter");
+    const sharedRowsPerPage = Number(params.get("rowsPerPage"));
+    const sharedPage = Number(params.get("page"));
+
+    if (sharedTab === "reservations" || sharedTab === "business-blocks") setTab(sharedTab);
+    if (params.has("query")) setQuery(params.get("query") || "");
+    if (sharedDateFilter === "checkIn" || sharedDateFilter === "checkOut" || sharedDateFilter === "reservationDate") setDateFilter(sharedDateFilter);
+    if (params.has("from")) setDateFrom(params.get("from") || "");
+    if (params.has("to")) setDateTo(params.get("to") || "");
+    if (params.has("status")) setStatusFilter(params.get("status") || "All");
+    if (params.has("showAll")) setShowAll(params.get("showAll") !== "false");
+    if ([10, 25, 50].includes(sharedRowsPerPage)) setRowsPerPage(sharedRowsPerPage);
+    if (Number.isInteger(sharedPage) && sharedPage > 0) setPage(sharedPage);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -174,7 +192,7 @@ export function BookingsPage(props: ReservationModuleProps & { initialReference?
     if (block.status === status) return Promise.resolve(block);
     if (status === "Active") return transitionBusinessBlock(propertyId, block.id, "activate");
     if (status === "Released") return transitionBusinessBlock(propertyId, block.id, "release");
-    if (status === "Cancelled") return transitionBusinessBlock(propertyId, block.id, "cancel", "Cancelled from StayPilot");
+    if (status === "Cancelled") return transitionBusinessBlock(propertyId, block.id, "cancel", "Cancelled from DMS Desk");
     if (status === "Completed") return transitionBusinessBlock(propertyId, block.id, "complete");
     return Promise.reject(new Error(`Status cannot change from ${block.status} to ${status}.`));
   }
@@ -188,9 +206,24 @@ export function BookingsPage(props: ReservationModuleProps & { initialReference?
 
   function exportBookings() { exportCsv("reservations.csv", filteredReservations.map((booking) => ({ "Res No": booking.resNo, "Booking Ref": booking.bookingReference || booking.bookingRef || "", "Reservation Date": booking.reservationDate, "Check-In": booking.checkIn, "Check-Out": booking.checkOut, "No. of Rooms": booking.rooms, "Booking Source": booking.bookingSource || booking.source, "Travel Agent": booking.travelAgentName || "", Status: booking.status, "Booker Name": booking.guest, Phone: booking.phone, Email: booking.email, Country: booking.country, Currency: booking.currency || homeCurrency, Total: booking.total, Paid: booking.paid }))); setToast("Reservations CSV exported"); }
   function exportBlocks() { exportCsv("business-blocks.csv", filteredBlocks.map((block) => { const metrics = businessBlockMetrics(block, reservations); return { "Block No": block.blockNumber, "Block Name": block.blockName, Company: block.companyName, "Stay Dates": `${block.checkIn} - ${block.checkOut}`, Blocked: metrics.blocked, Picked: metrics.pickedUp, Remaining: metrics.remaining, "Cut-off": block.cutoffDate, Status: block.status }; })); setToast("Business blocks CSV exported"); }
+  async function shareCurrentView() {
+    const url = new URL(window.location.href);
+    url.search = "";
+    url.searchParams.set("view", tab);
+    if (query) url.searchParams.set("query", query);
+    url.searchParams.set("dateFilter", dateFilter);
+    if (dateFrom) url.searchParams.set("from", dateFrom);
+    if (dateTo) url.searchParams.set("to", dateTo);
+    url.searchParams.set("status", statusFilter);
+    url.searchParams.set("showAll", String(showAll));
+    url.searchParams.set("page", String(page));
+    url.searchParams.set("rowsPerPage", String(rowsPerPage));
+    const copied = await copyToClipboard(url.toString());
+    setToast(copied ? "Current booking view link copied" : "Clipboard unavailable");
+  }
 
   return <ReservationPageFrame>
-    <div className="flex flex-wrap items-start justify-between gap-4"><h1 className="text-2xl font-semibold">Bookings</h1><div className="flex flex-wrap gap-2">{tab === "reservations" ? <ToolbarButton tone="dark" icon={<Plus className="h-4 w-4" />} onClick={() => openReservationEditor()}>Reservation</ToolbarButton> : <ToolbarButton tone="dark" icon={<Plus className="h-4 w-4" />} onClick={() => { setEditingBlockId(null); setBlockFormOpen(true); }}>Business Block</ToolbarButton>}<ToolbarButton tone="dark" icon={<Share2 className="h-4 w-4" />} onClick={() => void copyToClipboard(window.location.href).then((copied) => setToast(copied ? "Bookings link copied" : "Clipboard unavailable"))}>Share</ToolbarButton><ToolbarButton tone="dark" icon={<Download className="h-4 w-4" />} onClick={tab === "reservations" ? exportBookings : exportBlocks}>Export CSV</ToolbarButton></div></div>
+    <div className="flex flex-wrap items-start justify-between gap-4"><h1 className="text-2xl font-semibold">Bookings</h1><div className="flex flex-wrap gap-2">{tab === "reservations" ? <ToolbarButton tone="dark" icon={<Plus className="h-4 w-4" />} onClick={() => openReservationEditor()}>Reservation</ToolbarButton> : <ToolbarButton tone="dark" icon={<Plus className="h-4 w-4" />} onClick={() => { setEditingBlockId(null); setBlockFormOpen(true); }}>Business Block</ToolbarButton>}<ToolbarButton tone="dark" icon={<Share2 className="h-4 w-4" />} onClick={() => void shareCurrentView()}>Share</ToolbarButton><ToolbarButton tone="dark" icon={<Download className="h-4 w-4" />} onClick={tab === "reservations" ? exportBookings : exportBlocks}>Export CSV</ToolbarButton></div></div>
     <div className="grid gap-4 xl:grid-cols-[360px_1fr_220px_220px_160px_140px]"><div className="self-end"><SegmentedTabs tabs={[{ label: "Reservations", value: "reservations" }, { label: "Business Blocks", value: "business-blocks" }]} value={tab} onChange={(next) => { setTab(next); setPage(1); }} className="w-full" /></div><Field label="Search"><SearchBox value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Search..." /></Field>{tab === "reservations" ? <Field label="Date Filter Type"><SelectInput value={dateFilter} onChange={(event) => setDateFilter(event.target.value as typeof dateFilter)}><option value="checkIn">Check-In</option><option value="checkOut">Check-Out</option><option value="reservationDate">Reservation Date</option></SelectInput></Field> : <Field label="Status"><SelectInput value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>{["All", "Tentative", "Active", "Released", "Cancelled", "Completed"].map((status) => <option key={status}>{status}</option>)}</SelectInput></Field>}<Field label="Date From"><TextInput type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></Field><Field label="Date To"><TextInput type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></Field><div className="flex items-end gap-2">{tab === "reservations" ? <label className="flex h-11 items-center gap-2 rounded-md border border-line px-3 text-sm font-semibold"><input type="checkbox" checked={showAll} onChange={(event) => setShowAll(event.target.checked)} />Show all</label> : null}<ToolbarButton icon={<RefreshCw className="h-4 w-4" />} onClick={resetFilters}>Reset</ToolbarButton></div></div>
 
     {tab === "reservations" ? <ReservationsTable rows={visibleRows} onOpen={(id) => setSelectedBookingId(id)} /> : <BusinessBlocksTable blocks={filteredBlocks} reservations={reservations} businessDate={businessDate} onOpen={(id) => setSelectedBlockId(id)} onEdit={(id) => { setEditingBlockId(id); setBlockFormOpen(true); }} onStatus={(block, status) => changeBlockStatus(block, status)} onRelease={releaseBlock} />}

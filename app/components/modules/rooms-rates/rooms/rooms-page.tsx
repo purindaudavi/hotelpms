@@ -5,6 +5,7 @@ import { FormEvent, useMemo, useState } from "react";
 import { Check, Edit3, Grid3X3, ImageIcon, List, Plus, RotateCw, Trash2, X } from "lucide-react";
 import type { Reservation, Room } from "@/app/data/pms-data";
 import { createUuid } from "@/app/lib/record-ids";
+import { ViewModeSwitch } from "@/app/components/view-mode-switch";
 import {
   addPhysicalRoom,
   createRoomType,
@@ -23,7 +24,6 @@ import { roomTypeSearch } from "../utils";
 import {
   Drawer,
   Field,
-  IconButton,
   Panel,
   RoomsRatesFrame,
   SearchInput,
@@ -275,10 +275,10 @@ export function RoomsPage({ propertyId, roomTypes, setRoomTypes, reservations, r
         title="Room Types"
         subtitle={`${filtered.length} active room type${filtered.length === 1 ? "" : "s"}`}
         action={
-          <div className="inline-flex rounded-full bg-slate-100 p-1">
-            <IconButton label="Grid view" active={view === "grid"} onClick={() => setView("grid")}><Grid3X3 className="h-4 w-4" /></IconButton>
-            <IconButton label="List view" active={view === "list"} onClick={() => setView("list")}><List className="h-4 w-4" /></IconButton>
-          </div>
+          <ViewModeSwitch value={view} onChange={setView} options={[
+            { value: "grid", label: "Grid view", icon: <Grid3X3 className="h-4 w-4" /> },
+            { value: "list", label: "List view", icon: <List className="h-4 w-4" /> }
+          ]} />
         }
       >
         {view === "grid" ? (

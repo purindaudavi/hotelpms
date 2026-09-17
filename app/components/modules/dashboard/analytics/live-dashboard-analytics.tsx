@@ -10,7 +10,7 @@ type Analytics = DashboardSummary["analytics"];
 const colors = ["#10b981", "#6366f1", "#f43f5e", "#f59e0b", "#06b6d4", "#64748b"];
 
 export function DashboardAnalytics({ data, currency }: { data: Analytics; currency: string }) {
-  const [revenueView, setRevenueView] = useState("Bar");
+  const [revenueView, setRevenueView] = useState("Area");
   const performance = data.monthly_performance.map((item) => ({ ...item, label: formatMonth(item.month) }));
   const latest = performance.at(-1);
   return <div className="space-y-4">
@@ -26,7 +26,7 @@ export function DashboardAnalytics({ data, currency }: { data: Analytics; curren
       <AnalyticsCard title="Booking Segments" subtitle="Current-month reservation mix"><MetricPie data={data.guest_demographics} /></AnalyticsCard>
       <AnalyticsCard title="Occupancy Performance" subtitle="Monthly occupied-room-night percentage"><div className="h-[330px]"><ResponsiveContainer width="100%" height="100%"><LineChart data={performance} margin={{ top: 16, right: 24, left: 10, bottom: 8 }}><CartesianGrid stroke="#d4d4d8" strokeDasharray="4 4" vertical={false} /><XAxis dataKey="label" tickLine={false} /><YAxis domain={[0, 100]} tickFormatter={(value) => `${value}%`} /><Tooltip formatter={(value) => `${Number(value).toFixed(1)}%`} /><Line type="monotone" dataKey="occupancy" name="Occupancy" stroke="#6366f1" strokeWidth={3} /></LineChart></ResponsiveContainer></div></AnalyticsCard>
     </div>
-    <p className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">True profit is not shown because expense and general-ledger modules are not connected. Live mode reports reservation revenue, ADR, RevPAR and occupancy only.</p>
+    <p className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">Dashboard Analytics shows operational booking performance. For complete income, expenses, and net profit or loss, open Financials → Profit &amp; Loss.</p>
   </div>;
 }
 

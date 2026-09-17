@@ -78,7 +78,7 @@ export function DashboardPage({ propertyId, setToast }: DashboardProps) {
         <p className="text-xs text-slate-500">{demoMode ? "Source: Demo data" : `Source: MongoDB · Updated ${new Date(data.generated_at).toLocaleString()}`}</p>
         {activeTab === "Overview" ? <DashboardOverview data={data} loadRangeData={loadRangeData} /> : null}
         {activeTab === "Analytics" ? <DashboardAnalytics data={data.analytics} currency={data.currency} /> : null}
-        {activeTab === "Travel Agents" ? <DashboardTravelAgents data={data.travel_agents} period={data.period} /> : null}
+        {activeTab === "Travel Agents" ? <DashboardTravelAgents data={data.travel_agents} period={data.period} loadRangeData={loadRangeData} /> : null}
       </> : null}
     </main>
   );

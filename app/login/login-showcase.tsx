@@ -1,3 +1,4 @@
+import Image from "next/image";
 import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
@@ -154,10 +155,10 @@ export function LoginShowcase() {
       <div className="grid grid-cols-[23%_77%]">
         <aside className="border-r border-white/10 bg-[#06111b]/80 p-3">
           <div className="mb-4 flex items-center gap-2 text-[11px] font-semibold text-white">
-            <span className="grid size-7 place-items-center rounded-md bg-[#061b2c] text-[#1d8cff]">
-              <BedDouble size={16} />
+            <span className="grid size-7 place-items-center rounded-md bg-[#061b2c]">
+              <Image src="/assets/dms-desk-app-icon.png" alt="" width={18} height={18} className="size-[18px] object-contain" />
             </span>
-            StayPilot
+            DMS Desk
           </div>
           <nav className="space-y-1.5" aria-label="Dashboard preview navigation">
             {navigation.map(({ label, icon: Icon, active }) => (

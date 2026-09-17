@@ -1,9 +1,10 @@
 "use client";
 
 import { ChangeEvent, FormEvent, PointerEvent as ReactPointerEvent, useMemo, useState } from "react";
-import { CalendarDays, Check, ChevronLeft, ChevronRight, ImageIcon, Package, Plus, Save, Star, UploadCloud, X } from "lucide-react";
+import { CalendarDays, Check, ChevronLeft, ChevronRight, Grid3X3, ImageIcon, List, Package, Plus, Save, Star, UploadCloud, X } from "lucide-react";
 import { property, roomTypes } from "@/app/data/pms-data";
 import { useSessionState } from "@/app/components/hooks/use-session-state";
+import { ViewModeSwitch } from "@/app/components/view-mode-switch";
 
 type IbeTab = "Hotel Details" | "IBE Config" | "IBE Policies" | "Packages" | "Min Stay" | "IBE Rate" | "Promo Code" | "Smart Pricing";
 
@@ -1328,22 +1329,10 @@ function PromoCodeTab({
           <p className="mt-1 text-sm text-slate-500">View promo codes by booking and stay dates. Click a cell to edit.</p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="inline-flex rounded-md border border-line bg-white p-1">
-            <button
-              type="button"
-              onClick={() => onViewModeChange("grid")}
-              className={`h-9 rounded px-3 text-sm font-semibold ${viewMode === "grid" ? "bg-slate-100 text-ink" : "text-slate-500 hover:text-ink"}`}
-            >
-              Grid
-            </button>
-            <button
-              type="button"
-              onClick={() => onViewModeChange("table")}
-              className={`h-9 rounded px-3 text-sm font-semibold ${viewMode === "table" ? "bg-slate-100 text-ink" : "text-slate-500 hover:text-ink"}`}
-            >
-              Table
-            </button>
-          </div>
+          <ViewModeSwitch value={viewMode} onChange={onViewModeChange} options={[
+            { value: "grid", label: "Grid view", icon: <Grid3X3 className="h-4 w-4" /> },
+            { value: "table", label: "Table view", icon: <List className="h-4 w-4" /> }
+          ]} />
           <button
             type="button"
             onClick={onAdd}

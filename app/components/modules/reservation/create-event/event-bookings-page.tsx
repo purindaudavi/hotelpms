@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { CalendarPlus, ChevronLeft, ChevronRight, Grid3X3, List, RefreshCw } from "lucide-react";
+import { ViewModeSwitch } from "@/app/components/view-mode-switch";
 import {
   createEvent,
   deleteEvent as deleteEventRequest,
@@ -168,14 +169,10 @@ export function EventBookingsPage({ propertyId, setToast }: ReservationModulePro
             </SelectInput>
           </Field>
           <Field label="View">
-            <div className="flex">
-              <IconButton label="Grid view" active={view === "grid"} onClick={() => setView("grid")}>
-                <Grid3X3 className="h-4 w-4" />
-              </IconButton>
-              <IconButton label="List view" active={view === "list"} onClick={() => setView("list")}>
-                <List className="h-4 w-4" />
-              </IconButton>
-            </div>
+            <ViewModeSwitch value={view} onChange={setView} options={[
+              { value: "grid", label: "Grid view", icon: <Grid3X3 className="h-4 w-4" /> },
+              { value: "list", label: "List view", icon: <List className="h-4 w-4" /> }
+            ]} />
           </Field>
           <ToolbarButton
             disabled={loading}
@@ -242,7 +239,7 @@ function CalendarGrid({
 
   return (
     <Panel bodyClassName="p-0">
-      <div className="max-h-[calc(100vh-250px)] overflow-auto">
+      <div className="relative isolate z-0 max-h-[calc(100vh-250px)] overflow-auto">
         <div className="grid min-w-[1180px] grid-cols-[88px_repeat(7,minmax(140px,1fr))]">
           <div className="sticky left-0 top-0 z-40 border-b border-r border-line bg-slate-50 p-4 text-sm font-semibold">TIME</div>
           {days.map((day) => (

@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronLeft, ChevronRight, Download, LayoutGrid, List } from "lucide-react";
 import { Reservation } from "@/app/data/pms-data";
 import { statusPillClass } from "../constants";
 import { DeskTab } from "../types";
 import { parseDate } from "../utils";
 import { IconButton } from "./controls";
+import { ViewModeSwitch } from "@/app/components/view-mode-switch";
 
 type ReservationListViewProps = {
   tab: Exclude<DeskTab, "Front Desk">;
@@ -21,6 +22,7 @@ type ViewMode = "grid" | "list";
 export function ReservationListView({ tab, reservations, businessDate, onBookingSelect, setToast }: ReservationListViewProps) {
   const [search, setSearch] = useState("");
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [page, setPage] = useState(1);
   const [viewMode, setViewMode] = useState<ViewMode>(tab === "All" ? "list" : "grid");
   const config = getListConfig(tab);
 
@@ -35,8 +37,15 @@ export function ReservationListView({ tab, reservations, businessDate, onBooking
       .sort((a, b) => a.checkIn.localeCompare(b.checkIn) || a.guest.localeCompare(b.guest));
   }, [businessDate, reservations, search, tab]);
 
-  const visibleRows = rows.slice(0, rowsPerPage);
   const total = rows.length;
+  const totalPages = Math.max(1, Math.ceil(total / rowsPerPage));
+  const currentPage = Math.min(page, totalPages);
+  const firstRow = (currentPage - 1) * rowsPerPage;
+  const visibleRows = rows.slice(firstRow, firstRow + rowsPerPage);
+
+  useEffect(() => {
+    setPage(1);
+  }, [rowsPerPage, search, tab]);
 
   function downloadCsv() {
     const header = ["Booking ID", "Guest", "Room Type", "Stay", "Status", "Booking Source", "Created On"];
@@ -59,16 +68,16 @@ export function ReservationListView({ tab, reservations, businessDate, onBooking
           <h2 className="text-2xl font-semibold text-ink">{config.title}</h2>
           <p className="mt-2 text-base text-slate-500">{config.subtitle}</p>
         </div>
+        
         <div className="flex items-center gap-2">
-          <IconToggle label="Grid view" active={viewMode === "grid"} onClick={() => setViewMode("grid")}>
-            <LayoutGrid className="h-5 w-5" />
-          </IconToggle>
-          <IconToggle label="List view" active={viewMode === "list"} onClick={() => setViewMode("list")}>
-            <List className="h-5 w-5" />
-          </IconToggle>
+          <ViewModeSwitch value={viewMode} onChange={setViewMode} options={[
+            { value: "grid", label: "Grid view", icon: <LayoutGrid className="h-4 w-4" /> },
+            { value: "list", label: "List view", icon: <List className="h-4 w-4" /> }
+          ]} />
           <IconButton label="Download reservations" onClick={downloadCsv}>
-            <Download className="h-5 w-5" />
+            <Download className="h-4 w-4" />
           </IconButton>
+        
         </div>
       </div>
 
@@ -81,7 +90,7 @@ export function ReservationListView({ tab, reservations, businessDate, onBooking
 
       {visibleRows.length ? (
         <>
-          <div className="mt-8 overflow-x-auto">
+          {viewMode === "list" ? <div className="mt-8 overflow-x-auto">
             <table className="w-full min-w-[980px] text-left text-sm">
               <thead>
                 <tr className="border-b border-line text-slate-500">
@@ -108,7 +117,22 @@ export function ReservationListView({ tab, reservations, businessDate, onBooking
                 ))}
               </tbody>
             </table>
-          </div>
+          </div> : <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {visibleRows.map((booking) => (
+              <button key={booking.id} type="button" onClick={() => onBookingSelect(booking)} className="rounded-lg border border-line bg-white p-4 text-left transition hover:border-slate-400 hover:bg-slate-50">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0"><p className="truncate text-base font-semibold text-ink">{booking.guest}</p><p className="mt-1 text-xs text-slate-500">{booking.resNo}</p></div>
+                  <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold text-white ${statusPillClass[booking.status]}`}>{booking.status}</span>
+                </div>
+                <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                  <div><dt className="text-xs text-slate-500">Stay</dt><dd className="mt-1 font-medium text-ink">{stayLabel(booking)}</dd></div>
+                  <div><dt className="text-xs text-slate-500">Room</dt><dd className="mt-1 font-medium text-ink">{booking.roomType || "Unassigned"}</dd></div>
+                  <div><dt className="text-xs text-slate-500">Source</dt><dd className="mt-1 truncate font-medium text-ink">{booking.travelAgentName || booking.bookingSource || booking.source}</dd></div>
+                  <div><dt className="text-xs text-slate-500">Created</dt><dd className="mt-1 font-medium text-ink">{booking.reservationDate}</dd></div>
+                </dl>
+              </button>
+            ))}
+          </div>}
 
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-500">
             <div className="flex flex-wrap items-center gap-2">
@@ -121,15 +145,15 @@ export function ReservationListView({ tab, reservations, businessDate, onBooking
                 </select>
                 <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2" />
               </span>
-              <span>{paginationLabel(total, config.noun)}</span>
+              <span>{paginationLabel(total, config.noun, firstRow, visibleRows.length)}</span>
             </div>
             <div className="flex flex-1 items-center justify-center gap-5">
-              <button type="button" disabled className="inline-flex items-center gap-1 font-semibold text-slate-400">
+              <button type="button" disabled={currentPage === 1} onClick={() => setPage((value) => Math.max(value - 1, 1))} className="inline-flex items-center gap-1 font-semibold text-slate-700 disabled:text-slate-400">
                 <ChevronLeft className="h-4 w-4" />
                 Previous
               </button>
-              <span className="grid h-12 w-12 place-items-center rounded-md border border-line bg-white font-semibold text-ink">1</span>
-              <button type="button" disabled className="inline-flex items-center gap-1 font-semibold text-slate-400">
+              <span className="grid h-12 min-w-12 place-items-center rounded-md border border-line bg-white px-3 font-semibold text-ink">{currentPage} / {totalPages}</span>
+              <button type="button" disabled={currentPage === totalPages} onClick={() => setPage((value) => Math.min(value + 1, totalPages))} className="inline-flex items-center gap-1 font-semibold text-slate-700 disabled:text-slate-400">
                 Next
                 <ChevronRight className="h-4 w-4" />
               </button>
@@ -140,19 +164,6 @@ export function ReservationListView({ tab, reservations, businessDate, onBooking
         <div className="grid min-h-[420px] place-items-center text-base text-slate-500">{config.empty}</div>
       )}
     </section>
-  );
-}
-
-function IconToggle({ label, active, onClick, children }: { label: string; active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      onClick={onClick}
-      className={`grid h-12 w-12 place-items-center rounded-md border border-line ${active ? "bg-ink text-white" : "bg-white text-slate-700 hover:bg-slate-50"}`}
-    >
-      {children}
-    </button>
   );
 }
 
@@ -210,7 +221,7 @@ function shortDate(value: string) {
   return `${month} ${String(date.getDate()).padStart(2, "0")}`;
 }
 
-function paginationLabel(total: number, noun: string) {
+function paginationLabel(total: number, noun: string, firstRow: number, visibleCount: number) {
   if (!total) return `Showing 0 to 0 of 0 ${noun}`;
-  return `Showing 1 to ${total} of ${total} ${noun}`;
+  return `Showing ${firstRow + 1} to ${firstRow + visibleCount} of ${total} ${noun}`;
 }

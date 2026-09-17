@@ -1,6 +1,7 @@
 "use client";
 
 import { type Dispatch, type SetStateAction } from "react";
+import { PRODUCT_NAME } from "@/app/lib/product-brand";
 import type { PropertyDetails } from "./property-types";
 
 export function PropertyInfo({ value, onChange, editing }: { value: PropertyDetails; onChange: Dispatch<SetStateAction<PropertyDetails>>; editing: boolean; setToast: (message: string) => void }) {
@@ -15,7 +16,7 @@ export function PropertyInfo({ value, onChange, editing }: { value: PropertyDeta
       <div className="grid gap-6 xl:grid-cols-[1fr_1fr_1fr]">
         <div className="space-y-5">
           <Input label="Hotel Name" value={value.hotelName} onChange={(v) => set("hotelName", v)} disabled={!editing} />
-          <Input label="PMS Display Name" value={value.pmsName} onChange={(v) => set("pmsName", v)} disabled={!editing} />
+          <Input label="Platform Name" value={PRODUCT_NAME} disabled />
           <Input label="Hotel GUID" value={value.hotelGuid} onChange={(v) => set("hotelGuid", v)} disabled={!editing} />
           <Input label="Number of Rooms" value={value.numberOfRooms} disabled type="number" />
           <Input label="Plan" value={value.plan} onChange={(v) => set("plan", v)} disabled={!editing} />
@@ -30,7 +31,7 @@ export function PropertyInfo({ value, onChange, editing }: { value: PropertyDeta
           <div className="rounded-lg border border-line p-5">
             <p className="mb-3 text-sm text-slate-500">Current logo</p>
             <div className="mx-auto grid h-44 max-w-52 place-items-center overflow-hidden rounded-lg border border-line bg-slate-950 text-3xl font-bold text-white">
-              {value.logoUrl ? <img src={value.logoUrl} alt="Current hotel logo" className="h-full w-full object-contain" /> : "SP"}
+              {value.logoUrl ? <img src={value.logoUrl} alt="Current hotel logo" className="h-full w-full object-contain" /> : hotelInitials(value.hotelName)}
             </div>
             <p className="mt-4 text-sm text-slate-500">Upload or replace this logo from the Property Image tab.</p>
           </div>
@@ -63,5 +64,9 @@ export function PropertyInfo({ value, onChange, editing }: { value: PropertyDeta
 }
 
 function Input({ label, value, onChange, disabled, type = "text" }: { label: string; value: string; onChange?: (value: string) => void; disabled?: boolean; type?: string }) { return <label className="block"><span className="mb-2 block text-sm font-semibold">{label}</span><input type={type} value={value} onChange={(e) => onChange?.(e.target.value)} disabled={disabled} className="focus-ring h-11 w-full rounded-md border border-line bg-white px-3 text-sm disabled:bg-slate-50 disabled:text-slate-500" /></label>; }
-function TextArea({ label, value, onChange, disabled }: { label: string; value: string; onChange: (value: string) => void; disabled: boolean }) { return <label className="block"><span className="mb-2 block text-sm font-semibold">{label}</span><textarea value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled} className="focus-ring min-h-28 w-full rounded-md border border-line p-3 text-sm disabled:bg-slate-50 disabled:text-slate-500" /></label>; }
+function TextArea({ label, value, onChange, disabled }: { label: string; value: string; onChange: (value: string) => void; disabled: boolean }) { return <label className="block"><span className="mb-2 block text-sm font-semibold">{label}</span><textarea value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled} className="focus-ring min-h-28 w-full rounded-md border border-line bg-white p-3 text-sm disabled:bg-slate-50 disabled:text-slate-500" /></label>; }
 function Switch({ label, checked, onChange, disabled }: { label: string; checked: boolean; onChange: (value: boolean) => void; disabled: boolean }) { return <label className="flex min-h-11 items-center gap-3 text-sm font-semibold"><span>{label}</span><button type="button" role="switch" aria-checked={checked} disabled={disabled} onClick={() => onChange(!checked)} className={`relative h-7 w-12 rounded-full transition ${checked ? "bg-ocean" : "bg-slate-300"} disabled:opacity-50`}><span className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${checked ? "left-6" : "left-1"}`} /></button><span className="text-xs text-slate-500">{checked ? "Yes" : "No"}</span></label>; }
+
+function hotelInitials(hotelName: string) {
+  return hotelName.split(/\s+/).filter(Boolean).slice(0, 2).map((word) => word[0]).join("").toUpperCase() || "HT";
+}

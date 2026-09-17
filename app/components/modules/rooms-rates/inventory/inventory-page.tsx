@@ -8,10 +8,8 @@ import type { InventoryCellMap, RatePlan, RoomTypeRecord, RoomsRatesModuleProps 
 import { addDays, availabilityFor, buildInventoryCells, dateLabel, makeInventoryKey, weekdayLabel } from "../utils";
 import { RatePlanDrawer } from "../components/rate-plan-drawer";
 import { Drawer, Field, Panel, RoomsRatesFrame, SelectInput, TextInput, ToolbarButton } from "../components/rooms-rates-ui";
-import { useLocalStorageState } from "@/app/components/hooks/use-local-storage-state";
 import { createRatePlanRecord, getDailyRates, getRatesApiErrorMessage, saveDailyRates, type DailyRate } from "@/app/lib/rates-api";
-import { businessBlockStorageKey, isBusinessBlockArray, migrateBusinessBlockRecords } from "@/app/lib/business-block-repository";
-import { initialBusinessBlocks } from "../../reservation/constants";
+import { getBookingsApiErrorMessage, getBusinessBlocks } from "@/app/lib/bookings-api";
 import type { BusinessBlock } from "../../reservation/types";
 import { property } from "@/app/data/pms-data";
 import { getPlanRate } from "../../front-desk/rate-plans";
@@ -29,7 +27,7 @@ type InventoryAction = "" | "bulk" | "rules" | "logs" | "settings";
 type ActiveInventoryAction = Exclude<InventoryAction, "">;
 
 export function InventoryPage({ propertyId, roomTypes, ratePlans, setRatePlans, ratesLoading, ratesError, refreshRatePlans, reservations, setToast }: InventoryPageProps) {
-  const [businessBlocks] = useLocalStorageState<BusinessBlock[]>(businessBlockStorageKey(propertyId), initialBusinessBlocks, isBusinessBlockArray, (records) => migrateBusinessBlockRecords(records, propertyId, property.currency, property.systemDate));
+  const [businessBlocks, setBusinessBlocks] = useState<BusinessBlock[]>([]);
   const [currency, setCurrency] = useState("All Currencies");
   const [rateCode, setRateCode] = useState("All Rate Codes");
   const [option, setOption] = useState("All Inventory");
@@ -48,6 +46,20 @@ export function InventoryPage({ propertyId, roomTypes, ratePlans, setRatePlans, 
   const [activeAction, setActiveAction] = useState<InventoryAction>("");
   const dirty = JSON.stringify(cells) !== JSON.stringify(savedCells);
   const rateCodes = useMemo(() => ["All Rate Codes", ...Array.from(new Set(ratePlans.map((plan) => plan.code))).sort()], [ratePlans]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getBusinessBlocks(propertyId)
+      .then((records) => {
+        if (!cancelled) setBusinessBlocks(records);
+      })
+      .catch((error) => {
+        if (!cancelled) setToast(getBookingsApiErrorMessage(error));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [propertyId, setToast]);
 
   const loadDailyRates = useCallback(async () => {
     const base = buildInventoryCells(ratePlans, roomTypes, dates);

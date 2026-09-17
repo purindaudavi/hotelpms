@@ -22,5 +22,5 @@ export function ReservationPage(props: ReservationModuleProps) {
   if (section === "travel-agents") return <TravelAgentsPage {...props} />;
   if (section === "guest-profile") return <GuestProfilesPage {...props} />;
 
-  return <BookingsPage key={initialReference || "bookings"} {...props} initialReference={initialReference} />;
+  return <BookingsPage key={`${section}:${initialReference || "bookings"}`} {...props} initialReference={initialReference} initialTab={section === "business-blocks" ? "business-blocks" : "reservations"} />;
 }

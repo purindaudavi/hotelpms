@@ -4,7 +4,6 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { FormEvent, useEffect, useState } from "react";
 import {
-  BedDouble,
   BriefcaseBusiness,
   Building2,
   Eye,
@@ -171,7 +170,7 @@ export default function LoginPage() {
     <main className="login-root grid min-h-screen bg-[#f7f9fc] lg:grid-cols-[minmax(0,1.08fr)_minmax(500px,0.92fr)]">
       <section className="relative hidden overflow-hidden bg-[#02070c] px-[clamp(28px,3.1vw,54px)] text-white lg:block">
         <Image
-          alt="StayPilot dashboard with live arrivals, occupancy, revenue, and operations overview"
+          alt="DMS Desk dashboard with live arrivals, occupancy, revenue, and operations overview"
           className="pointer-events-none object-cover object-center"
           fill
           priority
@@ -183,7 +182,7 @@ export default function LoginPage() {
         <div className="relative z-10 mx-auto w-full max-w-[815px] pt-[clamp(28px,4.8vh,62px)]">
           <div className="flex items-center gap-4">
             <span className="grid size-12 place-items-center rounded-xl border border-white/20 bg-white/[0.025] shadow-[0_10px_30px_rgba(0,119,255,0.12)] xl:size-14">
-              <BedDouble className="size-7 text-[#0086ff] xl:size-8" strokeWidth={1.8} />
+              <Image src="/assets/dms-desk-app-icon.png" alt="" width={32} height={32} className="size-8 object-contain xl:size-9" />
             </span>
             <div>
               <p className="text-[24px] font-bold leading-none tracking-[-0.04em] xl:text-[28px]">
@@ -222,7 +221,7 @@ export default function LoginPage() {
         <div className="login-card relative z-10 w-full max-w-[515px] rounded-2xl border border-slate-200/80 bg-white p-7 shadow-[0_24px_70px_rgba(15,23,42,0.13)] sm:p-10 lg:p-[42px]">
           <div className="mb-8 flex items-center gap-3 lg:hidden">
             <span className="grid size-11 place-items-center rounded-xl bg-cyan-50">
-              <BedDouble className="size-6 text-blue-600" />
+              <Image src="/assets/dms-desk-app-icon.png" alt="" width={28} height={28} className="size-7 object-contain" />
             </span>
             <div>
               <p className="text-xl font-bold tracking-tight text-slate-950">

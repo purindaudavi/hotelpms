@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Building2, ExternalLink, Grid3X3, Heart, List, Search, Star } from "lucide-react";
 import { useLocalStorageState } from "@/app/components/hooks/use-local-storage-state";
+import { ViewModeSwitch } from "@/app/components/view-mode-switch";
 import { property } from "@/app/data/pms-data";
 import {
   convertCurrency,
@@ -13,7 +14,7 @@ import { propertyDetailsStorageKey, readPropertyDetails } from "@/app/lib/proper
 import { getRateQuote, getRatesApiErrorMessage } from "@/app/lib/rates-api";
 import type { RatePlan, RoomTypeRecord, RoomsRatesModuleProps } from "../types";
 import { addDays } from "../utils";
-import { Field, IconButton, Panel, RoomsRatesFrame, SelectInput, TextInput, ToolbarButton } from "../components/rooms-rates-ui";
+import { Field, Panel, RoomsRatesFrame, SelectInput, TextInput, ToolbarButton } from "../components/rooms-rates-ui";
 import {
   type CompetitorQuote,
   type RateHunterSearchCriteria,
@@ -248,10 +249,10 @@ export function RateHunterPage({ propertyId, roomTypes, ratePlans, setToast }: R
             <div className="text-sm text-slate-600">
               <strong>{resultRoomType?.name}</strong> · <strong>{resultPlan?.name}</strong> · {searchSnapshot.checkIn} to {searchSnapshot.checkOut} · {nights} night{nights === 1 ? "" : "s"}
             </div>
-            <div className="flex gap-2">
-              <IconButton label="List view" active={view === "list"} onClick={() => setView("list")}><List className="h-4 w-4" /></IconButton>
-              <IconButton label="Table view" active={view === "table"} onClick={() => setView("table")}><Grid3X3 className="h-4 w-4" /></IconButton>
-            </div>
+            <ViewModeSwitch value={view} onChange={setView} options={[
+              { value: "list", label: "List view", icon: <List className="h-4 w-4" /> },
+              { value: "table", label: "Table view", icon: <Grid3X3 className="h-4 w-4" /> }
+            ]} />
           </div>
 
           <Panel title="Sample competitor benchmarks" subtitle={`${comparisons.length} comparable Room Only benchmark${comparisons.length === 1 ? "" : "s"} found`}>

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { SourceInspector } from "./source-inspector";
+import { PRODUCT_DESCRIPTION, PRODUCT_ICON_URL, PRODUCT_NAME } from "./lib/product-brand";
 import "./globals.css";
 
 const colorSchemeBootstrap = `
@@ -15,8 +16,13 @@ const colorSchemeBootstrap = `
 `;
 
 export const metadata: Metadata = {
-  title: "StayPilot PMS",
-  description: "Cloud property management workspace"
+  title: PRODUCT_NAME,
+  description: PRODUCT_DESCRIPTION,
+  icons: {
+    icon: PRODUCT_ICON_URL,
+    shortcut: PRODUCT_ICON_URL,
+    apple: PRODUCT_ICON_URL
+  }
 };
 
 export default function RootLayout({

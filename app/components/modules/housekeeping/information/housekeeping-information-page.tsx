@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Download, List, Table2, X } from "lucide-react";
 import { property, type Reservation } from "@/app/data/pms-data";
+import { ViewModeSwitch } from "@/app/components/view-mode-switch";
 import type {
   HousekeepingActivity,
   HousekeepingInfoTab,
@@ -104,8 +105,10 @@ export function HousekeepingInformationPage({
       <section className="flex flex-wrap items-start justify-between gap-4">
         <TitleBlock activeTab={activeTab} count={visibleRows.length} dateFrom={dateFrom} dateTo={dateTo} />
         <div className="flex items-center gap-3">
-          <button type="button" aria-label="Card view" onClick={() => setView("grid")} className={`grid h-12 w-12 place-items-center rounded-md border border-line ${view === "grid" ? "bg-ink text-white" : "bg-white text-ink"}`}><Table2 className="h-5 w-5" /></button>
-          <button type="button" aria-label="List view" onClick={() => setView("list")} className={`grid h-12 w-12 place-items-center rounded-md border border-line ${view === "list" ? "bg-ink text-white" : "bg-white text-ink"}`}><List className="h-5 w-5" /></button>
+          <ViewModeSwitch value={view} onChange={setView} options={[
+            { value: "grid", label: "Card view", icon: <Table2 className="h-4 w-4" /> },
+            { value: "list", label: "List view", icon: <List className="h-4 w-4" /> }
+          ]} />
           <HkButton disabled={!visibleRows.length} onClick={() => downloadReservations(visibleRows, activeTab, dateFrom, dateTo)}><Download className="h-4 w-4" />Export CSV</HkButton>
         </div>
       </section>

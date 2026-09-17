@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Reservation } from "@/app/data/pms-data";
 import { FrontDeskGrid } from "./components/front-desk-grid";
 import { FrontDeskToolbar } from "./components/front-desk-toolbar";
@@ -16,6 +17,7 @@ import { getBookingsApiErrorMessage, getBusinessBlocks } from "@/app/lib/booking
 import type { BusinessBlock } from "../reservation/types";
 
 export function FrontDeskPage({ propertyId, reservations, setReservations, roomList, setRoomList, setToast }: FrontDeskProps) {
+  const router = useRouter();
   const { businessDate, homeCurrency, roomTypes, ratePlans, setRatePlans } = useReservationEditorResources(propertyId);
   const [businessBlocks, setBusinessBlocks] = useState<BusinessBlock[]>([]);
   const { links: crossBookLinks, error: crossBookingError } = useCrossBookingLinks(propertyId);
@@ -72,7 +74,7 @@ export function FrontDeskPage({ propertyId, reservations, setReservations, roomL
   function closeReservationEditor() { setModalOpen(false); setEditingBooking(null); }
 
   return <main className="space-y-3 p-4 lg:p-5">
-    <FrontDeskToolbar tab={tab} onTabChange={(next) => { setTab(next); setSelectedBookingId(null); }} sourceFilter={sourceFilter} onSourceFilterChange={setSourceFilter} sources={sources} showSourceFilter={tab === "Front Desk"} onOpenReservation={() => openReservationEditor()} setToast={setToast} />
+    <FrontDeskToolbar tab={tab} onTabChange={(next) => { setTab(next); setSelectedBookingId(null); }} sourceFilter={sourceFilter} onSourceFilterChange={setSourceFilter} sources={sources} showSourceFilter={tab === "Front Desk"} onOpenReservation={() => openReservationEditor()} onOpenBusinessBlocks={() => router.push(`/properties/${propertyId}/reservation/business-blocks`)} />
     {tab === "Front Desk" ? <FrontDeskGrid columns={columns} displayedDateRange={displayedDateRange} roomList={roomList} reservations={filteredReservations} inventoryReservations={reservations} businessBlocks={businessBlocks} crossBookLinks={crossBookLinks} tab={tab} dayUse={dayUse} gridDays={gridDays} gridStartDate={gridStartDate} dayUseDate={dayUseDate} onDayUseChange={setDayUse} onGridDaysChange={setGridDays} onGridStartDateChange={setGridStartDate} onDayUseDateChange={setDayUseDate} onPreviousRange={() => dayUse ? setDayUseDate(addDays(dayUseDate, -1)) : setGridStartDate(addDays(gridStartDate, -gridDays))} onNextRange={() => dayUse ? setDayUseDate(addDays(dayUseDate, 1)) : setGridStartDate(addDays(gridStartDate, gridDays))} onBookingClick={openReservationEditor} />
       : <ReservationListView key={tab} tab={tab} reservations={reservations} businessDate={businessDate} onBookingSelect={(booking) => setSelectedBookingId(booking.id)} setToast={setToast} />}
     {selectedBooking ? <ReservationDetailDrawer key={selectedBooking.id} propertyId={propertyId} booking={selectedBooking} onClose={() => setSelectedBookingId(null)} onEdit={openReservationEditor} onRetryEmail={() => reservationActions.deliverEmail(selectedBooking)} onSendReminder={() => reservationActions.sendManualEmail(selectedBooking, "reminder")} onSendGeneral={(to, subject, message) => reservationActions.sendManualEmail(selectedBooking, "general", { to, subject, message })} onUpdateReservation={(booking) => setReservations((current) => current.map((item) => item.id === booking.id ? booking : item))} setToast={setToast} /> : null}

@@ -174,7 +174,7 @@ async function applyReservationStatus(
     ["Tentative", "Confirmed", "Blocked"].includes(current.status)
   ) {
     return transitionReservation(propertyId, current.id, "cancel", {
-      reason: cancellationReason?.trim() || "Cancelled from StayPilot"
+      reason: cancellationReason?.trim() || "Cancelled from DMS Desk"
     });
   }
   if (current.status === "Confirmed" && desiredStatus === "No Show") {

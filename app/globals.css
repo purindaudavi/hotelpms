@@ -113,6 +113,46 @@ button:disabled {
   background-color: color-mix(in srgb, var(--property-accent) 14%, var(--theme-panel));
 }
 
+@media (min-width: 1024px) {
+  .app-sidebar[data-collapsed="true"] .sidebar-submenu-rail {
+    position: relative;
+    margin: 2px 0 8px;
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .app-sidebar[data-collapsed="true"] .sidebar-submenu-rail::before {
+    position: absolute;
+    top: -18px;
+    bottom: 18px;
+    left: 50%;
+    width: 1px;
+    background: rgb(var(--theme-line-rgb));
+    content: "";
+  }
+
+  .app-sidebar[data-collapsed="true"] .sidebar-submenu-link {
+    position: relative;
+    justify-content: center;
+    padding-left: 24px;
+    padding-right: 0;
+  }
+
+  .app-sidebar[data-collapsed="true"] .sidebar-submenu-link::before {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 6px;
+    height: 1px;
+    background: rgb(var(--theme-line-rgb));
+    content: "";
+  }
+
+  .app-sidebar[data-collapsed="true"] .sidebar-navigation-group {
+    margin-bottom: 6px;
+  }
+}
+
 :root[data-theme="dark"] ::-webkit-scrollbar-thumb {
   background-color: #596069;
 }
@@ -368,6 +408,37 @@ button:disabled {
 
 :root[data-theme="dark"] .app-shell-root .front-desk-action:hover {
   background-color: #202326;
+}
+
+:root[data-theme="dark"] .app-shell-root .view-mode-toggle[aria-pressed="true"] {
+  background-color: #14161a !important;
+  border-color: transparent !important;
+  color: #f8fafc !important;
+}
+
+:root[data-theme="dark"] .app-shell-root .view-mode-toggle[aria-pressed="false"] {
+  background-color: transparent !important;
+  color: #cbd5e1 !important;
+}
+
+:root[data-theme="dark"] .app-shell-root .reservation-primary-action {
+  background-color: #14161a !important;
+  border: 1px solid #3b3f45;
+  color: #f8fafc !important;
+}
+
+:root[data-theme="dark"] .app-shell-root .reservation-primary-action:hover:not(:disabled) {
+  background-color: #202326 !important;
+}
+
+:root[data-theme="dark"] .app-shell-root .property-settings-action {
+  background-color: #14161a !important;
+  border: 1px solid #3b3f44 !important;
+  color: #f8fafc !important;
+}
+
+:root[data-theme="dark"] .app-shell-root .property-settings-action:hover:not(:disabled) {
+  background-color: #202326 !important;
 }
 
 :root[data-theme="dark"] .front-desk-grid th[class~="bg-rose-50"] {

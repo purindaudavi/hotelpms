@@ -21,13 +21,14 @@ import { CurrencyTab } from "./currency";
 import { TaxesTab } from "./taxes";
 import { ThemeTab } from "./theme-colors";
 import { HotelFeaturesTab } from "./hotel features";
+import { PRODUCT_NAME } from "@/app/lib/product-brand";
 import type { CurrencyRecord, GatewayName, GatewaySettings, PropertyDetails, PropertyImageRecord, TaxRecord, ThemeSettings } from "./property-types";
 
 const tabs = ["Property Info", "Property Image", "Meal Allocation", "Payment Gateway", "Taxes", "Currency", "Theme", "Hotel Features"] as const;
 type Tab = (typeof tabs)[number];
 
 export const initialProperty: PropertyDetails = {
-  hotelName: "Ronaka Airport Transit Hotel", pmsName: "StayPilot", hotelType: "Hotel", hotelGuid: "2fe1e67a-5dc0-486d-8496-34fcdb233cf7", starCategory: "3",
+  hotelName: "Ronaka Airport Transit Hotel", pmsName: PRODUCT_NAME, hotelType: "Hotel", hotelGuid: "2fe1e67a-5dc0-486d-8496-34fcdb233cf7", starCategory: "3",
   numberOfRooms: "14", onTrial: false, plan: "", description: "Welcome to Ronaka Airport Transit Hotel in Katunayake, Sri Lanka—your ideal haven for a restful stay just minutes from Bandaranaike International Airport.",
   address: "Ronaka hotel, no 09, airport junction, 18th mile post, Liyanagemulla, Seeduwa", city: "Katunayake", zipCode: "11450", country: "LK",
   phone: "+94703551340", email: "ronakahotel@gmail.com", website: "", checkInTime: "14:00", checkOutTime: "11:00", homeCurrency: "LKR", languageCode: "EN", timezone: "Asia/Colombo",
@@ -149,9 +150,10 @@ export function PropertySettingsPage({ propertyId, setToast }: { propertyId: str
     setPropertySaving(true);
     setPropertyError("");
     try {
+      const normalizedDetails = { ...details, pmsName: PRODUCT_NAME };
       const record = propertyExists
-        ? await updatePropertyInfoRecord(propertyId, details, propertyVersion)
-        : await createPropertyRecord(propertyId, details);
+        ? await updatePropertyInfoRecord(propertyId, normalizedDetails, propertyVersion)
+        : await createPropertyRecord(propertyId, normalizedDetails);
       setDetails(record.details);
       setPropertyVersion(record.version);
       setPropertyExists(true);
@@ -188,7 +190,7 @@ export function PropertySettingsPage({ propertyId, setToast }: { propertyId: str
       <section className="rounded-xl border border-line bg-white p-5 shadow-sm lg:p-7">
         <header className="mb-6 flex items-center justify-between gap-4">
           <h1 className="text-3xl font-bold">Property Details</h1>
-          <button onClick={() => void toggleEdit()} disabled={propertyLoading || propertySaving} className="inline-flex h-11 items-center gap-2 rounded-md bg-ink px-5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50">
+          <button onClick={() => void toggleEdit()} disabled={propertyLoading || propertySaving} className="property-settings-action inline-flex h-11 items-center gap-2 rounded-md bg-ink px-5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50">
             {editing ? <Save className="h-4 w-4" /> : <Edit3 className="h-4 w-4" />}{propertySaving ? "Saving..." : editing ? "Save" : "Edit"}
           </button>
         </header>

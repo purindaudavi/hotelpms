@@ -1,13 +1,14 @@
 "use client";
 
 import { type FormEvent, useEffect, useMemo, useState } from "react";
-import { CalendarDays, Download } from "lucide-react";
+import { CalendarDays, Download, Target as TargetIcon, Trash2, X } from "lucide-react";
 import {
   Area,
   AreaChart,
   Bar,
-  BarChart,
+  ComposedChart,
   CartesianGrid,
+  Legend,
   Line,
   ResponsiveContainer,
   Tooltip,
@@ -19,6 +20,13 @@ import {
   listAllFinancialTransactions,
   type BackendFinancialTransaction
 } from "@/app/lib/transactions-api";
+import {
+  getFinancialTargetsApiErrorMessage,
+  listFinancialTargets,
+  removeFinancialTarget,
+  saveFinancialTarget,
+  type FinancialTarget
+} from "@/app/lib/financial-targets-api";
 
 type ProfitLossPeriod = "Monthly" | "Year" | "Today";
 type ProfitLossView = "Chart" | "Table";
@@ -31,34 +39,12 @@ type ProfitLossPageProps = {
 
 type ProfitLossRow = {
   period: string;
+  period_key: string;
   revenue: number;
   expenses: number;
   profit: number;
-  target: number;
+  target?: number;
 };
-
-const monthlyBaseRows: ProfitLossRow[] = [
-  { period: "Jul", revenue: 0, expenses: 0, profit: 0, target: 0 },
-  { period: "Aug", revenue: 0, expenses: 0, profit: 0, target: 0 },
-  { period: "Sep", revenue: 0, expenses: 0, profit: 0, target: 0 },
-  { period: "Oct", revenue: 0, expenses: 0, profit: 0, target: 0 },
-  { period: "Nov", revenue: 0, expenses: 0, profit: 0, target: 0 },
-  { period: "Dec", revenue: 0, expenses: 0, profit: 0, target: 0 },
-  { period: "Jan", revenue: 0, expenses: 0, profit: 0, target: 0 },
-  { period: "Feb", revenue: 0, expenses: 0, profit: 0, target: 0 },
-  { period: "Mar", revenue: 0, expenses: 0, profit: 0, target: 0 },
-  { period: "Apr", revenue: 0, expenses: 0, profit: 0, target: 0 },
-  { period: "May", revenue: 0, expenses: 0, profit: 0, target: 0 },
-  { period: "Jun", revenue: 0, expenses: 0, profit: 0, target: 0 }
-];
-
-const yearBaseRows: ProfitLossRow[] = [
-  { period: "2022", revenue: 0, expenses: 0, profit: 0, target: 0 },
-  { period: "2023", revenue: 0, expenses: 0, profit: 0, target: 0 },
-  { period: "2024", revenue: 0, expenses: 0, profit: 0, target: 0 },
-  { period: "2025", revenue: 0, expenses: 0, profit: 0, target: 0 },
-  { period: "2026", revenue: 0, expenses: 0, profit: 0, target: 0 }
-];
 
 export function ProfitLossPage({ propertyId, setToast }: ProfitLossPageProps) {
   const [period, setPeriod] = useState<ProfitLossPeriod>("Monthly");
@@ -66,6 +52,11 @@ export function ProfitLossPage({ propertyId, setToast }: ProfitLossPageProps) {
   const [chartMode, setChartMode] = useState<ChartMode>("Area");
   const [filterOpen, setFilterOpen] = useState(false);
   const [transactions, setTransactions] = useState<BackendFinancialTransaction[]>([]);
+  const [targets, setTargets] = useState<FinancialTarget[]>([]);
+  const [targetOpen, setTargetOpen] = useState(false);
+  const [targetMonth, setTargetMonth] = useState(currentMonth());
+  const [targetAmount, setTargetAmount] = useState("");
+  const [targetSaving, setTargetSaving] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -79,9 +70,17 @@ export function ProfitLossPage({ propertyId, setToast }: ProfitLossPageProps) {
     return () => { active = false; };
   }, [propertyId, setToast]);
 
+  useEffect(() => {
+    let active = true;
+    listFinancialTargets(propertyId)
+      .then((savedTargets) => { if (active) setTargets(savedTargets); })
+      .catch((error) => { if (active) setToast(getFinancialTargetsApiErrorMessage(error)); });
+    return () => { active = false; };
+  }, [propertyId, setToast]);
+
   const rows = useMemo(
-    () => buildRows(period, transactions),
-    [period, transactions]
+    () => buildRows(period, transactions, targets),
+    [period, transactions, targets]
   );
   const totals = useMemo(
     () =>
@@ -95,12 +94,62 @@ export function ProfitLossPage({ propertyId, setToast }: ProfitLossPageProps) {
       ),
     [rows]
   );
+  const targetTotal = rows.reduce((sum, row) => sum + (row.target ?? 0), 0);
+  const hasTarget = rows.some((row) => row.target !== undefined);
+  const targetedProfit = rows.reduce((sum, row) => sum + (row.target === undefined ? 0 : row.profit), 0);
+
+  function openTargetDialog(month = currentMonth()) {
+    const saved = targets.find((target) => target.month === month);
+    setTargetMonth(month);
+    setTargetAmount(saved ? String(saved.amount) : "");
+    setTargetOpen(true);
+  }
+
+  function changeTargetMonth(month: string) {
+    const saved = targets.find((target) => target.month === month);
+    setTargetMonth(month);
+    setTargetAmount(saved ? String(saved.amount) : "");
+  }
+
+  async function submitTarget(event: FormEvent) {
+    event.preventDefault();
+    const amount = Number(targetAmount);
+    if (!Number.isFinite(amount) || amount < 0) {
+      setToast("Enter a valid target amount of zero or greater.");
+      return;
+    }
+    setTargetSaving(true);
+    try {
+      const result = await saveFinancialTarget(propertyId, targetMonth, amount);
+      setTargets((current) => [...current.filter((target) => target._id !== result.target._id && target.month !== result.target.month), result.target].sort((left, right) => left.month.localeCompare(right.month)));
+      setToast(result.message);
+      setTargetOpen(false);
+    } catch (error) {
+      setToast(getFinancialTargetsApiErrorMessage(error));
+    } finally {
+      setTargetSaving(false);
+    }
+  }
+
+  async function deleteTarget() {
+    setTargetSaving(true);
+    try {
+      const result = await removeFinancialTarget(propertyId, targetMonth);
+      setTargets((current) => current.filter((target) => target.month !== targetMonth));
+      setToast(result.message);
+      setTargetOpen(false);
+    } catch (error) {
+      setToast(getFinancialTargetsApiErrorMessage(error));
+    } finally {
+      setTargetSaving(false);
+    }
+  }
 
   function exportRows() {
     const csv = [
-      ["Period", "Revenue", "Expenses", "Profit"],
-      ...rows.map((row) => [row.period, row.revenue, row.expenses, row.profit]),
-      ["Total", totals.revenue, totals.expenses, totals.profit]
+      ["Period", "Revenue", "Expenses", "Profit", "Net Profit Target", "Variance", "Achievement"],
+      ...rows.map((row) => [row.period, row.revenue, row.expenses, row.profit, row.target ?? "", row.target === undefined ? "" : row.profit - row.target, row.target === undefined ? "" : percentage(row.profit, row.target)]),
+      ["Total", totals.revenue, totals.expenses, totals.profit, hasTarget ? targetTotal : "", hasTarget ? totals.profit - targetTotal : "", hasTarget ? percentage(totals.profit, targetTotal) : ""]
     ]
       .map((row) => row.map((cell) => JSON.stringify(String(cell))).join(","))
       .join("\n");
@@ -118,6 +167,10 @@ export function ProfitLossPage({ propertyId, setToast }: ProfitLossPageProps) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-2xl font-semibold">Profit & Loss</h2>
         <div className="flex flex-wrap items-center gap-2">
+          <Button onClick={() => openTargetDialog()}>
+            <TargetIcon className="h-4 w-4" />
+            Set Target
+          </Button>
           <Button onClick={() => setFilterOpen((value) => !value)}>
             <CalendarDays className="h-4 w-4" />
             Filter
@@ -135,10 +188,15 @@ export function ProfitLossPage({ propertyId, setToast }: ProfitLossPageProps) {
         </form>
       ) : null}
 
-      <div className="grid gap-4 xl:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <SummaryCard title="Revenue" value={totals.revenue} />
         <SummaryCard title="Expenses" value={totals.expenses} />
         <SummaryCard title="Profit" value={totals.profit} />
+        <SummaryCard
+          title="Net Profit Target"
+          value={hasTarget ? targetTotal : "Not set"}
+          detail={hasTarget ? targetResult(targetedProfit, targetTotal) : "Set monthly targets to track performance"}
+        />
       </div>
 
       <section className="rounded-lg border border-line bg-white p-5 shadow-sm">
@@ -180,21 +238,49 @@ export function ProfitLossPage({ propertyId, setToast }: ProfitLossPageProps) {
           <ProfitLossTable rows={rows} totals={totals} />
         )}
       </section>
+
+      {targetOpen ? (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/60 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setTargetOpen(false); }}>
+          <form onSubmit={submitTarget} role="dialog" aria-modal="true" aria-labelledby="target-dialog-title" className="w-full max-w-md rounded-xl border border-line bg-white p-6 shadow-panel">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 id="target-dialog-title" className="text-xl font-semibold">Set Net Profit Target</h3>
+                <p className="mt-1 text-sm text-slate-500">Save the expected net profit for one month.</p>
+              </div>
+              <button type="button" aria-label="Close" onClick={() => setTargetOpen(false)} className="grid h-9 w-9 place-items-center rounded-md border border-line text-slate-600 hover:bg-slate-50"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="mt-5 grid gap-4">
+              <label className="grid gap-1.5 text-sm font-semibold">Month<input type="month" required value={targetMonth} onChange={(event) => changeTargetMonth(event.target.value)} className="focus-ring h-11 rounded-md border border-line bg-white px-3 font-normal" /></label>
+              <label className="grid gap-1.5 text-sm font-semibold">Net profit target (LKR)<input type="number" required min="0" step="0.01" value={targetAmount} onChange={(event) => setTargetAmount(event.target.value)} placeholder="Example: 60000" className="focus-ring h-11 rounded-md border border-line bg-white px-3 font-normal" /></label>
+            </div>
+            <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+              <div>{targets.some((target) => target.month === targetMonth) ? <button type="button" disabled={targetSaving} onClick={() => void deleteTarget()} className="inline-flex h-10 items-center gap-2 rounded-md border border-red-300 px-3 text-sm font-semibold text-red-600 disabled:opacity-50"><Trash2 className="h-4 w-4" />Remove target</button> : null}</div>
+              <div className="flex gap-2">
+                <button type="button" disabled={targetSaving} onClick={() => setTargetOpen(false)} className="h-10 rounded-md border border-line px-4 text-sm font-semibold text-slate-700">Cancel</button>
+                <button type="submit" disabled={targetSaving} className="dashboard-date-apply h-10 rounded-md bg-ink px-4 text-sm font-semibold text-white disabled:opacity-50">{targetSaving ? "Saving..." : "Save Target"}</button>
+              </div>
+            </div>
+          </form>
+        </div>
+      ) : null}
     </main>
   );
 }
 
-function SummaryCard({ title, value }: { title: string; value: number }) {
+function SummaryCard({ title, value, detail }: { title: string; value: number | string; detail?: string }) {
   return (
     <section className="rounded-lg border border-line bg-white p-6 shadow-sm">
       <p className="font-semibold">{title}</p>
-      <p className="mt-4 text-3xl font-bold">{moneyWhole(value)}</p>
+      <p className="mt-4 text-3xl font-bold">{typeof value === "number" ? moneyWhole(value) : value}</p>
+      {detail ? <p className="mt-2 text-sm text-slate-500">{detail}</p> : null}
     </section>
   );
 }
 
 function ProfitLossChart({ rows, mode }: { rows: ProfitLossRow[]; mode: ChartMode }) {
-  const maxValue = Math.max(10000, ...rows.flatMap((row) => [row.revenue, row.profit, row.target]));
+  const targets = rows.flatMap((row) => row.target === undefined ? [] : [row.target]);
+  const hasTarget = targets.length > 0;
+  const maxValue = Math.max(10000, ...rows.flatMap((row) => [row.revenue, row.profit]), ...targets);
   const domainMax = Math.ceil(maxValue / 1000) * 1000;
   const chartMargin = { top: 12, right: 24, left: 24, bottom: 8 };
 
@@ -202,15 +288,16 @@ function ProfitLossChart({ rows, mode }: { rows: ProfitLossRow[]; mode: ChartMod
     return (
       <div className="h-[360px]">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={rows} margin={chartMargin}>
+          <ComposedChart data={rows} margin={chartMargin}>
             <CartesianGrid stroke="#d4d4d8" strokeDasharray="4 4" vertical={false} />
             <XAxis dataKey="period" tickLine={false} axisLine={{ stroke: "#8b8b8b" }} tick={{ fill: "#64748b", fontSize: 14 }} />
             <YAxis domain={[0, domainMax]} tickFormatter={formatTick} tickLine={false} axisLine={{ stroke: "#8b8b8b" }} tick={{ fill: "#64748b", fontSize: 13 }} />
             <Tooltip cursor={{ fill: "#e5e7eb", opacity: 0.65 }} content={<ProfitLossTooltip />} />
-            <Bar dataKey="revenue" fill="#10b981" radius={[4, 4, 0, 0]} barSize={18} />
-            <Bar dataKey="profit" fill="#6366f1" radius={[4, 4, 0, 0]} barSize={18} />
-            <Bar dataKey="target" fill="#f43f5e" radius={[4, 4, 0, 0]} barSize={18} />
-          </BarChart>
+            <Legend />
+            <Bar dataKey="revenue" name="Revenue" fill="#10b981" radius={[4, 4, 0, 0]} barSize={18} />
+            <Bar dataKey="profit" name="Profit" fill="#6366f1" radius={[4, 4, 0, 0]} barSize={18} />
+            {hasTarget ? <Line type="monotone" dataKey="target" name="Net profit target" stroke="#f43f5e" strokeWidth={2} connectNulls dot={{ r: 4, fill: "#f43f5e" }} /> : null}
+          </ComposedChart>
         </ResponsiveContainer>
       </div>
     );
@@ -224,9 +311,10 @@ function ProfitLossChart({ rows, mode }: { rows: ProfitLossRow[]; mode: ChartMod
           <XAxis dataKey="period" tickLine={false} axisLine={{ stroke: "#8b8b8b" }} tick={{ fill: "#64748b", fontSize: 14 }} />
           <YAxis domain={[0, domainMax]} tickFormatter={formatTick} tickLine={false} axisLine={{ stroke: "#8b8b8b" }} tick={{ fill: "#64748b", fontSize: 13 }} />
           <Tooltip cursor={{ stroke: "#a3a3a3", strokeWidth: 1 }} content={<ProfitLossTooltip />} />
-          <Area type="monotone" dataKey="profit" stroke="#6366f1" strokeWidth={2} fill="#706b8d" fillOpacity={0.28} activeDot={{ r: 5, stroke: "#fff", strokeWidth: 2 }} />
-          <Line type="monotone" dataKey="target" stroke="#f43f5e" strokeWidth={2} dot={false} activeDot={{ r: 5, stroke: "#fff", strokeWidth: 2 }} />
-          <Line type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={0} dot={false} activeDot={{ r: 5, stroke: "#fff", strokeWidth: 2 }} />
+          <Legend />
+          <Area type="monotone" dataKey="profit" name="Profit" stroke="#6366f1" strokeWidth={2} fill="#706b8d" fillOpacity={0.28} activeDot={{ r: 5, stroke: "#fff", strokeWidth: 2 }} />
+          <Line type="monotone" dataKey="revenue" name="Revenue" stroke="#10b981" strokeWidth={2} dot={false} activeDot={{ r: 5, stroke: "#fff", strokeWidth: 2 }} />
+          {hasTarget ? <Line type="monotone" dataKey="target" name="Net profit target" stroke="#f43f5e" strokeWidth={2} connectNulls dot={{ r: 4, fill: "#f43f5e" }} /> : null}
         </AreaChart>
       </ResponsiveContainer>
     </div>
@@ -242,18 +330,21 @@ function ProfitLossTooltip({ active, payload, label }: { active?: boolean; paylo
       <p className="mb-2 text-base font-medium">{label}</p>
       <p className="text-sm text-emerald-600">revenue : {moneyWhole(values.revenue ?? 0)}</p>
       <p className="mt-2 text-sm text-indigo-500">profit : {moneyWhole(values.profit ?? 0)}</p>
-      <p className="mt-2 text-sm text-rose-500">target : {moneyWhole(values.target ?? 0)}</p>
+      {values.target !== undefined ? <p className="mt-2 text-sm text-rose-500">net profit target : {moneyWhole(values.target)}</p> : null}
     </div>
   );
 }
 
 function ProfitLossTable({ rows, totals }: { rows: ProfitLossRow[]; totals: { revenue: number; expenses: number; profit: number } }) {
+  const targetTotal = rows.reduce((sum, row) => sum + (row.target ?? 0), 0);
+  const hasTarget = rows.some((row) => row.target !== undefined);
+  const targetedProfit = rows.reduce((sum, row) => sum + (row.target === undefined ? 0 : row.profit), 0);
   return (
     <div className="mt-5 overflow-x-auto">
       <table className="min-w-[840px] w-full border border-line text-left text-sm">
         <thead>
           <tr className="border-b border-line">
-            {["Period", "Revenue", "Expenses", "Profit"].map((heading, index) => (
+            {["Period", "Revenue", "Expenses", "Profit", "Target", "Variance", "Achievement"].map((heading, index) => (
               <th key={heading} className={`px-4 py-3 text-lg font-semibold ${index ? "text-right" : ""}`}>{heading}</th>
             ))}
           </tr>
@@ -265,6 +356,9 @@ function ProfitLossTable({ rows, totals }: { rows: ProfitLossRow[]; totals: { re
               <td className="px-4 py-3 text-right text-base">{moneyWhole(row.revenue)}</td>
               <td className="px-4 py-3 text-right text-base">{moneyWhole(row.expenses)}</td>
               <td className="px-4 py-3 text-right text-base">{moneyWhole(row.profit)}</td>
+              <td className="px-4 py-3 text-right text-base">{row.target === undefined ? "—" : moneyWhole(row.target)}</td>
+              <td className="px-4 py-3 text-right text-base">{row.target === undefined ? "—" : moneyWhole(row.profit - row.target)}</td>
+              <td className="px-4 py-3 text-right text-base">{row.target === undefined ? "—" : percentage(row.profit, row.target)}</td>
             </tr>
           ))}
           <tr>
@@ -272,6 +366,9 @@ function ProfitLossTable({ rows, totals }: { rows: ProfitLossRow[]; totals: { re
             <td className="px-4 py-3 text-right text-base font-bold">{moneyWhole(totals.revenue)}</td>
             <td className="px-4 py-3 text-right text-base font-bold">{moneyWhole(totals.expenses)}</td>
             <td className="px-4 py-3 text-right text-base font-bold">{moneyWhole(totals.profit)}</td>
+            <td className="px-4 py-3 text-right text-base font-bold">{hasTarget ? moneyWhole(targetTotal) : "—"}</td>
+            <td className="px-4 py-3 text-right text-base font-bold">{hasTarget ? moneyWhole(targetedProfit - targetTotal) : "—"}</td>
+            <td className="px-4 py-3 text-right text-base font-bold">{hasTarget ? percentage(targetedProfit, targetTotal) : "—"}</td>
           </tr>
         </tbody>
       </table>
@@ -318,9 +415,8 @@ function Button({ children, onClick }: { children: React.ReactNode; onClick: () 
   );
 }
 
-function buildRows(period: ProfitLossPeriod, transactions: BackendFinancialTransaction[]) {
-  const baseRows = period === "Monthly" ? monthlyBaseRows : period === "Year" ? yearBaseRows : [{ period: "Today", revenue: 0, expenses: 0, profit: 0, target: 0 }];
-  const rows = baseRows.map((row) => ({ ...row }));
+function buildRows(period: ProfitLossPeriod, transactions: BackendFinancialTransaction[], targets: FinancialTarget[]) {
+  const rows = baseRows(period);
 
   for (const transaction of transactions) {
     if (transaction.status !== "posted") continue;
@@ -333,29 +429,54 @@ function buildRows(period: ProfitLossPeriod, transactions: BackendFinancialTrans
     }
   }
 
+  for (const target of targets) {
+    const key = period === "Monthly" ? target.month : period === "Year" ? target.month.slice(0, 4) : "";
+    const row = rows.find((item) => item.period_key === key);
+    if (row) row.target = (row.target ?? 0) + target.amount;
+  }
+
   return rows.map((row) => {
     const profit = row.revenue - row.expenses;
-    return {
-      ...row,
-      profit,
-      target: row.target || Math.round(row.revenue * 1.1)
-    };
+    return { ...row, profit };
   });
 }
 
 function addAmount(rows: ProfitLossRow[], period: ProfitLossPeriod, date: string, key: "revenue" | "expenses", amount: number) {
-  const label = periodLabel(period, date);
-  if (!label) return;
-  const row = rows.find((item) => item.period === label);
+  const rowKey = periodKey(period, date);
+  if (!rowKey) return;
+  const row = rows.find((item) => item.period_key === rowKey);
   if (row) row[key] += amount;
 }
 
-function periodLabel(period: ProfitLossPeriod, date: string) {
+function periodKey(period: ProfitLossPeriod, date: string) {
   const dateOnly = date.split("T")[0];
-  const parsed = new Date(`${dateOnly}T00:00:00`);
-  if (period === "Year") return String(parsed.getFullYear());
-  if (period === "Today") return dateOnly === new Date().toISOString().slice(0, 10) ? "Today" : "";
-  return parsed.toLocaleDateString("en-US", { month: "short" });
+  if (period === "Year") return dateOnly.slice(0, 4);
+  if (period === "Today") return dateOnly === currentDate() ? dateOnly : "";
+  return dateOnly.slice(0, 7);
+}
+
+function baseRows(period: ProfitLossPeriod): ProfitLossRow[] {
+  const today = new Date(`${currentDate()}T00:00:00Z`);
+  if (period === "Today") return [{ period: "Today", period_key: currentDate(), revenue: 0, expenses: 0, profit: 0 }];
+  if (period === "Year") {
+    const year = today.getUTCFullYear();
+    return Array.from({ length: 5 }, (_, index) => {
+      const value = String(year - 4 + index);
+      return { period: value, period_key: value, revenue: 0, expenses: 0, profit: 0 };
+    });
+  }
+  const currentYear = today.getUTCFullYear();
+  const fiscalStartYear = today.getUTCMonth() >= 6 ? currentYear : currentYear - 1;
+  return Array.from({ length: 12 }, (_, index) => {
+    const date = new Date(Date.UTC(fiscalStartYear, 6 + index, 1));
+    return {
+      period: date.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" }),
+      period_key: date.toISOString().slice(0, 7),
+      revenue: 0,
+      expenses: 0,
+      profit: 0
+    };
+  });
 }
 
 function moneyWhole(value: number) {
@@ -364,4 +485,12 @@ function moneyWhole(value: number) {
 
 function formatTick(value: number) {
   return value === 0 ? "LKR 0" : value.toLocaleString("en-US");
+}
+
+function currentDate() { return new Date().toISOString().slice(0, 10); }
+function currentMonth() { return currentDate().slice(0, 7); }
+function percentage(value: number, target: number) { return target > 0 ? `${(value / target * 100).toFixed(1)}%` : value >= 0 ? "100.0%" : "0.0%"; }
+function targetResult(profit: number, target: number) {
+  const difference = profit - target;
+  return `${percentage(profit, target)} achieved · ${moneyWhole(Math.abs(difference))} ${difference >= 0 ? "above" : "below"} target`;
 }

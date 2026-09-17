@@ -36,7 +36,7 @@ export function BusinessBlockDetailDrawer(props: Props) {
   }
   function printBlock() { window.print(); setToast("Print dialog opened"); }
 
-  return <div className="fixed inset-0 z-[55] bg-black/40"><aside className="ml-auto flex h-full w-full max-w-[780px] flex-col bg-white shadow-2xl">
+  return <div className="fixed inset-0 z-[55] bg-black/40"><aside className="ml-auto flex h-full w-full max-w-[780px] flex-col   bg-white  shadow-2xl">
     <header className="border-b border-line p-5"><div className="flex justify-between gap-4"><div><h2 className="text-xl font-semibold">{block.blockName}</h2><p className="text-sm text-slate-500">{block.blockNumber} · {block.companyName}</p><span className="mt-2 inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-bold">{block.status}</span>{block.status === "Active" && block.cutoffDate < new Date().toISOString().slice(0, 10) ? <span className="ml-2 rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-800">Release due</span> : null}</div><button type="button" onClick={onClose} className="rounded-md border border-line p-2"><X className="h-5 w-5" /></button></div>
       <div className="mt-4 flex flex-wrap gap-2"><Action onClick={onEdit}>Edit</Action>{block.status === "Tentative" ? <Action onClick={() => onStatus("Active")} dark>Activate</Action> : null}{block.status === "Active" ? <><Action onClick={() => onCreateReservation(block.allocations[0])} dark>Create Reservation</Action><Action onClick={onRelease}>Release Remaining Rooms</Action><Action onClick={() => onStatus("Cancelled")} danger>Cancel Block</Action></> : null}<Action onClick={exportBlock}><Download className="h-4 w-4" />Export CSV</Action><Action onClick={printBlock}><Printer className="h-4 w-4" />Print</Action></div>
     </header>

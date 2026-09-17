@@ -1,4 +1,4 @@
-import { Plus, Share2 } from "lucide-react";
+import { Plus } from "lucide-react";
 import { DeskButton } from "./controls";
 import { DeskTab, deskTabs } from "../types";
 
@@ -10,7 +10,7 @@ type FrontDeskToolbarProps = {
   sources: string[];
   showSourceFilter: boolean;
   onOpenReservation: () => void;
-  setToast: (message: string) => void;
+  onOpenBusinessBlocks: () => void;
 };
 
 export function FrontDeskToolbar({
@@ -21,7 +21,7 @@ export function FrontDeskToolbar({
   sources,
   showSourceFilter,
   onOpenReservation,
-  setToast
+  onOpenBusinessBlocks
 }: FrontDeskToolbarProps) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -47,15 +47,11 @@ export function FrontDeskToolbar({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <DeskButton onClick={() => setToast("Grid share link copied")}>
-          <Share2 className="h-4 w-4" />
-          Share
-        </DeskButton>
         <DeskButton onClick={onOpenReservation}>
           <Plus className="h-4 w-4" />
           Reservation
         </DeskButton>
-        <DeskButton onClick={() => setToast("Business block tool opened")}>Business Block</DeskButton>
+        <DeskButton onClick={onOpenBusinessBlocks}>Business Block</DeskButton>
       </div>
     </div>
   );

@@ -53,7 +53,7 @@ const sample: Record<string, string> = {
   checkOutDate: "Wednesday, June 17 2026", nights: "2 nights", roomsCount: "Deluxe Double - Room 101",
   totalAmount: "52,000.00", currency: "LKR", guestEmail: "john@example.com", guestCountry: "United Kingdom",
   specialRequests: "Late check-in", subject: "Information about your stay", message: "We look forward to welcoming you.",
-  timeLocation: "2:00 PM - Front Desk", wifiName: "StayPilot Guest", wifiPassword: "Provided at check-in"
+  timeLocation: "2:00 PM - Front Desk", wifiName: "DMS Desk Guest", wifiPassword: "Provided at check-in"
 };
 
 const blockLibrary: Array<{ label: string; kind: BlockKind; content: string }> = [

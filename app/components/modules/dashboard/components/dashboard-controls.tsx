@@ -82,7 +82,7 @@ export function DateRangePill({
       </button>
 
       {open ? (
-        <div id={`${id}-popover`} role="dialog" aria-label={ariaLabel} className={`absolute z-30 mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-lg border border-line bg-white p-4 shadow-panel ${align === "left" ? "left-0" : "right-0"}`}>
+        <div id={`${id}-popover`} role="dialog" aria-label={ariaLabel} className={`absolute z-30 mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-lg border border-line bg-white p-4 shadow-panel ${align === "right" ? "left-0" : "right-0"}`}>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="grid gap-1 text-xs font-semibold text-slate-600">
               From

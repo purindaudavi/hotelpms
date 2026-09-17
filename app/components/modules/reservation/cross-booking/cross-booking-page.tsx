@@ -125,8 +125,7 @@ export function CrossBookingPage({ propertyId, roomList, setToast }: Reservation
             Cross Booking
           </h1>
           <p className="mt-2 max-w-3xl text-sm text-slate-500">
-            Link rooms only when they share inventory and cannot be sold for overlapping stay dates. The relationship works in both directions.
-          </p>
+          Select a primary room on the left, then select rooms on the right that share the same inventory. If either room is booked for a date, the linked room becomes unavailable for the overlapping dates.          </p>
         </div>
         <ToolbarButton icon={<RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />} onClick={refresh} disabled={loading}>
           Refresh

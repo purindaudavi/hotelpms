@@ -95,10 +95,11 @@ export function TravelAgentsPage({ propertyId, setToast }: ReservationModuleProp
   return (
     <ReservationPageFrame>
       {loadError ? <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{loadError}</div> : null}
-      <div className="grid gap-5 xl:grid-cols-[1.1fr_1fr]">
-        <div className="space-y-5">
+      <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(340px,1fr)]">
+        <div className="min-w-0 space-y-5">
           <Panel
             title="Travel Agent Performance"
+            className="min-w-0 overflow-hidden"
             action={
               <SegmentedTabs
                 tabs={[
@@ -110,7 +111,8 @@ export function TravelAgentsPage({ propertyId, setToast }: ReservationModuleProp
               />
             }
           >
-            <div className="grid min-h-[300px] items-center gap-6 lg:grid-cols-[1fr_320px]">
+            <div className="grid min-h-[300px] min-w-0 items-center gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(180px,280px)]">
+              <div className="min-w-0">
               <ResponsiveContainer width="100%" height={250}>
                 <PieChart>
                   <Pie data={chartRows} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={105} label={renderPieLabel}>
@@ -126,23 +128,24 @@ export function TravelAgentsPage({ propertyId, setToast }: ReservationModuleProp
                   />
                 </PieChart>
               </ResponsiveContainer>
+              </div>
 
-              <div className="space-y-3">
+              <div className="min-w-0 space-y-3">
                 {chartRows.map((row, index) => (
                   <div key={row.name} className="flex items-center justify-between gap-3 text-sm">
-                    <span className="flex items-center gap-2 font-semibold">
-                      <span className="h-3 w-3 rounded-full" style={{ backgroundColor: agentColors[index % agentColors.length] }} />
-                      {row.name}
+                    <span className="flex min-w-0 items-center gap-2 font-semibold">
+                      <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: agentColors[index % agentColors.length] }} />
+                      <span className="truncate">{row.name}</span>
                     </span>
-                    <span>{metric === "revenue" ? `${row.currency} ${row.value.toFixed(2)}` : row.value}</span>
+                    <span className="shrink-0">{metric === "revenue" ? `${row.currency} ${row.value.toFixed(2)}` : row.value}</span>
                   </div>
                 ))}
               </div>
             </div>
           </Panel>
 
-          <Panel title="Agent Statistics" bodyClassName="p-0">
-            <div className="overflow-x-auto"><table className="min-w-[1050px] w-full text-left text-sm">
+          <Panel title="Agent Statistics" bodyClassName="min-w-0 p-0" className="min-w-0 overflow-hidden">
+            <div className="table-scroll max-w-full overflow-x-auto"><table className="w-full min-w-[1050px] text-left text-sm">
               <thead className="bg-slate-50 text-slate-500">
                 <tr>
                   {["Channel", "Currency", "Gross Revenue", "Commission", "Net Revenue", "Reservations", "Room Nights", "ADR"].map((heading) => (
@@ -171,8 +174,11 @@ export function TravelAgentsPage({ propertyId, setToast }: ReservationModuleProp
         </div>
 
         <Panel
+          title="Travel Agents"
+          subtitle={`${visibleAgents.length} agent${visibleAgents.length === 1 ? "" : "s"}`}
+          className="min-w-0 self-start overflow-hidden"
           action={
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <ToolbarButton icon={<RefreshCw className="h-4 w-4" />} onClick={() => void loadAgents()} disabled={loading}>
                 Refresh
               </ToolbarButton>
@@ -188,12 +194,12 @@ export function TravelAgentsPage({ propertyId, setToast }: ReservationModuleProp
           <div className="divide-y divide-line">
             {loading ? <p className="py-8 text-center text-sm text-slate-500">Loading travel agents from MongoDB...</p> : null}
             {visibleAgents.map((agent) => (
-              <div key={agent.id} className="flex items-center justify-between gap-4 py-4">
-                <button type="button" onClick={() => setDetailsAgent(agent)} className="min-w-0 text-left">
+              <div key={agent.id} className="flex min-w-0 items-center justify-between gap-4 py-4">
+                <button type="button" onClick={() => setDetailsAgent(agent)} className="min-w-0 flex-1 text-left">
                   <p className="truncate text-lg font-semibold">{agent.name}</p>
-                  <p className="truncate text-sm text-slate-500">{agent.email || "N/A"} <span className="px-2">|</span> {agent.phone || "N/A"}</p>
+                  <p className="mt-1 truncate text-sm text-slate-500" title={`${agent.email || "N/A"} | ${agent.phone || "N/A"}`}>{agent.email || "N/A"} <span className="px-2">|</span> {agent.phone || "N/A"}</p>
                 </button>
-                <div className="flex items-center gap-4 text-slate-700">
+                <div className="flex shrink-0 items-center gap-4 text-slate-700">
                   <button type="button" title="Edit agent" onClick={() => setEditingAgent(agents.find((item) => item.id === agent.id) ?? null)} className="hover:text-slate-950">
                     <Edit3 className="h-5 w-5" />
                   </button>
