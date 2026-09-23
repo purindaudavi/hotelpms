@@ -49,46 +49,50 @@ export function ChannelManagerPullFutureReservationsPage({ propertyId, setToast 
     setLogs([
       makeLogEntry({
         channel: "All Channels",
-        event: "Pull unacknowledged reservations",
+        event: "Simulate reservation pull",
         status: newRecords.length ? "Success" : "Info",
         direction: "Inbound",
-        message: newRecords.length ? `${newRecords.length} unacknowledged future reservation(s) pulled into the session.` : "No new unacknowledged reservations were returned.",
+        message: newRecords.length ? `${newRecords.length} generated test reservation(s) added locally. No OTA was contacted.` : "No new generated test reservations were added.",
         payload: JSON.stringify({ pulled: result.reservations })
       }),
       ...logs
     ]);
-    setToast(newRecords.length ? "Unacknowledged reservations pulled" : "No new unacknowledged reservations");
+    setToast(newRecords.length ? "Generated test reservations added locally; no OTA was contacted" : "No new generated test reservations");
     window.setTimeout(() => setPulling(false), 250);
   }
 
   return (
     <main className="min-h-[calc(100vh-72px)] bg-white px-6 py-10">
       <div className="mx-auto w-full max-w-[1500px]">
-        <h1 className="mb-8 text-4xl font-semibold tracking-tight">Pull Unacknowledged Reservations</h1>
+        <h1 className="mb-8 text-4xl font-semibold tracking-tight">Reservation Pull Simulator</h1>
 
         <section className="rounded-lg border border-line bg-white p-8 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <h2 className="text-3xl font-semibold">Pull Unacknowledged Reservations</h2>
-              <p className="mt-2 text-lg text-slate-500">Send a POST request to pull unacknowledged reservations for the selected property</p>
+              <h2 className="text-3xl font-semibold">Generate Test Reservations</h2>
+              <p className="mt-2 text-lg text-slate-500">Create local Agoda, Expedia and Booking.com examples for testing the channel workflow.</p>
             </div>
             <div className="rounded-md bg-slate-50 px-4 py-3 text-sm text-slate-600">
               <span className="font-semibold text-slate-950">{unacknowledged.length}</span> unacknowledged in session
             </div>
           </div>
 
+          <div className="mt-6 rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+            No provider API is connected. This simulator does not download reservations from a live OTA or save them to MongoDB.
+          </div>
+
           <button type="button" onClick={pullReservations} disabled={pulling} className="mt-8 inline-flex h-12 items-center gap-2 rounded-md bg-slate-950 px-6 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400">
             {pulling ? <RefreshCw className="h-4 w-4 animate-spin" /> : <DownloadCloud className="h-4 w-4" />}
-            Pull Reservations
+            Generate test reservations
           </button>
 
           {lastPull ? (
             <div className="mt-8 rounded-md border border-line p-5">
               <div className="flex items-center gap-2 text-sm font-semibold text-emerald-700">
                 <CheckCircle2 className="h-4 w-4" />
-                Last pull completed at {lastPull.pulledAt}
+                Last simulation completed at {lastPull.pulledAt}
               </div>
-              <p className="mt-2 text-sm text-slate-600">{lastPull.count} new reservation(s) added to this session.</p>
+              <p className="mt-2 text-sm text-slate-600">{lastPull.count} generated reservation(s) added to local browser storage.</p>
               {lastPull.reservations.length ? (
                 <div className="mt-4 overflow-x-auto">
                   <table className="min-w-full text-left text-sm">

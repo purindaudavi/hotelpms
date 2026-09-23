@@ -48,7 +48,7 @@ const initialChannels: ChannelRequestRecord[] = [
     title: "Agoda - Ronaka Airport Hotel",
     channel: "Agoda",
     currency: "Auto",
-    status: "Active",
+    status: "Inactive",
     propertyCode: "RONAKA-001",
     roomMappingMode: "Match PMS room types by name",
     ratePlanMapping: "Map base rate plans",
@@ -59,14 +59,14 @@ const initialChannels: ChannelRequestRecord[] = [
     commission: "15",
     rateMarkup: "0",
     paymentModel: "Channel collect",
-    lastSync: "2 minutes ago"
+    lastSync: "Never"
   },
   {
     id: "channel-expedia",
     title: "Expedia",
     channel: "Expedia",
     currency: "Auto",
-    status: "Active",
+    status: "Inactive",
     propertyCode: "RONAKA-001",
     roomMappingMode: "Match PMS room types by name",
     ratePlanMapping: "Map refundable and non-refundable rates",
@@ -77,14 +77,14 @@ const initialChannels: ChannelRequestRecord[] = [
     commission: "17",
     rateMarkup: "0",
     paymentModel: "Channel collect",
-    lastSync: "7 minutes ago"
+    lastSync: "Never"
   },
   {
     id: "channel-booking",
     title: "B.COM",
     channel: "Booking.com",
     currency: "Auto",
-    status: "Active",
+    status: "Inactive",
     propertyCode: "RONAKA-001",
     roomMappingMode: "Manual channel room codes",
     ratePlanMapping: "Map base rate plans",
@@ -95,7 +95,7 @@ const initialChannels: ChannelRequestRecord[] = [
     commission: "15",
     rateMarkup: "0",
     paymentModel: "Hotel collect",
-    lastSync: "1 hour ago"
+    lastSync: "Never"
   }
 ];
 
@@ -103,7 +103,7 @@ const defaultForm: ChannelForm = {
   channel: "",
   title: "",
   currency: "Auto",
-  status: "Active",
+  status: "Inactive",
   propertyCode: "RONAKA-001",
   roomMappingMode: "Match PMS room types by name",
   ratePlanMapping: "Map base rate plans",
@@ -189,9 +189,8 @@ export function ChannelManagerRequestPage({ propertyId, setToast }: ChannelManag
   }
 
   function fullSync(record: ChannelRequestRecord) {
-    setRecords((current) => current.map((item) => (item.id === record.id ? { ...item, lastSync: "Just now" } : item)));
     setActionsOpenId("");
-    setToast(`${record.title} full sync started`);
+    setToast(`${record.title} is not connected to a provider API. Use Full Sync only as a local preview.`);
   }
 
   function removeChannel(record: ChannelRequestRecord) {
@@ -246,11 +245,11 @@ export function ChannelManagerRequestPage({ propertyId, setToast }: ChannelManag
                 ))}
               </select>
             </Field>
-            <Field label="Status">
+            <Field label="Configuration Status">
               <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as "All" | ChannelStatus)} className="focus-ring h-11 w-full rounded-md border border-line bg-white px-3 text-sm">
                 <option>All</option>
-                <option>Active</option>
                 <option>Inactive</option>
+                <option>Active</option>
               </select>
             </Field>
             <Field label="Currency">
@@ -268,7 +267,7 @@ export function ChannelManagerRequestPage({ propertyId, setToast }: ChannelManag
           <table className="min-w-[980px] w-full text-left text-sm">
             <thead>
               <tr className="border-b border-line bg-white text-slate-900">
-                {["Title", "Channel", "Status", "Actions"].map((heading) => (
+                {["Title", "Channel", "Connection", "Actions"].map((heading) => (
                   <th key={heading} className={`px-5 py-5 font-semibold ${heading === "Actions" ? "text-right" : ""}`}>
                     <span className={`inline-flex items-center gap-2 ${heading === "Actions" ? "justify-end" : ""}`}>
                       {heading}
@@ -283,7 +282,10 @@ export function ChannelManagerRequestPage({ propertyId, setToast }: ChannelManag
                 <tr key={record.id} className="border-b border-line last:border-0">
                   <td className="px-5 py-5">{record.title}</td>
                   <td className="px-5 py-5">{record.channel}</td>
-                  <td className="px-5 py-5">{record.status}</td>
+                  <td className="px-5 py-5">
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">Not connected</span>
+                    <span className="ml-2 text-xs text-slate-400">Config: {record.status}</span>
+                  </td>
                   <td className="relative px-5 py-5 text-right">
                     <button
                       type="button"
@@ -299,10 +301,10 @@ export function ChannelManagerRequestPage({ propertyId, setToast }: ChannelManag
                           Edit
                         </ActionButton>
                         <ActionButton onClick={() => toggleDeactivate(record)} icon={<Unlink className="h-4 w-4" />}>
-                          {record.status === "Active" ? "Deactivate" : "Activate"}
+                          {record.status === "Active" ? "Disable config" : "Enable config"}
                         </ActionButton>
                         <ActionButton onClick={() => fullSync(record)} icon={<RotateCw className="h-4 w-4" />}>
-                          Full Sync
+                          Sync preview
                         </ActionButton>
                         <ActionButton danger onClick={() => removeChannel(record)} icon={<Trash2 className="h-4 w-4" />}>
                           Remove

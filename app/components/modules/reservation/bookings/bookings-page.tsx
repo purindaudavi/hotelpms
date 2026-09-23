@@ -192,7 +192,7 @@ export function BookingsPage(props: ReservationModuleProps & { initialReference?
     if (block.status === status) return Promise.resolve(block);
     if (status === "Active") return transitionBusinessBlock(propertyId, block.id, "activate");
     if (status === "Released") return transitionBusinessBlock(propertyId, block.id, "release");
-    if (status === "Cancelled") return transitionBusinessBlock(propertyId, block.id, "cancel", "Cancelled from DMS Desk");
+    if (status === "Cancelled") return transitionBusinessBlock(propertyId, block.id, "cancel", "Cancelled from Destination Management System");
     if (status === "Completed") return transitionBusinessBlock(propertyId, block.id, "complete");
     return Promise.reject(new Error(`Status cannot change from ${block.status} to ${status}.`));
   }

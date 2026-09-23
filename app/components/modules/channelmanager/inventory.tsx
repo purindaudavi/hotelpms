@@ -7,6 +7,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CloudUpload,
+  Database,
   RotateCcw,
   Settings,
   SlidersHorizontal,
@@ -92,6 +93,7 @@ const restrictionOptions = [
 
 const channelOptions = ["All channels", "Agoda", "Expedia", "Booking.com", "Airbnb", "MakeMyTrip", "Google Hotel / VR"];
 const currencyOptions = ["USD", "LKR", "EUR", "GBP"];
+const DEMO_CURRENCY = "LKR";
 
 export function ChannelManagerInventoryPage({ propertyId, setToast }: ChannelManagerInventoryPageProps) {
   const [channelRooms] = useSessionState<ChannelRoomRecord[]>(channelRoomRatesKey(propertyId), initialChannelRooms);
@@ -108,6 +110,9 @@ export function ChannelManagerInventoryPage({ propertyId, setToast }: ChannelMan
   const [selectedCell, setSelectedCell] = useState<SelectedCell | null>(null);
   const [overrideDraft, setOverrideDraft] = useState<OverrideDraft | null>(null);
   const [dirty, setDirty] = useState(false);
+  const [demoMode, setDemoMode] = useState(false);
+
+  const displayCurrency = demoMode ? DEMO_CURRENCY : inventoryState.settings.currency;
 
   const visibleDates = useMemo(() => buildDateColumns(startDate, 14), [startDate]);
 
@@ -122,6 +127,10 @@ export function ChannelManagerInventoryPage({ propertyId, setToast }: ChannelMan
   }, [inventoryRooms, roomFilter, rateFilter]);
 
   function openValueOverride(cell: SelectedCell) {
+    if (demoMode) {
+      setToast("Demo inventory is view-only");
+      return;
+    }
     const room = inventoryRooms.find((item) => item.id === cell.roomId);
     const plan = room?.ratePlans.find((item) => item.id === cell.ratePlanId);
     const restriction = cell.rowType === "availability" ? "Only Availability" : "Rate";
@@ -189,6 +198,15 @@ export function ChannelManagerInventoryPage({ propertyId, setToast }: ChannelMan
     setCalendarOpen(false);
   }
 
+  function toggleDemoMode(enabled: boolean) {
+    setDemoMode(enabled);
+    setSelectedCell(null);
+    setOverrideDraft(null);
+    setActionMode(null);
+    setActionsOpen(false);
+    setToast(enabled ? "Inventory demo data enabled" : "Inventory returned to saved session data");
+  }
+
   return (
     <main className="min-h-[calc(100vh-72px)] bg-white px-4 py-4">
       <div className="flex flex-wrap items-center gap-2 border-b border-line pb-4">
@@ -223,16 +241,20 @@ export function ChannelManagerInventoryPage({ propertyId, setToast }: ChannelMan
         </SelectControl>
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          <ToolbarButton disabled={!dirty} onClick={saveChanges}>
+          <label className={`inline-flex h-10 cursor-pointer items-center gap-3 rounded-md border px-3 text-sm font-semibold ${demoMode ? "border-amber-300 bg-amber-50 text-amber-800" : "border-line bg-white text-slate-700"}`}>
+            <input type="checkbox" checked={demoMode} onChange={(event) => toggleDemoMode(event.target.checked)} className="h-4 w-4 accent-amber-500" />
+            Demo data
+          </label>
+          <ToolbarButton disabled={demoMode || !dirty} onClick={saveChanges}>
             <CloudUpload className="h-4 w-4" />
             Save Changes
           </ToolbarButton>
-          <ToolbarButton disabled={inventoryState.overrides.length === 0} onClick={resetChanges}>
+          <ToolbarButton disabled={demoMode || inventoryState.overrides.length === 0} onClick={resetChanges}>
             <RotateCcw className="h-4 w-4" />
             Reset Changes
           </ToolbarButton>
           <div className="relative">
-            <ToolbarButton active={actionsOpen} onClick={() => setActionsOpen((current) => !current)}>
+            <ToolbarButton disabled={demoMode} active={actionsOpen} onClick={() => setActionsOpen((current) => !current)}>
               Actions
               <ChevronDown className="h-4 w-4" />
             </ToolbarButton>
@@ -271,7 +293,20 @@ export function ChannelManagerInventoryPage({ propertyId, setToast }: ChannelMan
         </div>
       </div>
 
-      {inventoryState.rules.weekendStopSell || inventoryState.rules.closedToArrival || inventoryState.rules.closedToDeparture ? (
+      {demoMode ? (
+        <section className="mt-3 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-amber-300 bg-amber-50 px-5 py-3">
+          <div className="flex items-start gap-3">
+            <Database className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+            <div>
+              <p className="font-semibold text-amber-900">Demo inventory is ON</p>
+              <p className="mt-1 text-sm text-amber-800">Example availability and LKR prices are shown for preview only. They cannot be saved and nothing is sent to a channel.</p>
+            </div>
+          </div>
+          <span className="rounded-full border border-amber-300 bg-white px-3 py-1 text-xs font-semibold text-amber-800">View only</span>
+        </section>
+      ) : null}
+
+      {!demoMode && (inventoryState.rules.weekendStopSell || inventoryState.rules.closedToArrival || inventoryState.rules.closedToDeparture) ? (
         <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">
           Active rules: {buildRulesSummary(inventoryState.rules)}
         </div>
@@ -334,37 +369,48 @@ export function ChannelManagerInventoryPage({ propertyId, setToast }: ChannelMan
             {visibleRooms.map((room) => (
               <div key={room.id} className="border-b border-slate-800/70">
                 <div className="grid min-h-12 grid-cols-[300px_140px_repeat(14,minmax(76px,1fr))] items-center border-b border-line">
-                  <div className="px-3 text-lg font-semibold">{room.name}</div>
-                  <div className="px-3 text-right font-semibold">AVL</div>
+                  <div className="px-3 py-2">
+                    <p className="text-lg font-semibold">{room.name}</p>
+                    <p className="mt-0.5 text-xs text-slate-500">Maximum occupancy: {getRoomMaximumOccupancy(room)} guests</p>
+                  </div>
+                  <div className="px-3 text-right text-sm font-semibold">Available rooms</div>
                   {visibleDates.map((date) => (
                     <InventoryCell
                       key={`${room.id}-avl-${date.iso}`}
-                      value={getDisplayValue(room, null, "availability", date.iso, inventoryState)}
+                      value={formatGridValue(getInventoryGridValue(room, null, "availability", date.iso, inventoryState, demoMode), "availability")}
                       muted={false}
-                      selected={isSelected(selectedCell, room.id, "availability", "availability", date.iso)}
-                      onClick={() => setSelectedCell({ roomId: room.id, ratePlanId: "availability", rowType: "availability", date: date.iso })}
+                      selected={!demoMode && isSelected(selectedCell, room.id, "availability", "availability", date.iso)}
+                      readOnly={demoMode}
+                      onClick={() => {
+                        if (!demoMode) setSelectedCell({ roomId: room.id, ratePlanId: "availability", rowType: "availability", date: date.iso });
+                      }}
                       onDoubleClick={() => openValueOverride({ roomId: room.id, ratePlanId: "availability", rowType: "availability", date: date.iso })}
                     />
                   ))}
                 </div>
                 {room.ratePlans.map((plan) => (
                   <div key={plan.id} className="grid min-h-12 grid-cols-[300px_140px_repeat(14,minmax(76px,1fr))] items-center border-b border-line last:border-b-0">
-                    <div className="px-5 text-base">{plan.code}</div>
-                    <div className="flex items-center justify-end gap-2 px-3 font-semibold">
-                      <span className="inline-flex items-center gap-1 font-normal text-slate-600">
-                        {plan.linkedOccupancy ? <span className="text-blue-500">{plan.linkedOccupancy}</span> : null}
+                    <div className="px-5 py-2">
+                      <p className="text-sm font-medium">Room Only <span className="text-slate-400">({plan.code})</span></p>
+                      {plan.muted && !demoMode ? <p className="mt-0.5 text-[11px] text-slate-500">Derived occupancy price</p> : null}
+                    </div>
+                    <div className="px-3 py-2 text-right">
+                      <span className="inline-flex items-center gap-1 text-sm font-medium text-slate-700">
                         <Users className="h-4 w-4" />
-                        {plan.occupancy}
+                        {plan.occupancy} {Number(plan.occupancy) === 1 ? "guest" : "guests"}
                       </span>
-                      RATE
+                      <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Rate ({displayCurrency})</p>
                     </div>
                     {visibleDates.map((date) => (
                       <InventoryCell
                         key={`${room.id}-${plan.id}-${date.iso}`}
-                        value={getDisplayValue(room, plan, "rate", date.iso, inventoryState)}
-                        muted={plan.muted}
-                        selected={isSelected(selectedCell, room.id, plan.id, "rate", date.iso)}
-                        onClick={() => setSelectedCell({ roomId: room.id, ratePlanId: plan.id, rowType: "rate", date: date.iso })}
+                        value={formatGridValue(getInventoryGridValue(room, plan, "rate", date.iso, inventoryState, demoMode), "rate")}
+                        muted={!demoMode && plan.muted}
+                        selected={!demoMode && isSelected(selectedCell, room.id, plan.id, "rate", date.iso)}
+                        readOnly={demoMode}
+                        onClick={() => {
+                          if (!demoMode) setSelectedCell({ roomId: room.id, ratePlanId: plan.id, rowType: "rate", date: date.iso });
+                        }}
                         onDoubleClick={() => openValueOverride({ roomId: room.id, ratePlanId: plan.id, rowType: "rate", date: date.iso })}
                       />
                     ))}
@@ -376,11 +422,18 @@ export function ChannelManagerInventoryPage({ propertyId, setToast }: ChannelMan
         </div>
       </div>
 
+      <p className="mt-3 text-xs text-slate-500">
+        {demoMode
+          ? `Showing example availability and ${DEMO_CURRENCY} nightly prices. Demo values are view-only.`
+          : `Rates are nightly prices in ${displayCurrency}. Double-click a cell to override saved session inventory.`}
+      </p>
+
       {overrideDraft ? (
         <ValueOverrideModal
           draft={overrideDraft}
           inventoryRooms={inventoryRooms}
           inventoryState={inventoryState}
+          currency={inventoryState.settings.currency}
           setDraft={setOverrideDraft}
           onClose={() => setOverrideDraft(null)}
           onApply={() => applyOverride(overrideDraft)}
@@ -391,6 +444,7 @@ export function ChannelManagerInventoryPage({ propertyId, setToast }: ChannelMan
         <BulkUpdateModal
           inventoryRooms={inventoryRooms}
           visibleDates={visibleDates.map((date) => date.iso)}
+          currency={inventoryState.settings.currency}
           onClose={() => setActionMode(null)}
           onApply={applyOverride}
         />
@@ -428,12 +482,14 @@ function InventoryCell({
   value,
   muted,
   selected,
+  readOnly,
   onClick,
   onDoubleClick
 }: {
   value: string | number;
   muted?: boolean;
   selected: boolean;
+  readOnly?: boolean;
   onClick: () => void;
   onDoubleClick: () => void;
 }) {
@@ -442,8 +498,8 @@ function InventoryCell({
       type="button"
       onClick={onClick}
       onDoubleClick={onDoubleClick}
-      className={`h-full min-h-12 w-full px-2 text-center text-base transition hover:bg-amber-100 ${selected ? "bg-amber-200" : ""} ${muted ? "text-slate-300" : "font-semibold text-slate-800"}`}
-      title="Double click to override"
+      className={`h-full min-h-12 w-full px-2 text-center text-sm transition ${readOnly ? "cursor-default hover:bg-blue-50" : "hover:bg-amber-100"} ${selected ? "bg-amber-200" : ""} ${muted ? "font-medium text-slate-500" : "font-semibold text-slate-800"}`}
+      title={readOnly ? "Example value — view only" : "Double click to override"}
     >
       {value}
     </button>
@@ -454,6 +510,7 @@ function ValueOverrideModal({
   draft,
   inventoryRooms,
   inventoryState,
+  currency,
   setDraft,
   onClose,
   onApply
@@ -461,6 +518,7 @@ function ValueOverrideModal({
   draft: OverrideDraft;
   inventoryRooms: InventoryRoom[];
   inventoryState: InventoryState;
+  currency: string;
   setDraft: (draft: OverrideDraft) => void;
   onClose: () => void;
   onApply: () => void;
@@ -496,7 +554,7 @@ function ValueOverrideModal({
             ))}
           </SelectControl>
         </div>
-        <ReadOnlyLine label={`Current ${draft.rowType === "availability" ? "Value" : "Price"}`} value={String(currentValue)} />
+        <ReadOnlyLine label={`Current ${draft.rowType === "availability" ? "Value" : "Price"}`} value={draft.rowType === "availability" ? String(currentValue) : formatMoney(currentValue, currency)} />
         <div className="grid grid-cols-[180px_1fr] items-center gap-4">
           <span className="text-right font-medium">Adjustment :</span>
           <div className="flex items-center gap-3">
@@ -514,7 +572,7 @@ function ValueOverrideModal({
                 %
               </SegmentedButton>
               <SegmentedButton active={draft.unit === "USD"} onClick={() => setDraft({ ...draft, unit: "USD" })}>
-                USD
+                {currency}
               </SegmentedButton>
             </div>
           </div>
@@ -524,7 +582,7 @@ function ValueOverrideModal({
           <div>
             <input value={draft.value} onChange={(event) => setDraft({ ...draft, value: event.target.value })} className="focus-ring h-10 w-full rounded border border-blue-400 px-3" />
             <p className="mt-2 text-sm text-slate-500">
-              {noun} will be {draft.operation === "set" ? "set" : draft.operation === "increase" ? "increased" : "decreased"} to {formatValue(previewValue, draft.rowType)}
+              {noun} will be {draft.operation === "set" ? "set" : draft.operation === "increase" ? "increased" : "decreased"} to {formatValue(previewValue, draft.rowType, currency)}
             </p>
           </div>
         </div>
@@ -544,11 +602,13 @@ function ValueOverrideModal({
 function BulkUpdateModal({
   inventoryRooms,
   visibleDates,
+  currency,
   onClose,
   onApply
 }: {
   inventoryRooms: InventoryRoom[];
   visibleDates: string[];
+  currency: string;
   onClose: () => void;
   onApply: (draft: OverrideDraft) => void;
 }) {
@@ -609,7 +669,7 @@ function BulkUpdateModal({
               ))}
             </SelectControl>
           </Field>
-          <Field label="Value">
+          <Field label={`Value (${currency})`}>
             <input value={draft.value} onChange={(event) => setDraft({ ...draft, value: event.target.value })} className="focus-ring h-10 rounded-md border border-line px-3" />
           </Field>
         </FormGrid>
@@ -917,6 +977,61 @@ function getDisplayValue(room: InventoryRoom | undefined, plan: RatePlan | null,
   return getCellValue(room, plan, rowType, date, state);
 }
 
+function getInventoryGridValue(
+  room: InventoryRoom,
+  plan: RatePlan | null,
+  rowType: RowType,
+  date: string,
+  state: InventoryState,
+  demoMode: boolean
+) {
+  if (!demoMode) return getDisplayValue(room, plan, rowType, date, state);
+  if (rowType === "availability") return getDemoAvailability(room, date);
+  return getDemoRate(room, plan, date);
+}
+
+function getDemoAvailability(room: InventoryRoom, date: string) {
+  const capacity = Math.max(0, room.baseAvailability);
+  if (!capacity) return 0;
+  const variation = (parseInputDate(date).getDate() + stableTextValue(room.id)) % Math.min(3, capacity + 1);
+  return Math.max(0, capacity - variation);
+}
+
+function getDemoRate(room: InventoryRoom, plan: RatePlan | null, date: string) {
+  const normalizedName = room.name.toLowerCase();
+  const roomBase = normalizedName.includes("family")
+    ? 18_500
+    : normalizedName.includes("triple")
+      ? 16_000
+      : normalizedName.includes("single")
+        ? 10_500
+        : normalizedName.includes("twin")
+          ? 13_500
+          : 14_500;
+  const occupancyAdjustment = Math.max(0, Number(plan?.occupancy ?? 1) - 1) * 1_000;
+  const dateValue = parseInputDate(date);
+  const weekendAdjustment = [0, 6].includes(dateValue.getDay()) ? 1_500 : 0;
+  const dateAdjustment = (dateValue.getDate() % 3) * 500;
+  return roomBase + occupancyAdjustment + weekendAdjustment + dateAdjustment;
+}
+
+function stableTextValue(value: string) {
+  return [...value].reduce((total, character) => total + character.charCodeAt(0), 0);
+}
+
+function getRoomMaximumOccupancy(room: InventoryRoom) {
+  return Math.max(
+    1,
+    ...room.ratePlans.map((plan) => Number(plan.linkedOccupancy ?? plan.occupancy) || 1)
+  );
+}
+
+function formatGridValue(value: string | number, rowType: RowType) {
+  if (typeof value === "string") return value;
+  if (rowType === "availability") return String(Math.round(value));
+  return new Intl.NumberFormat("en-LK", { maximumFractionDigits: 0 }).format(value);
+}
+
 function getCellValue(room: InventoryRoom | undefined, plan: RatePlan | null | undefined, rowType: RowType, date: string, state: InventoryState) {
   return getChannelInventoryCellValue(room, plan, rowType, date, state);
 }
@@ -937,9 +1052,13 @@ function isWeekend(date: string) {
   return day === 0 || day === 6;
 }
 
-function formatValue(value: number, rowType: RowType | "both") {
+function formatValue(value: number, rowType: RowType | "both", currency: string) {
   if (rowType === "availability") return String(Math.round(value));
-  return `${value} USD`;
+  return formatMoney(value, currency);
+}
+
+function formatMoney(value: number, currency: string) {
+  return `${currency} ${new Intl.NumberFormat("en-LK", { maximumFractionDigits: 2 }).format(value)}`;
 }
 
 function isSelected(selected: SelectedCell | null, roomId: string, ratePlanId: string, rowType: RowType, date: string) {

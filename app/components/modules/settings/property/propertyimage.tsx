@@ -128,7 +128,7 @@ export function PropertyImages({
         <div>
           <h2 className="text-2xl font-semibold">Official Hotel Logo</h2>
           <p className="mt-2 text-sm text-slate-500">
-            This is the hotel’s editable logo. It appears beside the property name in page headers and on hotel-facing content. It does not replace the permanent DMS Desk product logo or browser icon.
+            This is the hotel’s editable logo. It appears beside the property name in page headers and on hotel-facing content. It does not replace the permanent Destination Management System product logo or browser icon.
           </p>
           <input
             type="file"

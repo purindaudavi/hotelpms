@@ -42,8 +42,12 @@ type SyncResult = {
 };
 
 export function ChannelManagerFullSyncPage({ propertyId, setToast }: ChannelManagerFullSyncPageProps) {
-  const [fromDate, setFromDate] = useState("2026-06-03");
-  const [toDate, setToDate] = useState("2027-05-25");
+  const [fromDate, setFromDate] = useState(() => formatLocalDate(new Date()));
+  const [toDate, setToDate] = useState(() => {
+    const date = new Date();
+    date.setFullYear(date.getFullYear() + 1);
+    return formatLocalDate(date);
+  });
   const [bookings] = useSessionState<ChannelBookingSessionRecord[]>(channelBookingsKey(propertyId), initialChannelBookings);
   const [channelRooms] = useSessionState<ChannelRoomRecord[]>(channelRoomRatesKey(propertyId), initialChannelRooms);
   const [inventoryState] = useSessionState<ChannelInventoryState>(channelInventoryKey(propertyId), defaultChannelInventoryState);
@@ -54,7 +58,7 @@ export function ChannelManagerFullSyncPage({ propertyId, setToast }: ChannelMana
   const inventoryRooms = useMemo(() => buildChannelInventoryRooms(channelRooms), [channelRooms]);
   const preview = useMemo(() => bookings.filter((booking) => isBookingInRange(booking, fromDate, toDate)), [bookings, fromDate, toDate]);
   const inventorySummary = useMemo(() => buildChannelInventorySyncSummary(inventoryRooms, inventoryState, fromDate, toDate), [inventoryRooms, inventoryState, fromDate, toDate]);
-  const channelCount = Math.max(new Set(bookings.map((booking) => booking.source)).size, 3);
+  const channelCount = new Set(bookings.map((booking) => booking.source).filter(Boolean)).size;
 
   function runSync() {
     if (!fromDate || !toDate || new Date(fromDate) > new Date(toDate)) {
@@ -81,15 +85,15 @@ export function ChannelManagerFullSyncPage({ propertyId, setToast }: ChannelMana
     const syncLogs = [
       makeLogEntry({
         channel: "All Channels",
-        event: "Full sync requested",
+        event: "Local sync preview requested",
         status: "Info",
         direction: "Outbound",
-        message: `Full sync requested from ${fromDate} to ${toDate}.`,
+        message: `Local sync preview requested from ${fromDate} to ${toDate}. No data was sent to an OTA.`,
         payload: JSON.stringify({ fromDate, toDate, rooms: inventorySummary.rooms, overrides: inventorySummary.overrides })
       }),
       makeLogEntry({
         channel: "All Channels",
-        event: "Full sync completed",
+        event: "Local sync preview completed",
         status: result.status,
         direction: "Inbound",
         message: `${inventorySummary.rooms} room type(s), ${inventorySummary.availabilityCells} availability value(s), ${inventorySummary.rateCells} rate value(s), and ${preview.length} booking record(s) checked across ${channelCount} channel(s).`,
@@ -113,7 +117,7 @@ export function ChannelManagerFullSyncPage({ propertyId, setToast }: ChannelMana
 
     setLogs([...syncLogs, ...logs]);
     setLastResult(result);
-    setToast(result.status === "Success" ? "Channel full sync completed" : "Full sync completed with no inventory dates");
+    setToast(result.status === "Success" ? "Local channel sync preview completed; nothing was sent to an OTA" : "Local preview completed with no inventory dates");
     window.setTimeout(() => setSyncing(false), 250);
   }
 
@@ -122,7 +126,11 @@ export function ChannelManagerFullSyncPage({ propertyId, setToast }: ChannelMana
       <section className="w-full max-w-xl rounded-lg border border-line bg-white p-8 shadow-sm">
         <div className="mb-6 flex items-center gap-3">
           <CalendarDays className="h-6 w-6 text-slate-500" />
-          <h1 className="text-xl font-semibold">Channel Full Sync</h1>
+          <h1 className="text-xl font-semibold">Channel Sync Preview</h1>
+        </div>
+
+        <div className="mb-6 rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+          No provider API is connected. This calculates a local preview and records test logs; it does not update Agoda, Expedia, or Booking.com.
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
@@ -164,14 +172,14 @@ export function ChannelManagerFullSyncPage({ propertyId, setToast }: ChannelMana
             <strong>{preview.length}</strong>
           </div>
           <div className="mt-2 flex justify-between gap-4">
-            <span>Connected channels</span>
+            <span>Channel sources in preview</span>
             <strong>{channelCount}</strong>
           </div>
         </div>
 
         {lastResult ? (
           <div className="mt-5 rounded-md border border-line p-4 text-sm">
-            <p className="font-semibold">Last sync: {lastResult.syncedAt}</p>
+            <p className="font-semibold">Last preview: {lastResult.syncedAt}</p>
             <p className="mt-1 text-slate-600">
               {lastResult.rooms ?? 0} room(s), {lastResult.availabilityCells ?? 0} availability value(s), {lastResult.rateCells ?? 0} rate value(s), {lastResult.bookings} booking(s), status {lastResult.status}
             </p>
@@ -180,9 +188,16 @@ export function ChannelManagerFullSyncPage({ propertyId, setToast }: ChannelMana
 
         <button type="button" onClick={runSync} disabled={syncing} className="mt-6 inline-flex h-12 min-w-28 items-center justify-center gap-2 rounded-md bg-slate-950 px-6 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400">
           <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
-          Sync
+          {syncing ? "Preparing..." : "Run local preview"}
         </button>
       </section>
     </main>
   );
+}
+
+function formatLocalDate(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }

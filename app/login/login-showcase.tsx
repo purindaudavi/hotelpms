@@ -156,9 +156,9 @@ export function LoginShowcase() {
         <aside className="border-r border-white/10 bg-[#06111b]/80 p-3">
           <div className="mb-4 flex items-center gap-2 text-[11px] font-semibold text-white">
             <span className="grid size-7 place-items-center rounded-md bg-[#061b2c]">
-              <Image src="/assets/dms-desk-app-icon.png" alt="" width={18} height={18} className="size-[18px] object-contain" />
+              <Image src="/assets/destination-management-system-app-icon.png" alt="" width={18} height={18} className="size-[18px] object-contain" />
             </span>
-            DMS Desk
+            Destination Management System
           </div>
           <nav className="space-y-1.5" aria-label="Dashboard preview navigation">
             {navigation.map(({ label, icon: Icon, active }) => (

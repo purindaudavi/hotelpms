@@ -235,7 +235,7 @@ export type Employee = {
   status: "Active" | "Invited" | "Disabled";
 };
 
-export const appName = "DMS Desk";
+export const appName = "Destination Management System";
 
 export function currentPropertyDate(date = new Date()) {
   const dateParts = new Intl.DateTimeFormat("en", {
@@ -262,7 +262,7 @@ export const property = {
   rooms: 14,
   starCategory: 3,
   systemDate: currentPropertyDate(),
-  email: "reservations@staypilot.demo",
+  email: "reservations@dms.demo",
   phone: "+94 70 355 1340"
 };
 

@@ -267,7 +267,7 @@ function ReservationsPage({ propertyId, reservations, setReservations, setToast 
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = "staypilot-reservations.csv";
+    anchor.download = "destination-management-system-reservations.csv";
     anchor.click();
     URL.revokeObjectURL(url);
     setToast("CSV exported");
