@@ -4,6 +4,7 @@ import {
   clearAuthSession,
   readAccessToken,
   readRefreshToken,
+  loadCurrentSessionUser,
   saveAccessToken
 } from "./current-user";
 
@@ -18,6 +19,21 @@ export const api = axios.create({
 type RetriableConfig = InternalAxiosRequestConfig & { _authRetry?: boolean };
 
 api.interceptors.request.use((config) => {
+  if (!(config.url || "").startsWith("/auth/") && loadCurrentSessionUser().mode === "demo") {
+    if ((config.method || "get").toUpperCase() !== "GET") {
+      throw new axios.AxiosError("Demo workspace is read-only. Sign in to save changes.", "DEMO_READ_ONLY", config);
+    }
+    config.headers["x-demo-workspace"] = "1";
+  }
+  // Capture the property when the request is made, including raw file uploads.
+  // Explicit API paths/parameters take precedence over the current page.
+  const url = config.url || "";
+  if (!url.startsWith("/auth/") && !/^\/properties\/?$/.test(url)) {
+    const pathProperty = /^\/properties\/([^/]+)/.exec(url)?.[1];
+    const pageProperty = typeof window !== "undefined" ? /^\/properties\/([^/]+)\//.exec(window.location.pathname)?.[1] : undefined;
+    const id = pathProperty || config.params?.property_id || config.data?.property_id || pageProperty;
+    if (id && !config.headers["x-property-id"]) config.headers["x-property-id"] = decodeURIComponent(id);
+  }
   const token = readAccessToken();
   if (token && !config.headers.Authorization) {
     config.headers.Authorization = `Bearer ${token}`;
@@ -38,13 +54,14 @@ api.interceptors.response.use(
       requestUrl.includes("/auth/refresh-token") ||
       requestUrl.includes("/auth/logout");
 
-    if (!original || original._authRetry || isAuthUtilityRequest || (status !== 401 && status !== 403)) {
+    const accessDenied = (error.response?.data as { code?: string } | undefined)?.code === "PROPERTY_ACCESS_DENIED";
+    if (!original || original._authRetry || isAuthUtilityRequest || accessDenied || (status !== 401 && !(status === 403 && requestUrl === "/auth/me"))) {
       throw error;
     }
 
     const refreshToken = readRefreshToken();
     if (!refreshToken) {
-      clearAuthSession();
+      if (readAccessToken()) clearAuthSession();
       throw error;
     }
 

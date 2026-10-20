@@ -4,6 +4,9 @@ import { ChangeEvent, FormEvent, PointerEvent as ReactPointerEvent, useMemo, use
 import { CalendarDays, Check, ChevronLeft, ChevronRight, Grid3X3, ImageIcon, List, Package, Plus, Save, Star, UploadCloud, X } from "lucide-react";
 import { property, roomTypes } from "@/app/data/pms-data";
 import { useSessionState } from "@/app/components/hooks/use-session-state";
+import { readPropertyDetails } from "@/app/lib/property-repository";
+import { roomTypeStorageKey } from "@/app/components/modules/rooms-rates/constants";
+import type { RoomTypeRecord } from "@/app/components/modules/rooms-rates/types";
 import { ViewModeSwitch } from "@/app/components/view-mode-switch";
 
 type IbeTab = "Hotel Details" | "IBE Config" | "IBE Policies" | "Packages" | "Min Stay" | "IBE Rate" | "Promo Code" | "Smart Pricing";
@@ -169,7 +172,14 @@ const promoTypeOptions = ["Percentage", "Fixed Amount"];
 const promoApplyForOptions = ["Resident", "Non-Resident", "All Guests", "Direct Booking", "Packages"];
 
 export function IbePage({ propertyId, setToast }: IbePageProps) {
-  const [settings, setSettings] = useSessionState<IbeSettings>(`staypilot:${propertyId}:ibe:settings`, makeInitialSettings);
+  const [savedRoomTypes] = useSessionState<RoomTypeRecord[]>(roomTypeStorageKey(propertyId), []);
+  const roomsForRules = propertyId === "demo" ? roomTypes : savedRoomTypes.filter((room) => room.active);
+  const [settings, setSettings] = useSessionState<IbeSettings>(`staypilot:${propertyId}:ibe:settings`, () => {
+    const defaults = makeInitialSettings();
+    if (propertyId === "demo") return defaults;
+    const details = readPropertyDetails(propertyId);
+    return { ...defaults, hotel: { hotelName: details.hotelName, city: details.city, address: details.address, country: details.country, phone: details.phone, email: details.email, hotelType: details.hotelType, starCategory: Number(details.starCategory), numberOfRooms: Number(details.numberOfRooms), currencyCode: details.homeCurrency }, config: { ...defaults.config, ibeActive: false }, policies: { cancellationPolicy: "", childPolicy: "", taxPolicy: "" } };
+  });
   const currentSettings = normalizeIbeSettings(settings);
   const [pendingBannerImage, setPendingBannerImage] = useState("");
   const [pendingLogoImage, setPendingLogoImage] = useState("");
@@ -550,6 +560,7 @@ export function IbePage({ propertyId, setToast }: IbePageProps) {
         <PackagesTab packages={currentSettings.packages} onAdd={() => setPackageDrawerOpen(true)} onRemove={removePackage} />
       ) : currentSettings.activeTab === "Min Stay" ? (
         <MinStayTab
+          rooms={roomsForRules}
           settings={currentSettings}
           startDate={minStayStartDate}
           onStartDateChange={setMinStayStartDate}
@@ -558,6 +569,7 @@ export function IbePage({ propertyId, setToast }: IbePageProps) {
         />
       ) : currentSettings.activeTab === "IBE Rate" ? (
         <IbeRateTab
+          showDemo={propertyId === "demo"}
           settings={currentSettings}
           startDate={ibeRateStartDate}
           gridDays={ibeRateGridDays}
@@ -582,7 +594,7 @@ export function IbePage({ propertyId, setToast }: IbePageProps) {
 
       {packageDrawerOpen ? <CreatePackageDrawer onClose={() => setPackageDrawerOpen(false)} onSave={savePackage} /> : null}
       {minStayDrawer ? (
-        <MinStayDrawer draft={minStayDrawer} setDraft={setMinStayDrawer} onClose={() => setMinStayDrawer(null)} onSave={saveMinStayRange} onClear={clearMinStayRange} />
+        <MinStayDrawer rooms={roomsForRules} draft={minStayDrawer} setDraft={setMinStayDrawer} onClose={() => setMinStayDrawer(null)} onSave={saveMinStayRange} onClear={clearMinStayRange} />
       ) : null}
       {ibeRateDrawer ? (
         <IbeRateOverrideDialog draft={ibeRateDrawer} setDraft={setIbeRateDrawer} onClose={() => setIbeRateDrawer(null)} onSave={saveIbeRateOverride} />
@@ -1066,12 +1078,14 @@ function PackagesTab({ packages, onAdd, onRemove }: { packages: IbePackage[]; on
 
 // Min Stay tab
 function MinStayTab({
+  rooms,
   settings,
   startDate,
   onStartDateChange,
   onCreate,
   onEdit
 }: {
+  rooms: Array<{ id: string; name: string }>;
   settings: IbeSettings;
   startDate: string;
   onStartDateChange: (date: string) => void;
@@ -1079,7 +1093,7 @@ function MinStayTab({
   onEdit: (roomType: string, date: string) => void;
 }) {
   const dates = useMemo(() => Array.from({ length: 14 }, (_, index) => addDays(startDate, index)), [startDate]);
-  const minStayRooms = roomTypes.filter((room) => room.name !== "Deluxe Single Room");
+  const minStayRooms = rooms;
 
   return (
     <section className="rounded-lg border border-line bg-white p-5 shadow-sm">
@@ -1166,6 +1180,7 @@ function MinStayTab({
 
 // IBE Rate tab
 function IbeRateTab({
+  showDemo,
   settings,
   startDate,
   gridDays,
@@ -1173,6 +1188,7 @@ function IbeRateTab({
   onGridDaysChange,
   onOverride
 }: {
+  showDemo: boolean;
   settings: IbeSettings;
   startDate: string;
   gridDays: number;
@@ -1181,6 +1197,8 @@ function IbeRateTab({
   onOverride: (roomType: string, plan: string, currency: IbeRateCurrency, occupancy: number, date: string, currentPrice: number) => void;
 }) {
   const dates = useMemo(() => Array.from({ length: gridDays }, (_, index) => addDays(startDate, index)), [gridDays, startDate]);
+
+  if (!showDemo) return <section className="rounded-lg border border-line bg-white p-6"><h2 className="text-xl font-semibold">IBE rates</h2><p className="mt-3 text-sm text-slate-500">This property has no connected IBE rate feed yet. Configure its rooms and rate plans under Rooms & Rates. IBE rate publication requires an integration.</p></section>;
 
   return (
     <section className="rounded-lg border border-line bg-white p-5 shadow-sm">
@@ -1873,12 +1891,14 @@ function CreatePackageDrawer({ onClose, onSave }: { onClose: () => void; onSave:
 }
 
 function MinStayDrawer({
+  rooms,
   draft,
   setDraft,
   onClose,
   onSave,
   onClear
 }: {
+  rooms: Array<{ id: string; name: string }>;
   draft: MinStayDrawerState;
   setDraft: React.Dispatch<React.SetStateAction<MinStayDrawerState | null>>;
   onClose: () => void;
@@ -1924,7 +1944,7 @@ function MinStayDrawer({
             value={draft.roomType}
             onChange={(value) => update({ roomType: value })}
             placeholder="Select hotel room type"
-            options={roomTypes.filter((room) => room.name !== "Deluxe Single Room").map((room) => room.name)}
+            options={rooms.map((room) => room.name)}
             autoFocus
           />
         ) : (

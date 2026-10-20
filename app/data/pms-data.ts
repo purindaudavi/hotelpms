@@ -77,6 +77,12 @@ export type MealAllocationSnapshot = {
   capturedAt: string;
 };
 
+export type ReservationRoomMove = {
+  id: string; roomLineId: string; fromRoomId: string; fromRoomNumber: string;
+  toRoomId: string; toRoomNumber: string; previousAssignedFrom: string;
+  businessDate: string; movedAt: string; movedBy: string; reason: string;
+};
+
 export type ReservationRoom = {
   id: string;
   propertyId: string;
@@ -85,6 +91,7 @@ export type ReservationRoom = {
   roomType: string;
   roomId: string;
   roomNumber: string;
+  currentAssignmentFrom?: string;
   occupancy: string;
   bedType: string;
   adults: number;
@@ -163,6 +170,7 @@ export type Reservation = {
   refundable?: boolean;
   cancellationPolicy?: string;
   reservationRooms?: ReservationRoom[];
+  roomMoves?: ReservationRoomMove[];
   occupants?: ReservationOccupant[];
   businessBlockId?: string;
   businessBlockAllocationId?: string;

@@ -26,6 +26,7 @@ import { appName } from "@/app/data/pms-data";
 import { useColorScheme } from "@/app/components/hooks/use-color-scheme";
 import { getAuthErrorMessage, loginUser, registerUser } from "@/app/lib/auth-api";
 import { hasStoredWorkspaceSession, storeDemoSession } from "@/app/lib/current-user";
+import { workspaceDestination } from "@/app/lib/property-workspaces";
 
 
 const rememberedEmailKey = "staypilot-remembered-email";
@@ -79,7 +80,7 @@ export default function LoginPage() {
     }
 
     if (hasStoredWorkspaceSession()) {
-      router.replace(workspacePath);
+      void workspaceDestination().then((path) => router.replace(path)).catch(() => router.replace("/properties"));
     }
   }, [router]);
 
@@ -100,7 +101,7 @@ export default function LoginPage() {
       } else {
         window.localStorage.removeItem(rememberedEmailKey);
       }
-      router.push(workspacePath);
+      router.push(await workspaceDestination().catch(() => "/properties"));
     } catch (error) {
       showMessage(getAuthErrorMessage(error, "Sign in failed. Check your email and password."), "error");
     } finally {

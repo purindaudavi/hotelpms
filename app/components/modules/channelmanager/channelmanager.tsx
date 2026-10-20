@@ -9,6 +9,8 @@ import {
   initialChannelRooms
 } from "@/app/components/modules/channelmanager/session";
 import { property } from "@/app/data/pms-data";
+import { readPropertyDetails } from "@/app/lib/property-repository";
+import { TestChannelConnection } from "./test-channel-connection";
 
 type ChannelStatus = "Active" | "Inactive";
 type ChannelTab = "general" | "mapping" | "settings";
@@ -206,6 +208,7 @@ export function ChannelManagerRequestPage({ propertyId, setToast }: ChannelManag
 
   return (
     <main className="space-y-8 p-4 lg:p-6">
+      <TestChannelConnection propertyId={propertyId} setToast={setToast} />
       <section className="mx-auto max-w-7xl rounded-xl border border-line bg-white shadow-sm">
         <div className="flex flex-wrap items-center border-b border-line">
           <label className="relative min-w-[260px] flex-1">
@@ -336,6 +339,7 @@ export function ChannelManagerRequestPage({ propertyId, setToast }: ChannelManag
 
       {drawerOpen ? (
         <CreateChannelModal
+          hotelName={readPropertyDetails(propertyId).hotelName}
           form={form}
           rooms={channelRooms}
           setForm={setForm}
@@ -352,6 +356,7 @@ export function ChannelManagerRequestPage({ propertyId, setToast }: ChannelManag
 }
 
 function CreateChannelModal({
+  hotelName,
   form,
   rooms,
   setForm,
@@ -359,6 +364,7 @@ function CreateChannelModal({
   onClose,
   onSave
 }: {
+  hotelName: string;
   form: ChannelForm;
   rooms: ChannelRoomRecord[];
   setForm: (form: ChannelForm) => void;
@@ -422,7 +428,7 @@ function CreateChannelModal({
             <div className="space-y-6">
               <div className="grid gap-4 lg:grid-cols-2">
                 <Field label="PMS Property">
-                  <input value={property.name} disabled className="h-11 w-full rounded border border-line bg-slate-50 px-3 text-sm text-slate-500" />
+                  <input value={hotelName} disabled className="h-11 w-full rounded border border-line bg-slate-50 px-3 text-sm text-slate-500" />
                 </Field>
                 <Field label="Channel Property Code">
                   <input value={form.propertyCode} onChange={(event) => update("propertyCode", event.target.value)} className="focus-ring h-11 w-full rounded border border-line px-3 text-sm" />

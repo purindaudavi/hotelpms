@@ -24,7 +24,18 @@ export function groupRooms(roomList: Room[]) {
   return Object.keys(groups).sort().map((type) => ({ type, rooms: groups[type].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true })) }));
 }
 
-export function reservationRoomNumbers(booking: Reservation) {
+export function reservationAssignments(booking: Reservation) {
+  const end = booking.isDayRoom || booking.checkIn === booking.checkOut ? addDays(booking.checkIn, 1) : booking.checkOut;
+  const current = booking.reservationRooms?.length
+    ? booking.reservationRooms.map((line) => ({ roomNumber: line.roomNumber, start: line.currentAssignmentFrom || booking.checkIn, end }))
+    : [{ roomNumber: booking.room, start: booking.checkIn, end }];
+  return [...current, ...(booking.roomMoves ?? []).map((move) => ({
+    roomNumber: move.fromRoomNumber, start: move.previousAssignedFrom, end: move.businessDate
+  }))].filter((item) => item.start < item.end);
+}
+
+export function reservationRoomNumbers(booking: Reservation, date?: string) {
+  if (date) return reservationAssignments(booking).filter((item) => item.start <= date && date < item.end).map((item) => item.roomNumber);
   return booking.reservationRooms?.length ? booking.reservationRooms.map((line) => line.roomNumber) : [booking.room];
 }
 
@@ -33,7 +44,7 @@ export function occupiedOnDate(roomList: Room[], reservations: Reservation[], da
   const occupied = new Set<string>();
   reservations.forEach((booking) => {
     if (!inactiveStatuses.has(booking.status) && bookingCoversDate(booking, date, dayUse)) {
-      reservationRoomNumbers(booking).forEach((number) => { if (roomNumbers.has(number)) occupied.add(number); });
+      reservationRoomNumbers(booking, date).forEach((number) => { if (roomNumbers.has(number)) occupied.add(number); });
     }
   });
   return occupied.size;
@@ -53,9 +64,9 @@ export function bookingCoversDate(booking: Reservation, date: string, dayUse: bo
 }
 
 export function roomHasOverlap(reservations: Reservation[], roomNumber: string, checkIn: string, checkOut: string, editingId?: string) {
+  const end = checkOut > checkIn ? checkOut : addDays(checkIn, 1);
   return reservations.some((booking) => booking.id !== editingId && !inactiveStatuses.has(booking.status)
-    && reservationRoomNumbers(booking).includes(roomNumber)
-    && checkIn < booking.checkOut && checkOut > booking.checkIn);
+    && reservationAssignments(booking).some((item) => item.roomNumber === roomNumber && checkIn < item.end && end > item.start));
 }
 
 export function cellClass(column: DeskColumn, dayUse: boolean, base: string) {

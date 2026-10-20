@@ -25,6 +25,7 @@ function migrateRoom(
     roomType: room.roomType ?? reservation.roomType ?? "Unassigned room type",
     roomId: room.roomId ?? roomNumber,
     roomNumber,
+    currentAssignmentFrom: room.currentAssignmentFrom,
     occupancy: room.occupancy ?? "Unspecified",
     bedType: room.bedType ?? "Unspecified",
     adults: Number(room.adults ?? reservation.adults) || 1,

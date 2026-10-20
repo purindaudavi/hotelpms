@@ -312,17 +312,17 @@ export function FinancialsPage(props: FinancialsPageProps) {
   };
 
   if (section === "purchases") return <PurchasesPage key={initialReference || "purchases"} {...shared} />;
-  if (section === "invoices") return <InvoicesPage key={initialReference || "invoices"} initialReference={initialReference} propertyId={props.propertyId} reservations={props.reservations} setToast={props.setToast} onReservationChanged={async (reservationId) => {
+  if (section === "invoices") return <FinancialFrame><InvoicesPage key={initialReference || "invoices"} initialReference={initialReference} propertyId={props.propertyId} reservations={props.reservations} setToast={props.setToast} onReservationChanged={async (reservationId) => {
     try {
       const details = await getReservationDetails(props.propertyId, reservationId);
       props.setReservations((current) => current.map((item) => item.id === reservationId ? details.reservation : item));
     } catch (error) {
       props.setToast(getBookingsApiErrorMessage(error));
     }
-  }} />;
-  if (section === "credit-notes") return <CreditNotesPage key={initialReference || "credit-notes"} initialReference={initialReference} propertyId={props.propertyId} reservations={props.reservations} setToast={props.setToast} />;
-  if (section === "refunds") return <RefundsPage key={initialReference || "refunds"} initialReference={initialReference} propertyId={props.propertyId} reservations={props.reservations} setToast={props.setToast} />;
-  if (section === "withdrawals") return <WithdrawalsPage key={initialReference || "withdrawals"} initialReference={initialReference} propertyId={props.propertyId} setToast={props.setToast} />;
+  }} /></FinancialFrame>;
+  if (section === "credit-notes") return <FinancialFrame><CreditNotesPage key={initialReference || "credit-notes"} initialReference={initialReference} propertyId={props.propertyId} reservations={props.reservations} setToast={props.setToast} /></FinancialFrame>;
+  if (section === "refunds") return <FinancialFrame><RefundsPage key={initialReference || "refunds"} initialReference={initialReference} propertyId={props.propertyId} reservations={props.reservations} setToast={props.setToast} /></FinancialFrame>;
+  if (section === "withdrawals") return <FinancialFrame><WithdrawalsPage key={initialReference || "withdrawals"} initialReference={initialReference} propertyId={props.propertyId} setToast={props.setToast} /></FinancialFrame>;
   if (section === "expenses") return <ExpensesPage key={initialReference || "expenses"} {...shared} />;
   if (section === "payables") return <PayablesPage {...shared} />;
   if (section === "receivables") return <ReceivablesPage {...shared} />;
@@ -1927,7 +1927,7 @@ function ActionButton({
       onClick={onClick}
       disabled={disabled}
       className={`inline-flex h-11 items-center justify-center gap-2 rounded-md px-4 text-sm font-semibold transition disabled:opacity-60 ${
-        tone === "dark" ? "bg-ink text-white hover:bg-slate-800" : "border border-line bg-white text-slate-800 hover:bg-slate-50"
+        tone === "dark" ? "bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700" : "border border-line bg-white text-slate-800 hover:bg-slate-50"
       } ${className}`}
     >
       {children}
@@ -1940,7 +1940,7 @@ function SmallButton({ children, onClick, dark = false }: { children: React.Reac
     <button
       type="button"
       onClick={onClick}
-      className={`h-9 rounded-md px-4 text-sm font-semibold ${dark ? "bg-ink text-white hover:bg-slate-800" : "border border-line bg-white text-slate-800 hover:bg-slate-50"}`}
+      className={`h-9 rounded-md px-4 text-sm font-semibold ${dark ? "bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700" : "border border-line bg-white text-slate-800 hover:bg-slate-50"}`}
     >
       {children}
     </button>

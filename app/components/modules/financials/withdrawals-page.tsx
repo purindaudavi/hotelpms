@@ -98,7 +98,7 @@ export function WithdrawalsPage({ propertyId, setToast, initialReference = "" }:
         <button type="button" onClick={() => void load()} disabled={loading} className="inline-flex items-center gap-2 rounded-md border border-line px-4 py-2 text-sm font-semibold">
           <RefreshCw size={16} className={loading ? "animate-spin" : ""} /> Refresh
         </button>
-        <button type="button" onClick={() => setShowCreate(true)} className="inline-flex items-center gap-2 rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white">
+        <button type="button" onClick={() => setShowCreate(true)} className="inline-flex items-center gap-2 rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700">
           <Plus size={16} /> Record Withdrawal
         </button>
       </div>
@@ -206,7 +206,7 @@ function CreateWithdrawalDialog({ propertyId, onClose, onCreated, setToast }: Pr
       <Field label="Notes (optional)"><textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={2} className={inputClass} /></Field>
       <div className="flex justify-end gap-2 border-t border-line pt-4">
         <button type="button" onClick={onClose} className="rounded-md border border-line px-4 py-2 font-semibold">Cancel</button>
-        <button disabled={saving} className="rounded-md bg-ink px-4 py-2 font-semibold text-white">{saving ? "Saving..." : "Record Completed Withdrawal"}</button>
+        <button disabled={saving} className="rounded-md bg-slate-900 px-4 py-2 font-semibold text-white hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700">{saving ? "Saving..." : "Record Completed Withdrawal"}</button>
       </div>
     </form>
   </Modal>;

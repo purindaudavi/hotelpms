@@ -253,10 +253,10 @@ function RoomGroup({
             Room {room.code}
           </td>
           {columns.map((column) => {
-            const bookings = reservations.filter((booking) => reservationRoomNumbers(booking).includes(room.code) && bookingMatchesCell(booking, column.date, tab, dayUse));
+            const bookings = reservations.filter((booking) => reservationRoomNumbers(booking, column.date).includes(room.code) && bookingMatchesCell(booking, column.date, tab, dayUse));
             const blockingBooking = inventoryReservations.find((booking) =>
               bookingMatchesCell(booking, column.date, "Front Desk", dayUse) &&
-              reservationRoomNumbers(booking).some((roomCode) => crossBookedRoomCodes(crossBookLinks, room.code).includes(roomCode))
+              reservationRoomNumbers(booking, column.date).some((roomCode) => crossBookedRoomCodes(crossBookLinks, room.code).includes(roomCode))
             );
             return (
               <td key={`${room.id}-${column.key}`} className={cellClass(column, dayUse, "h-11 border-b border-r border-line px-1.5 py-1 align-middle")}>
@@ -267,7 +267,7 @@ function RoomGroup({
                   {!bookings.length && blockingBooking ? (
                     <CrossBookPill
                       booking={blockingBooking}
-                      linkedRoom={reservationRoomNumbers(blockingBooking).find((roomCode) => crossBookedRoomCodes(crossBookLinks, room.code).includes(roomCode)) ?? ""}
+                      linkedRoom={reservationRoomNumbers(blockingBooking, column.date).find((roomCode) => crossBookedRoomCodes(crossBookLinks, room.code).includes(roomCode)) ?? ""}
                       onClick={() => onBookingClick(blockingBooking)}
                     />
                   ) : null}
@@ -297,7 +297,7 @@ function crossBookBlockedRoomsOnDate(
 
   reservations.forEach((booking) => {
     if (!bookingMatchesCell(booking, date, "Front Desk", dayUse)) return;
-    reservationRoomNumbers(booking).forEach((roomCode) => bookedRooms.add(roomCode));
+    reservationRoomNumbers(booking, date).forEach((roomCode) => bookedRooms.add(roomCode));
   });
 
   const blockedRooms = new Set<string>();

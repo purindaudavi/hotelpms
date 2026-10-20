@@ -1,8 +1,18 @@
 "use client";
 
 import { type Dispatch, type SetStateAction, useEffect, useRef, useState } from "react";
+import { propertyStorageFallback } from "@/app/lib/property-defaults";
 
 const localStorageSyncEvent = "staypilot:local-storage-sync";
+
+function storageScope(key: string) {
+  if (typeof window === "undefined" || !key.startsWith("staypilot")) return key;
+  try {
+    const session = JSON.parse(window.localStorage.getItem("staypilot-session") || "null");
+    if (session?.mode === "demo") return `preview:${key}`;
+  } catch { /* Treat an unreadable session as signed out. */ }
+  return key;
+}
 
 export type StorageValidator<T> = (value: unknown) => value is T;
 export type StorageNormalizer<T> = (value: T) => T;
@@ -39,6 +49,8 @@ function parseStoredValue<T>(raw: string | null, fallback: T, validator?: Storag
 }
 
 export function readLocalStorageValue<T>(key: string, fallback: T, validator?: StorageValidator<T>, normalizer?: StorageNormalizer<T>): T {
+  key = storageScope(key);
+  fallback = propertyStorageFallback(key, fallback);
   if (typeof window === "undefined") return normalizer ? normalizer(fallback) : fallback;
 
   try {
@@ -59,6 +71,7 @@ export function readLocalStorageValue<T>(key: string, fallback: T, validator?: S
 }
 
 export function hasLocalStorageState(key: string) {
+  key = storageScope(key);
   if (typeof window === "undefined") return false;
   try {
     if (window.localStorage.getItem(key) !== null) return true;
@@ -73,6 +86,7 @@ export function hasLocalStorageState(key: string) {
 }
 
 export function writeLocalStorageValue<T>(key: string, value: T) {
+  key = storageScope(key);
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(key, JSON.stringify(value));
@@ -88,11 +102,13 @@ export function useLocalStorageState<T>(
   validator?: StorageValidator<T>,
   normalizer?: StorageNormalizer<T>
 ): [T, Dispatch<SetStateAction<T>>] {
+  key = storageScope(key);
   const initialRef = useRef(initialValue);
   const validatorRef = useRef(validator);
   const normalizerRef = useRef(normalizer);
   const [hydrated, setHydrated] = useState(false);
-  const [value, setValue] = useState<T>(() => resolveInitialValue(initialRef.current));
+  const [hydratedKey, setHydratedKey] = useState<string | null>(null);
+  const [value, setValue] = useState<T>(() => propertyStorageFallback(key, resolveInitialValue(initialRef.current)));
   initialRef.current = initialValue;
   validatorRef.current = validator;
   normalizerRef.current = normalizer;
@@ -100,6 +116,7 @@ export function useLocalStorageState<T>(
   useEffect(() => {
     const fallback = resolveInitialValue(initialRef.current);
     setValue(readLocalStorageValue(key, fallback, validatorRef.current, normalizerRef.current));
+    setHydratedKey(key);
     setHydrated(true);
   }, [key]);
 
@@ -129,7 +146,7 @@ export function useLocalStorageState<T>(
   }, [key]);
 
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || hydratedKey !== key) return;
     try {
       const serialized = JSON.stringify(value);
       if (window.localStorage.getItem(key) === serialized) return;
@@ -138,7 +155,7 @@ export function useLocalStorageState<T>(
     } catch {
       // The app keeps the in-memory value if storage is unavailable or full.
     }
-  }, [hydrated, key, value]);
+  }, [hydrated, hydratedKey, key, value]);
 
   return [value, setValue];
 }

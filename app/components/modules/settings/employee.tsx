@@ -7,7 +7,7 @@ import { Edit3, Eye, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
 type Employee = { id: string; employeeNo: string; name: string; department: string; status: string; phone: string; email: string; joined: string };
 const initialEmployees: Employee[] = [{ id: "employee-01", employeeNo: "01", name: "Asiri Perera", department: "Front Desk", status: "Active", phone: "0703551339", email: "asiri.business@gmail.com", joined: "2026-05-27T12:31:57.11Z" }];
 export function EmployeePage({ propertyId }: { propertyId: string }) {
-  const [employees, setEmployees] = useLocalStorageState<Employee[]>(`staypilot:${propertyId}:settings:employees`, () => readLocalStorageValue("staypilot.settings.employees", initialEmployees));
+  const [employees, setEmployees] = useLocalStorageState<Employee[]>(`staypilot:${propertyId}:settings:employees`, () => propertyId === "demo" ? readLocalStorageValue("staypilot.settings.employees", initialEmployees) : []);
   const [search, setSearch] = useState("");
   const [drawer, setDrawer] = useState<{ mode: "view" | "edit" | "new"; employee?: Employee } | null>(null);
   const visible = useMemo(() => employees.filter((employee) => Object.values(employee).join(" ").toLowerCase().includes(search.toLowerCase())), [employees, search]);

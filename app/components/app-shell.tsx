@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Calendar,
@@ -55,22 +55,31 @@ import {
 
 import { NotificationMenu } from "@/app/components/notification-menu";
 import { PRODUCT_ICON_URL, PRODUCT_NAME } from "@/app/lib/product-brand";
+import { PropertyAccessGate } from "@/app/components/property-access-gate";
+import { PropertySwitcher } from "@/app/components/property-switcher";
 
 type WorkspaceProps = {
   propertyId: string;
-  slug: string[];
 };
 
-export function Workspace({ propertyId, slug }: WorkspaceProps) {
+export function Workspace({ propertyId }: WorkspaceProps) {
+  const pathname = usePathname();
+  const propertyPath = `/properties/${propertyId}`;
+  const activePath = pathname.startsWith(`${propertyPath}/`)
+    ? pathname.slice(propertyPath.length + 1).replace(/\/+$/, "") || "dashboard"
+    : "dashboard";
+  return <PropertyAccessGate key={propertyId} propertyId={propertyId}><WorkspaceContent key={propertyId} propertyId={propertyId} activePath={activePath} /></PropertyAccessGate>;
+}
+
+function WorkspaceContent({ propertyId, activePath }: WorkspaceProps & { activePath: string }) {
   const router = useRouter();
-  const activePath = slug.join("/") || "dashboard";
   const reservationKey = reservationStorageKey(propertyId);
   const roomKey = `staypilot:${propertyId}:rooms`;
   const transactionKey = `staypilot:${propertyId}:transactions`;
   const sidebarScrollKey = `staypilot:${propertyId}:sidebar-scroll`;
   const sidebarCollapseKey = `staypilot:${propertyId}:sidebar-collapsed`;
   const homeCurrency = readPropertyHomeCurrency(propertyId);
-  const propertyBrand = usePropertyBrand(propertyId, property.name);
+  const propertyBrand = usePropertyBrand(propertyId, propertyId === "demo" ? property.name : "Your hotel");
   usePropertyTheme(propertyId);
   const { colorScheme, toggleColorScheme } = useColorScheme();
   const sidebarScrollRef = useRef<HTMLElement>(null);
@@ -156,7 +165,7 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
     return () => {
       cancelled = true;
     };
-  }, [authChecking, propertyId, setReservations, setRoomList]);
+  }, [authChecking, activePath, propertyId, setReservations, setRoomList]);
 
   useLayoutEffect(() => {
     if (authChecking) return;
@@ -252,15 +261,13 @@ export function Workspace({ propertyId, slug }: WorkspaceProps) {
         }`}
       >
         <div className={`border-b border-line bg-white/70 p-3 ${sidebarCollapsed ? "lg:p-2" : ""}`}>
-          <div className={`flex items-center gap-3 rounded-lg border border-line bg-white p-3 shadow-sm ${sidebarCollapsed ? "lg:justify-center lg:p-2" : ""}`}>
+          <div className={`relative flex items-center gap-3 rounded-lg border border-line bg-white p-3 shadow-sm ${sidebarCollapsed ? "lg:justify-center lg:p-2" : ""}`}>
             <BrandLogo logoUrl={PRODUCT_ICON_URL} hotelName={PRODUCT_NAME} className="h-9 w-9 rounded-md" />
             <div className={`min-w-0 flex-1 ${sidebarCollapsed ? "lg:hidden" : ""}`}>
               <p className="truncate text-sm font-semibold" title={propertyBrand.hotelName}>{propertyBrand.hotelName}</p>
               <p className="truncate text-xs text-slate-500" title={PRODUCT_NAME}>{PRODUCT_NAME}</p>
             </div>
-            <button className={`rounded-md p-1 text-slate-500 hover:bg-slate-100 ${sidebarCollapsed ? "lg:hidden" : ""}`} aria-label="Property menu">
-              <ChevronDown className="h-4 w-4" />
-            </button>
+            <PropertySwitcher propertyId={propertyId} hotelName={propertyBrand.hotelName} collapsed={sidebarCollapsed} />
           </div>
         </div>
 

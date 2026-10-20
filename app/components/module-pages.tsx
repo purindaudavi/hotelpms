@@ -52,7 +52,7 @@ import { RoomsRatesPage as RoomsRatesModulePage } from "@/app/components/modules
 import { HousekeepingPage as HousekeepingModulePage } from "@/app/components/modules/housekeeping/housekeeping-page";
 import { FinancialsPage as FinancialsModulePage } from "@/app/components/modules/financials/financials-page";
 import { ReportsPage as ReportsModulePage } from "@/app/components/modules/reports/reports-page";
-import { ChannelManagerRequestPage } from "@/app/components/modules/channelmanager/channelmanager";
+import { ChannelManagerRequestPage } from "@/app/components/modules/channelmanager/request";
 import { ChannelManagerDashboardPage } from "@/app/components/modules/channelmanager/dashboard";
 import { ChannelManagerInventoryPage } from "@/app/components/modules/channelmanager/inventory";
 import { ChannelManagerChannelsPage } from "@/app/components/modules/channelmanager/channels";

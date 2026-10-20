@@ -10,6 +10,7 @@ import {
   initialChannelRooms
 } from "@/app/components/modules/channelmanager/session";
 import { property } from "@/app/data/pms-data";
+import { readPropertyDetails } from "@/app/lib/property-repository";
 
 type ChannelManagerRoomRatesPageProps = {
   propertyId: string;
@@ -56,12 +57,13 @@ const emptyForm: RoomForm = {
 };
 
 export function ChannelManagerRoomRatesPage({ propertyId, setToast }: ChannelManagerRoomRatesPageProps) {
+  const freshForm = { ...emptyForm, propertyName: readPropertyDetails(propertyId).hotelName };
   const [rooms, setRooms] = useSessionState<ChannelRoomRecord[]>(channelRoomRatesKey(propertyId), initialChannelRooms);
   const [search, setSearch] = useState("");
   const [actionsOpenId, setActionsOpenId] = useState("");
   const [expandedId, setExpandedId] = useState("");
   const [drawer, setDrawer] = useState<{ mode: RoomMode; roomId?: string } | null>(null);
-  const [form, setForm] = useState<RoomForm>(emptyForm);
+  const [form, setForm] = useState<RoomForm>(freshForm);
 
   const visibleRooms = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -70,7 +72,7 @@ export function ChannelManagerRoomRatesPage({ propertyId, setToast }: ChannelMan
   }, [rooms, search]);
 
   function openCreate() {
-    setForm(emptyForm);
+    setForm(freshForm);
     setDrawer({ mode: "create" });
     setActionsOpenId("");
   }

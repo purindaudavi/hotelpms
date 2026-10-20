@@ -73,6 +73,7 @@ export function storeCurrentSessionUser(user: SessionUser) {
 }
 
 export function storeDemoSession() {
+  clearAuthSession();
   const user = { ...fallbackSessionUser, mode: "demo" as const };
   return storeCurrentSessionUser(user);
 }

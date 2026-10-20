@@ -43,6 +43,7 @@ type ApiReservationRoom = {
   room_type_name: string;
   physical_room_id?: string;
   room_number?: string;
+  current_assignment_from?: string;
   occupancy?: string;
   bed_type?: string;
   adults: number;
@@ -113,6 +114,11 @@ type ApiReservation = {
   booker: ApiBooker;
   rooms?: ApiReservationRoom[];
   occupants?: ApiReservationOccupant[];
+  room_moves?: Array<{
+    _id: string; room_line_id: string; from_physical_room_id: string; from_room_number: string;
+    to_physical_room_id: string; to_room_number: string; previous_assigned_from: string;
+    business_date: string; moved_at: string; actor?: ApiActor; reason: string;
+  }>;
   room_count?: number;
   currency?: string;
   rate_plan_id?: string;
@@ -362,6 +368,17 @@ export async function updateReservation(propertyId: string, booking: Reservation
     `/bookings/reservations/${booking.id}`,
     reservationPayload(booking, true),
     { params: { property_id: propertyId }, headers: actorHeaders() }
+  );
+  return mapReservation(response.data.reservation);
+}
+
+export async function moveReservationRooms(propertyId: string, reservationId: string, input: {
+  business_date: string; reason: string;
+  moves: Array<{ room_line_id: string; from_physical_room_id: string; to_physical_room_id: string }>;
+}) {
+  const response = await api.post<ReservationResponse>(
+    `/bookings/reservations/${reservationId}/room-moves`,
+    { property_id: propertyId, ...input }, { headers: actorHeaders() }
   );
   return mapReservation(response.data.reservation);
 }
@@ -678,6 +695,13 @@ function mapReservation(value: ApiReservation): Reservation {
     refundable: value.refundable ?? true,
     cancellationPolicy: value.cancellation_policy || "",
     reservationRooms: rooms,
+    roomMoves: (value.room_moves ?? []).map((move) => ({
+      id: move._id, roomLineId: String(move.room_line_id),
+      fromRoomId: String(move.from_physical_room_id), fromRoomNumber: move.from_room_number,
+      toRoomId: String(move.to_physical_room_id), toRoomNumber: move.to_room_number,
+      previousAssignedFrom: dateOnly(move.previous_assigned_from), businessDate: dateOnly(move.business_date),
+      movedAt: move.moved_at, movedBy: move.actor?.name || "Staff", reason: move.reason
+    })),
     occupants: (value.occupants ?? []).map((occupant) =>
       mapReservationOccupant(value, occupant)
     ),
@@ -704,6 +728,7 @@ function mapReservationRoom(reservation: ApiReservation, room: ApiReservationRoo
     roomType: room.room_type_name,
     roomId: room.physical_room_id ? String(room.physical_room_id) : "",
     roomNumber: room.room_number || "",
+    currentAssignmentFrom: room.current_assignment_from ? dateOnly(room.current_assignment_from) : undefined,
     occupancy: room.occupancy || "",
     bedType: room.bed_type || "",
     adults: Number(room.adults || 0),

@@ -45,7 +45,8 @@ export function ReservationEditor(props: ReservationEditorProps) {
   const [travelAgentsLoading, setTravelAgentsLoading] = useState(true);
   const [travelAgentsError, setTravelAgentsError] = useState("");
   const [form, setForm] = useState(() => {
-    return initialForm ? structuredClone(initialForm) : bookingToForm(booking, defaultDate, propertyId, ratePlans, homeCurrency, roomTypes);
+    const form = initialForm ? structuredClone(initialForm) : bookingToForm(booking, defaultDate, propertyId, ratePlans, homeCurrency, roomTypes);
+    return form.isDayRoom ? { ...form, nights: 0, checkOut: form.checkIn } : form;
   });
   const [saving, setSaving] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -136,6 +137,7 @@ export function ReservationEditor(props: ReservationEditorProps) {
       }
       if (key === "status") next.checkInNow = value === "Checked-in";
       if (key === "checkIn" || key === "nights" || key === "isDayRoom") {
+        next.nights = next.isDayRoom ? 0 : Math.max(Number(next.nights), 1);
         next.checkOut = next.isDayRoom ? next.checkIn : addDays(next.checkIn, Math.max(Number(next.nights), 1));
       }
       if (key === "checkOut" && !next.isDayRoom) next.nights = Math.max(daysBetween(next.checkIn, String(value)), 1);
@@ -415,7 +417,7 @@ export function ReservationEditor(props: ReservationEditorProps) {
             <InputField label="Group Name" value={form.groupName} onChange={(value) => update("groupName", value)} placeholder="Group Name" disabled={form.bookingSource === "Direct"} />
             <SelectField label="Status" value={form.status} onChange={(value) => update("status", value as ReservationStatus)} options={["Confirmed", "Tentative", "Checked-in", "Checked-out", "Cancelled", "No Show", "Blocked"]} />
             <div className="grid gap-1"><label className="text-sm font-semibold">Check-in</label><div className="flex items-center gap-2"><input value={form.checkIn} onChange={(e) => update("checkIn", e.target.value)} type="date" className="focus-ring h-11 min-w-0 flex-1 rounded-md border border-line bg-white px-3 text-sm" /><label className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={form.isDayRoom} onChange={(e) => update("isDayRoom", e.target.checked)} />Day room</label></div></div>
-            <InputField label="Nights" value={String(form.nights)} onChange={(value) => update("nights", Number(value))} type="number" disabled={form.isDayRoom} />
+            <InputField label="Nights" value={String(form.isDayRoom ? 0 : form.nights)} onChange={(value) => update("nights", Number(value))} type="number" disabled={form.isDayRoom} />
             <InputField label="Check-out" value={form.checkOut} onChange={(value) => update("checkOut", value)} type="date" disabled={form.isDayRoom} />
           </div>{form.bookingSource === "Travel Agent" && form.travelAgentId ? <p className="mt-2 text-xs text-slate-500">Performance will be credited to {form.travelAgentName}. Commission saved for this reservation: {form.travelAgentCommission}%.</p> : null}</section>
 

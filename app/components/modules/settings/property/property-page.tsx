@@ -22,6 +22,7 @@ import { TaxesTab } from "./taxes";
 import { ThemeTab } from "./theme-colors";
 import { HotelFeaturesTab } from "./hotel features";
 import { PRODUCT_NAME } from "@/app/lib/product-brand";
+import { blankPropertyDetails } from "@/app/lib/property-defaults";
 import type { CurrencyRecord, GatewayName, GatewaySettings, PropertyDetails, PropertyImageRecord, TaxRecord, ThemeSettings } from "./property-types";
 
 const tabs = ["Property Info", "Property Image", "Meal Allocation", "Payment Gateway", "Taxes", "Currency", "Theme", "Hotel Features"] as const;
@@ -47,9 +48,11 @@ const initialCurrencies: CurrencyRecord[] = [
 ];
 export function PropertySettingsPage({ propertyId, setToast }: { propertyId: string; setToast: (message: string) => void }) {
   const key = (suffix: string) => `staypilot:${propertyId}:property:${suffix}`;
+  const defaults = propertyId === "demo" ? initialProperty : blankPropertyDetails();
+  const legacy = <T,>(suffix: string, fallback: T): T => propertyId === "demo" ? readLocalStorageValue(`staypilot.property.${suffix}`, fallback) : fallback;
   const [activeTab, setActiveTab] = useState<Tab>("Property Info");
   const [editing, setEditing] = useState(false);
-  const [details, setDetails] = useState<PropertyDetails>(initialProperty);
+  const [details, setDetails] = useState<PropertyDetails>(defaults);
   const [propertyVersion, setPropertyVersion] = useState(0);
   const [propertyExists, setPropertyExists] = useState(false);
   const [propertyLoading, setPropertyLoading] = useState(true);
@@ -58,22 +61,22 @@ export function PropertySettingsPage({ propertyId, setToast }: { propertyId: str
   const [images, setImages] = useState<PropertyImageRecord[]>([]);
   const [imagesLoading, setImagesLoading] = useState(false);
   const gatewayFallback = Object.fromEntries((["CyberSource", "PayPal", "Skrill", "Stripe", "Google Pay", "Apple Pay"] as GatewayName[]).map((name) => [name, blankGateway(name)])) as Record<GatewayName, GatewaySettings>;
-  const [gateways, setGateways] = useLocalStorageState<Record<GatewayName, GatewaySettings>>(key("gateways"), () => readLocalStorageValue("staypilot.property.gateways", gatewayFallback));
-  const [currencies, setCurrencies] = useLocalStorageState<CurrencyRecord[]>(key("currencies"), () => readLocalStorageValue("staypilot.property.currencies", initialCurrencies));
-  const [manualRates, setManualRates] = useLocalStorageState(key("manualRates"), () => readLocalStorageValue("staypilot.property.manualRates", false));
-  const [taxes, setTaxes] = useLocalStorageState<TaxRecord[]>(key("taxes"), () => readLocalStorageValue("staypilot.property.taxes", []));
+  const [gateways, setGateways] = useLocalStorageState<Record<GatewayName, GatewaySettings>>(key("gateways"), () => legacy("gateways", gatewayFallback));
+  const [currencies, setCurrencies] = useLocalStorageState<CurrencyRecord[]>(key("currencies"), () => legacy("currencies", initialCurrencies));
+  const [manualRates, setManualRates] = useLocalStorageState(key("manualRates"), () => legacy("manualRates", false));
+  const [taxes, setTaxes] = useLocalStorageState<TaxRecord[]>(key("taxes"), () => legacy("taxes", []));
   const [theme, setTheme] = useLocalStorageState<ThemeSettings>(
     key("theme"),
-    () => readLocalStorageValue("staypilot.property.theme", DEFAULT_PROPERTY_THEME),
+    () => legacy("theme", DEFAULT_PROPERTY_THEME),
     undefined,
     normalizePropertyTheme
   );
-  const [features, setFeatures] = useLocalStorageState<string[]>(key("features"), () => readLocalStorageValue("staypilot.property.features", ["24-hour security", "Air conditioning & heating", "Airport shuttle", "Breakfast", "CCTV", "Daily housekeeping", "Free parking", "Free Wifi", "Front Desk"]));
+  const [features, setFeatures] = useLocalStorageState<string[]>(key("features"), () => legacy("features", ["24-hour security", "Air conditioning & heating", "Airport shuttle", "Breakfast", "CCTV", "Daily housekeeping", "Free parking", "Free Wifi", "Front Desk"]));
 
   useEffect(() => {
     let cancelled = false;
-    const cachedValue = readLocalStorageValue(key("details"), readLocalStorageValue("staypilot.property.details", initialProperty));
-    const cached = { ...initialProperty, ...cachedValue };
+    const cachedValue = readLocalStorageValue(key("details"), legacy("details", defaults));
+    const cached = { ...defaults, ...cachedValue };
     setDetails(cached);
     setPropertyLoading(true);
     setPropertyError("");

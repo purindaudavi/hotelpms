@@ -292,7 +292,7 @@ function propertyInfoPayload(details: PropertyDetails) {
     hotel_name: details.hotelName,
     pms_name: details.pmsName,
     hotel_type: details.hotelType,
-    hotel_guid: details.hotelGuid,
+    ...(details.hotelGuid ? { hotel_guid: details.hotelGuid } : {}),
     star_category: numberOrZero(details.starCategory),
     on_trial: details.onTrial,
     plan: details.plan,

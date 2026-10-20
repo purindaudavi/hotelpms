@@ -154,7 +154,7 @@ export function MealAllocationTab({
         <AmountGroup label="Adult allocation per person / night" mealPlan={form.mealPlan} amounts={form.adultAmounts} onChange={(adultAmounts) => setForm({ ...form, adultAmounts })} />
         <AmountGroup label="Child allocation per person / night" mealPlan={form.mealPlan} amounts={form.childAmounts} onChange={(childAmounts) => setForm({ ...form, childAmounts })} />
         <Field label="Notes"><textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} maxLength={1000} rows={3} placeholder="Internal allocation notes" className="w-full rounded-md border border-line p-3" /></Field>
-        <div className="mt-5 flex gap-3"><button disabled={saving || !propertyExists} className="h-11 rounded-md bg-ink px-5 font-semibold text-white disabled:opacity-50">{saving ? "Saving..." : form.id ? "Save Allocation" : "Create Allocation"}</button>{form.id ? <button type="button" onClick={() => setForm(initialForm(homeCurrency))} className="h-11 rounded-md border border-line px-5 font-semibold">Cancel</button> : null}</div>
+        <div className="mt-5 flex gap-3"><button disabled={saving || !propertyExists} className="h-11 rounded-md bg-slate-900 px-5 font-semibold text-white transition-colors hover:bg-slate-800 disabled:opacity-50 dark:bg-slate-800 dark:hover:bg-slate-700">{saving ? "Saving..." : form.id ? "Save Allocation" : "Create Allocation"}</button>{form.id ? <button type="button" onClick={() => setForm(initialForm(homeCurrency))} className="h-11 rounded-md border border-line px-5 font-semibold">Cancel</button> : null}</div>
       </form>
       <section className="rounded-lg border border-line p-6">
         <h3 className="mb-4 text-lg font-semibold">Existing Allocations</h3>

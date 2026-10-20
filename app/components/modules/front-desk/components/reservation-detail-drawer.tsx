@@ -2,7 +2,7 @@
 
 import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { BedDouble, ClipboardList, Paperclip, UserRound, X } from "lucide-react";
-import type { Reservation, ReservationRoom, ReservationStatus } from "@/app/data/pms-data";
+import type { Reservation, ReservationRoom, ReservationStatus, Room } from "@/app/data/pms-data";
 import {
   deleteReservationAttachment,
   getBookingsApiErrorMessage,
@@ -20,11 +20,16 @@ import { IconButton } from "./controls";
 import { ReservationRoomingList } from "./reservation-rooming-list";
 import { ReservationEmailActions } from "./reservation-email-actions";
 import { ReservationFinancialsPanel } from "../../financials/financial-documents-page";
+import { api } from "@/app/lib/api";
+import { getRoomCatalog } from "@/app/lib/rooms-api";
+import { RoomMoveDialog } from "./room-move-dialog";
 
 type DetailTab = "Overview" | "Rooms" | "Guests" | "Financials" | "Rooming List" | "Attachments" | "Log";
 
 type ReservationDetailDrawerProps = {
   propertyId: string;
+  businessDate: string;
+  onRoomsChanged: (rooms: Room[]) => void;
   booking: Reservation;
   onClose: () => void;
   onEdit: (booking: Reservation) => void;
@@ -40,12 +45,22 @@ const detailTabs: DetailTab[] = ["Overview", "Rooms", "Guests", "Financials", "R
 export function ReservationDetailDrawer(props: ReservationDetailDrawerProps) {
   const { propertyId, booking, onClose, onEdit, onRetryEmail, onSendReminder, onSendGeneral, onUpdateReservation, setToast } = props;
   const [activeTab, setActiveTab] = useState<DetailTab>("Overview");
+  const [moveOpen, setMoveOpen] = useState(false);
   const [documentCategory, setDocumentCategory] = useState("Voucher");
   const [attachmentDescription, setAttachmentDescription] = useState("");
   const [attachments, setAttachments] = useState<Array<ReservationAttachmentMetadata & { fileUrl?: string }>>([]);
   const [logs, setLogs] = useState<ReservationLogEntry[]>([]);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  async function downloadAttachment(event: React.MouseEvent<HTMLAnchorElement>, attachment: ReservationAttachmentMetadata) {
+    event.preventDefault();
+    try {
+      const response = await api.get<Blob>(`/bookings/reservations/${booking.id}/attachments/${attachment.id}/file`, { params: { property_id: propertyId }, responseType: "blob" });
+      const url = URL.createObjectURL(response.data);
+      const link = document.createElement("a"); link.href = url; link.download = attachment.fileName; link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) { setToast(getBookingsApiErrorMessage(error)); }
+  }
   const currency = booking.currency || "Currency unavailable";
   const paid = Math.min(booking.total, booking.paid);
   const remaining = Math.max(booking.total - paid, 0);
@@ -139,7 +154,7 @@ export function ReservationDetailDrawer(props: ReservationDetailDrawerProps) {
           <div className="flex min-w-0 gap-3"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-orange-500 font-semibold text-white">{booking.guest.charAt(0).toUpperCase() || "G"}</span><div className="min-w-0"><h2 className="truncate text-xl font-semibold">{booking.guest}</h2><p className="text-sm text-slate-500">Reservation {booking.resNo}</p><span className={`mt-1 inline-flex rounded-full px-3 py-1 text-xs font-semibold text-white ${statusClass}`}>{booking.status}</span><p className="mt-1 text-sm text-slate-600">{rooms.length} room{rooms.length === 1 ? "" : "s"}: {rooms.map((room) => room.roomNumber || "Unassigned").join(", ")}</p></div></div>
           <IconButton label="Close reservation details" onClick={onClose}><X className="h-5 w-5" /></IconButton>
         </div>
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3"><span className="rounded-md bg-slate-100 px-3 py-2 text-sm font-semibold">{booking.isDayRoom ? "Day room" : "Overnight reservation"}</span><div className="flex gap-2"><button type="button" className="rounded-md border border-line px-4 py-2 text-sm font-semibold" onClick={() => void copyReference()}>Copy reference</button><button type="button" className="rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white" onClick={() => onEdit(booking)}>Edit reservation</button></div></div>
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3"><span className="rounded-md bg-slate-100 px-3 py-2 text-sm font-semibold">{booking.isDayRoom ? "Day room" : "Overnight reservation"}</span><div className="flex gap-2"><button type="button" className="rounded-md border border-line px-4 py-2 text-sm font-semibold" onClick={() => void copyReference()}>Copy reference</button>{booking.status === "Checked-in" ? <button type="button" className="reservation-primary-action rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white" onClick={() => setMoveOpen(true)}>Move room</button> : null}<button type="button" className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white" onClick={() => onEdit(booking)}>Edit reservation</button></div></div>
         <div className="mt-3 flex items-center justify-between rounded-md bg-slate-50 px-3 py-2 text-xs"><span>Email request: <b>{booking.emailStatus?.replaceAll("_", " ") ?? "not requested"}</b>{booking.emailFailureMessage ? ` - ${booking.emailFailureMessage}` : ""}</span>{booking.emailStatus === "failed" ? <button type="button" className="font-semibold text-blue-700" onClick={() => void onRetryEmail()}>Retry email</button> : null}</div>
         {onSendReminder && onSendGeneral ? <ReservationEmailActions booking={booking} onReminder={onSendReminder} onGeneral={onSendGeneral} /> : null}
       </header>
@@ -151,7 +166,7 @@ export function ReservationDetailDrawer(props: ReservationDetailDrawerProps) {
           ["Reservation No", emptyValue(booking.resNo, "No reservation number")], ["Booking Reference", emptyValue(booking.bookingReference || booking.bookingRef, "No booking reference")], ["Booking Source", emptyValue(booking.bookingSource || booking.source, "No booking source")], ["Travel Agent", emptyValue(booking.travelAgentName, "No travel agent")], ["Agent Commission", booking.travelAgentId ? `${booking.travelAgentCommission ?? 0}%` : "Not applicable"], ["Created By", emptyValue(booking.createdBy, "Unknown creator")], ["Created Date / Time", formatTimestamp(booking.createdAt)], ["Check-in", formatDate(booking.checkIn)], ["Check-out", formatDate(booking.checkOut)], ["Status", booking.status], ["Room Use", booking.isDayRoom ? "Day room" : "Overnight"], ["Currency", currency], ["Rate Plan", emptyValue(booking.ratePlanName, "No rate plan")], ["Meal Plan", emptyValue(booking.mealPlan, "No meal plan")], ["Tour Number", emptyValue(booking.tourNumber, "No tour number")], ["Group Name", emptyValue(booking.groupName, "No group name")]
         ]} /></DetailSection><Remarks booking={booking} /></> : null}
 
-        {activeTab === "Rooms" ? <DetailSection title="Reservation Rooms" icon={<BedDouble className="h-4 w-4" />}><div className="space-y-3">{rooms.map((room) => <RoomCard key={room.id} room={room} reservationCurrency={currency} booking={booking} />)}</div></DetailSection> : null}
+        {activeTab === "Rooms" ? <DetailSection title="Reservation Rooms" icon={<BedDouble className="h-4 w-4" />}><div className="space-y-3">{rooms.map((room) => <RoomCard key={room.id} room={room} reservationCurrency={currency} booking={booking} />)}</div>{booking.roomMoves?.length ? <div className="mt-4 space-y-2"><h4 className="font-semibold">Room move history</h4>{booking.roomMoves.map((move) => <div key={move.id} className="rounded-md border border-line p-3 text-sm"><b>{move.fromRoomNumber} &rarr; {move.toRoomNumber}</b><p>{formatDate(move.businessDate)} &middot; {move.movedBy}</p><p className="text-slate-500">{move.reason}</p></div>)}</div> : null}</DetailSection> : null}
 
         {activeTab === "Guests" ? <><DetailSection title="Primary Guest" icon={<UserRound className="h-4 w-4" />}><DetailGrid items={[["Title", emptyValue(booking.guestTitle, "No title")], ["Name", booking.guest], ["Country", emptyValue(booking.country, "No country")], ["Phone", emptyValue(booking.phone === "-" ? "" : booking.phone, "No phone")], ["Email", emptyValue(booking.email === "-" ? "" : booking.email, "No email")], ["Adults / Children", `${booking.adults} / ${booking.children}`]]} /></DetailSection><Remarks booking={booking} /></> : null}
 
@@ -165,11 +180,16 @@ export function ReservationDetailDrawer(props: ReservationDetailDrawerProps) {
           <label className="mb-3 grid gap-1 text-sm font-semibold">Description<textarea value={attachmentDescription} onChange={(event) => setAttachmentDescription(event.target.value)} rows={3} placeholder="Describe the document and why it belongs to this reservation" className="rounded-md border border-line bg-white px-3 py-2 font-normal" /></label>
           <input ref={fileInputRef} type="file" multiple onChange={(event) => void handleAttachmentSelected(event)} className="hidden" /><button type="button" disabled={uploading} onClick={() => fileInputRef.current?.click()} className="rounded-md bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">{uploading ? "Uploading..." : "Choose files"}</button>
           <p className="mt-2 text-xs text-slate-500">Files are stored by the booking backend in MongoDB GridFS with their reservation metadata.</p>
-          <div className="mt-4 space-y-2">{reservationAttachments.map((attachment) => <div key={attachment.id} className="flex items-start justify-between gap-4 rounded-md border border-line p-3 text-sm"><div>{attachment.fileUrl ? <a href={attachment.fileUrl} target="_blank" rel="noreferrer" className="font-semibold text-blue-700 underline">{attachment.fileName}</a> : <p className="font-semibold">{attachment.fileName}</p>}<p className="text-xs text-slate-500">{attachment.documentCategory} · {attachment.fileType} · {formatFileSize(attachment.fileSize)} · {formatTimestamp(attachment.uploadedAt)} · {attachment.uploadedBy}</p><p className="mt-2 whitespace-pre-wrap text-slate-600">{attachment.description?.trim() || "No attachment description"}</p></div><button type="button" className="shrink-0 text-xs font-semibold text-red-600" onClick={() => void deleteAttachment(attachment)}>Remove</button></div>)}{!reservationAttachments.length ? <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-500">No attachments</p> : null}</div>
+          <div className="mt-4 space-y-2">{reservationAttachments.map((attachment) => <div key={attachment.id} className="flex items-start justify-between gap-4 rounded-md border border-line p-3 text-sm"><div>{attachment.fileUrl ? <a onClick={(event) => void downloadAttachment(event, attachment)} href={attachment.fileUrl} target="_blank" rel="noreferrer" className="font-semibold text-blue-700 underline">{attachment.fileName}</a> : <p className="font-semibold">{attachment.fileName}</p>}<p className="text-xs text-slate-500">{attachment.documentCategory} · {attachment.fileType} · {formatFileSize(attachment.fileSize)} · {formatTimestamp(attachment.uploadedAt)} · {attachment.uploadedBy}</p><p className="mt-2 whitespace-pre-wrap text-slate-600">{attachment.description?.trim() || "No attachment description"}</p></div><button type="button" className="shrink-0 text-xs font-semibold text-red-600" onClick={() => void deleteAttachment(attachment)}>Remove</button></div>)}{!reservationAttachments.length ? <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-500">No attachments</p> : null}</div>
         </DetailSection> : null}
 
         {activeTab === "Log" ? <DetailSection title=" Audit Log" icon={<ClipboardList className="h-4 w-4" />}><p className="mb-3 text-xs text-slate-500">Lifecycle and record changes are written by the backend and loaded from Database.</p><div className="space-y-3">{reservationLogs.map((entry) => <article key={entry.id} className="rounded-md border border-line p-3 text-sm"><div className="flex justify-between gap-3"><b>{entry.action}</b><time className="text-xs text-slate-500">{formatTimestamp(entry.createdAt)}</time></div><p className="mt-2 text-slate-600">{entry.description}</p><p className="mt-2 text-xs text-slate-500">By {entry.createdBy}</p>{entry.changes && Object.keys(entry.changes).length ? <dl className="mt-2 rounded bg-slate-50 p-2 text-xs">{Object.entries(entry.changes).map(([field, change]) => <div key={field} className="mt-1"><b>{field}:</b> {displayChange(change.from)} → {displayChange(change.to)}</div>)}</dl> : null}</article>)}</div>{!reservationLogs.length ? <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-500">No log entries yet</p> : null}</DetailSection> : null}
       </div>
+      {moveOpen ? <RoomMoveDialog propertyId={propertyId} businessDate={props.businessDate} booking={booking} onClose={() => setMoveOpen(false)} onMoved={(saved) => {
+        onUpdateReservation(saved); setMoveOpen(false); setToast("Room moved. The previous room needs cleaning.");
+        void getRoomCatalog(propertyId).then((catalog) => props.onRoomsChanged(catalog.rooms)).catch(() => setToast("Room move saved. Refresh the room board to reload room statuses."));
+        void getReservationDetails(propertyId, booking.id).then((details) => setLogs(details.logs)).catch(() => setToast("Room move saved. Reopen the details to refresh its log."));
+      }} /> : null}
     </aside>
   </div>;
 }
