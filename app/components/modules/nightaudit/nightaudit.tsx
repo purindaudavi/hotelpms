@@ -17,8 +17,11 @@ import {
   WalletCards,
   XCircle
 } from "lucide-react";
+import { usePropertyAccess } from "@/app/components/property-access-gate";
 import { dateLabel } from "@/app/data/pms-data";
 import {
+  getNightAudit,
+  reviewClosedNightAudit,
   completeNightAudit,
   generateNightAuditReports,
   getCurrentNightAudit,
@@ -60,6 +63,10 @@ const statusClass: Record<NightAuditStepStatus, string> = {
 };
 
 export function NightAuditPage({ propertyId, setToast }: NightAuditPageProps) {
+  const access = usePropertyAccess();
+  const isOwnerAdmin = ["owner", "administrator"].includes(access.role || "");
+  const [reviewNote, setReviewNote] = useState("");
+  const [reviewStatus, setReviewStatus] = useState<"reviewed" | "flagged">("reviewed");
   const [audit, setAudit] = useState<NightAudit | null>(null);
   const [history, setHistory] = useState<NightAuditHistoryRecord[]>([]);
   const [closeNote, setCloseNote] = useState("");
@@ -79,6 +86,21 @@ export function NightAuditPage({ propertyId, setToast }: NightAuditPageProps) {
     0
   ) ?? 0;
   const busy = Boolean(action);
+  const canRun = audit?.status === "open" && (isOwnerAdmin || (access.role === "front_desk" && access.permissions.includes("night-audit.run")));
+
+  async function openClosedAudit(id: string) {
+    if (busy) return;
+    setAction("history"); setErrorMessage("");
+    try { const selected = await getNightAudit(propertyId, id); setAudit(selected); setCloseNote(selected.close_note || ""); setReviewNote(selected.finance_review_note || ""); setReviewStatus(selected.finance_review_status === "flagged" ? "flagged" : "reviewed"); }
+    catch (error) { setErrorMessage(getNightAuditApiErrorMessage(error)); }
+    finally { setAction(""); }
+  }
+
+  async function saveFinanceReview() {
+    if (!audit || audit.status !== "closed" || access.role !== "finance" || busy) return;
+    await runAction("finance-review", () => reviewClosedNightAudit(propertyId, audit._id, reviewStatus, reviewNote, audit.version), "Finance review saved. The closed day remains unchanged.");
+    try { setHistory(await getNightAuditHistory(propertyId)); } catch (error) { setErrorMessage(getNightAuditApiErrorMessage(error)); }
+  }
 
   async function loadAudit(showToast: boolean) {
     setLoading(true);
@@ -120,32 +142,33 @@ export function NightAuditPage({ propertyId, setToast }: NightAuditPageProps) {
   }
 
   function reviewStep(step: NightAuditStep) {
-    if (step.disabled || isCompleteStatus(step.status)) return;
+    if (!canRun || !audit || step.disabled || isCompleteStatus(step.status)) return;
     if (step.id === "folio-posting") {
-      void runAction(step.id, () => postNightAuditRoomRevenue(propertyId), "Room revenue posted to MongoDB");
+      void runAction(step.id, () => postNightAuditRoomRevenue(propertyId, audit._id), "Room revenue posted to MongoDB");
       return;
     }
     if (step.id === "housekeeping-close") {
-      void runAction(step.id, () => reviewNightAuditHousekeeping(propertyId), "Housekeeping board reviewed");
+      void runAction(step.id, () => reviewNightAuditHousekeeping(propertyId, audit._id), "Housekeeping board reviewed");
       return;
     }
     if (step.id === "channel-check") {
-      void runAction(step.id, () => reviewNightAuditChannels(propertyId), "Channel check reviewed");
+      void runAction(step.id, () => reviewNightAuditChannels(propertyId, audit._id), "Channel check reviewed");
       return;
     }
     if (step.id === "audit-reports") {
-      void runAction(step.id, () => generateNightAuditReports(propertyId), "Night Audit close pack generated in MongoDB");
+      void runAction(step.id, () => generateNightAuditReports(propertyId, audit._id), "Night Audit close pack generated in MongoDB");
       return;
     }
-    void runAction(step.id, () => reviewNightAuditStep(propertyId, step.id), `${step.title} reviewed`);
+    void runAction(step.id, () => reviewNightAuditStep(propertyId, step.id, audit._id), `${step.title} reviewed`);
   }
 
   function requestManagerOverride(step: NightAuditStep) {
+    if (!canRun || !isOwnerAdmin || !audit) return;
     const blockerIds = step.exceptions
       .filter((exception) => exception.severity === "blocker" && !exception.resolved)
       .map((exception) => exception.id);
     if (!blockerIds.length) return;
-    const reason = window.prompt("Enter the duty manager's override reason (at least 10 characters):", "");
+    const reason = window.prompt("Enter the Owner/Admin override reason (at least 10 characters):", "");
     if (!reason) return;
     if (reason.trim().length < 10) {
       setToast("The override reason must contain at least 10 characters");
@@ -153,17 +176,18 @@ export function NightAuditPage({ propertyId, setToast }: NightAuditPageProps) {
     }
     void runAction(
       `override:${step.id}`,
-      () => overrideNightAuditExceptions(propertyId, step.id, blockerIds, reason.trim()),
-      `${step.title} override recorded with manager reason`
+      () => overrideNightAuditExceptions(propertyId, step.id, blockerIds, reason.trim(), audit._id),
+      `${step.title} override recorded with Owner/Admin reason`
     );
   }
 
   function saveNote() {
-    void runAction("note", () => saveNightAuditNote(propertyId, closeNote), "Close note saved to MongoDB");
+    if (!canRun || !audit) return;
+    void runAction("note", () => saveNightAuditNote(propertyId, closeNote, audit._id), "Close note saved to MongoDB");
   }
 
   async function finishAudit() {
-    if (!audit?.can_complete || busy) return;
+    if (!canRun || !audit?.can_complete || busy) return;
     const confirmed = window.confirm(
       `Close business date ${audit.business_date} and open ${addDays(audit.business_date, 1)}? This cannot be undone from this screen.`
     );
@@ -171,7 +195,7 @@ export function NightAuditPage({ propertyId, setToast }: NightAuditPageProps) {
     setAction("complete");
     setErrorMessage("");
     try {
-      const result = await completeNightAudit(propertyId, closeNote);
+      const result = await completeNightAudit(propertyId, closeNote, audit._id);
       setToast(result.message);
       const [nextAudit, closedAudits] = await Promise.all([
         getCurrentNightAudit(propertyId),
@@ -251,16 +275,16 @@ export function NightAuditPage({ propertyId, setToast }: NightAuditPageProps) {
           </label>
           <button type="button" onClick={() => void loadAudit(true)} disabled={busy || loading} className="inline-flex h-11 items-center gap-2 rounded-md border border-line bg-white px-4 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50">
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-            Refresh
+            {audit.status === "closed" ? "Open current day" : "Refresh"}
           </button>
           <button type="button" onClick={downloadAuditPack} disabled={busy} className="inline-flex h-11 items-center gap-2 rounded-md border border-line bg-white px-4 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50">
             <Download className="h-4 w-4" />
             Download Pack
           </button>
-          <button type="button" onClick={() => void finishAudit()} className="inline-flex h-11 items-center gap-2 rounded-md bg-slate-950 px-4 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400" disabled={!audit.can_complete || busy}>
+          {canRun && <button type="button" onClick={() => void finishAudit()} className="inline-flex h-11 items-center gap-2 rounded-md bg-slate-950 px-4 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400" disabled={!audit.can_complete || busy}>
             {action === "complete" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Moon className="h-4 w-4" />}
             Complete Audit
-          </button>
+          </button>}
         </div>
       </div>
 
@@ -270,6 +294,17 @@ export function NightAuditPage({ propertyId, setToast }: NightAuditPageProps) {
           <span>{errorMessage}</span>
         </div>
       ) : null}
+
+      <section className="mt-5 rounded-lg border border-line bg-white p-5">
+        <h2 className="text-lg font-semibold">{audit.status === "closed" ? "Completed" : "Open business day"}{audit.status === "closed" ? ` · Finance: ${reviewLabel(audit.finance_review_status)}` : ""}</h2>
+        {audit.status === "closed" ? <>
+          <p className="mt-2 text-sm text-slate-500">Completed by {audit.closed_by?.name || audit.closed_by?.email || "System"} · {audit.closed_at ? new Date(audit.closed_at).toLocaleString() : ""}. Next business day: {audit.next_business_date}. Finance review does not hold up the next day.</p>
+          {audit.finance_reviewed_at && <p className="mt-2 text-sm">Last review by {audit.finance_reviewed_by?.name || audit.finance_reviewed_by?.email} · {new Date(audit.finance_reviewed_at).toLocaleString()}</p>}
+          {audit.finance_review_note && <p className="mt-2 whitespace-pre-wrap text-sm">{audit.finance_review_note}</p>}
+          {access.role === "finance" && <div className="mt-4 space-y-3"><label className="grid gap-2 text-sm">Review outcome<select value={reviewStatus} disabled={busy} onChange={event => setReviewStatus(event.target.value as "reviewed" | "flagged")} className="h-11 rounded-md border border-line bg-white px-3"><option value="reviewed">Reviewed</option><option value="flagged">Flagged</option></select></label><label className="grid gap-2 text-sm">Review notes<textarea maxLength={3000} value={reviewNote} disabled={busy} onChange={event => setReviewNote(event.target.value)} className="min-h-24 rounded-md border border-line p-3" placeholder="Explain any discrepancy. Required when flagging." /></label><button onClick={() => void saveFinanceReview()} disabled={busy || (reviewStatus === "flagged" && reviewNote.trim().length < 3)} className="rounded-md bg-blue-600 px-4 py-2 font-semibold text-white disabled:opacity-50">Save Finance review</button></div>}
+          {(audit.finance_review_history || []).length > 0 && <details className="mt-3 text-sm"><summary className="cursor-pointer font-medium">Review history</summary><ul className="mt-2 space-y-2">{audit.finance_review_history.map((review, index) => <li key={index}>{reviewLabel(review.status)} · {review.actor.name || review.actor.email} · {new Date(review.at).toLocaleString()}<p className="whitespace-pre-wrap text-slate-500">{review.note}</p></li>)}</ul></details>}
+        </> : <p className="mt-2 text-sm text-slate-500">{canRun ? "Complete the required checks before closing. Blocker overrides require Owner/Admin." : "Read-only operational audit. Select a completed day under Previous Closes to record a Finance review."}</p>}
+      </section>
 
       <section className="mt-5 grid gap-4 xl:grid-cols-5">
         <SummaryCard label="Business Date" value={dateLabel(audit.business_date)} helper={`Next close opens ${dateLabel(addDays(audit.business_date, 1))}`} icon={<CalendarDays className="h-5 w-5" />} />
@@ -285,11 +320,11 @@ export function NightAuditPage({ propertyId, setToast }: NightAuditPageProps) {
             <h2 className="text-2xl font-semibold">Audit Progress</h2>
             <p className="mt-1 text-sm text-slate-500">{completedRequired} of {requiredSteps.length} required checks completed.</p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          {canRun && <div className="flex flex-wrap gap-2">
             <QuickAction label="Post Room Revenue" actionKey="folio-posting" activeAction={action} disabled={busy || isCompleteStatus(folioStep.status)} onClick={() => reviewStep(folioStep)} />
             <QuickAction label="Review Housekeeping" actionKey="housekeeping-close" activeAction={action} disabled={busy || isCompleteStatus(housekeepingStep.status)} onClick={() => reviewStep(housekeepingStep)} />
             <QuickAction label="Generate Reports" actionKey="audit-reports" activeAction={action} disabled={busy || isCompleteStatus(reportsStep.status)} primary onClick={() => reviewStep(reportsStep)} />
-          </div>
+          </div>}
         </div>
         <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-100">
           <div className="h-full rounded-full bg-emerald-500 transition-[width]" style={{ width: `${Math.round((completedRequired / Math.max(requiredSteps.length, 1)) * 100)}%` }} />
@@ -301,7 +336,7 @@ export function NightAuditPage({ propertyId, setToast }: NightAuditPageProps) {
           {audit.steps.map((step) => {
             const active = action === step.id || action === `override:${step.id}`;
             const blockers = step.exceptions.filter((exception) => exception.severity === "blocker" && !exception.resolved);
-            const allowOverride = step.id === "front-desk-status" && blockers.length > 0;
+            const allowOverride = canRun && isOwnerAdmin && step.id === "front-desk-status" && blockers.length > 0;
             return (
               <article key={step.id} className={`rounded-lg border border-line bg-white p-5 shadow-sm ${step.disabled ? "opacity-75" : ""}`}>
                 <div className="flex flex-wrap items-start justify-between gap-4">
@@ -356,10 +391,10 @@ export function NightAuditPage({ propertyId, setToast }: NightAuditPageProps) {
                 <div className="mt-4 flex justify-end gap-2">
                   {allowOverride ? (
                     <button type="button" onClick={() => requestManagerOverride(step)} disabled={busy} className="rounded-md border border-line bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50">
-                      Manager Override
+                      Owner/Admin Override
                     </button>
                   ) : null}
-                  {!step.disabled && !isCompleteStatus(step.status) ? (
+                  {canRun && !step.disabled && !isCompleteStatus(step.status) ? (
                     <button type="button" onClick={() => reviewStep(step)} disabled={busy || (step.status === "blocked" && !["folio-posting", "audit-reports"].includes(step.id))} className="inline-flex items-center gap-2 rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400">
                       {active ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                       {stepActionLabel(step)}
@@ -391,26 +426,27 @@ export function NightAuditPage({ propertyId, setToast }: NightAuditPageProps) {
 
           <section className="rounded-lg border border-line bg-white p-5 shadow-sm">
             <h2 className="text-xl font-semibold">Close Notes</h2>
-            <textarea value={closeNote} onChange={(event) => setCloseNote(event.target.value)} placeholder="Optional handover notes for the next shift..." className="focus-ring mt-4 min-h-32 w-full rounded-md border border-line px-3 py-2 text-sm" />
-            <button type="button" onClick={saveNote} disabled={busy} className="mt-3 inline-flex items-center gap-2 rounded-md border border-line bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50">
+            <textarea readOnly={!canRun} maxLength={3000} value={closeNote} onChange={(event) => setCloseNote(event.target.value)} placeholder="Optional handover notes for the next shift..." className="focus-ring mt-4 min-h-32 w-full rounded-md border border-line px-3 py-2 text-sm" />
+            {canRun && <button type="button" onClick={saveNote} disabled={busy} className="mt-3 inline-flex items-center gap-2 rounded-md border border-line bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50">
               {action === "note" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               Save Note
-            </button>
+            </button>}
           </section>
 
           <section className="rounded-lg border border-line bg-white p-5 shadow-sm">
             <h2 className="text-xl font-semibold">Previous Closes</h2>
             {history.length ? (
-              <div className="mt-4 space-y-3">
-                {history.slice(0, 5).map((record) => (
-                  <div key={record._id} className="rounded-md border border-line p-3 text-sm">
+              <div className="mt-4 max-h-[40rem] space-y-3 overflow-y-auto">
+                {history.map((record) => (
+                  <button type="button" disabled={busy} onClick={() => void openClosedAudit(record._id)} key={record._id} className="block w-full rounded-md border border-line p-3 text-left text-sm hover:bg-slate-50 disabled:opacity-50">
                     <div className="flex items-center justify-between">
                       <span className="font-semibold">{dateLabel(record.business_date)}</span>
                       <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">Closed</span>
                     </div>
                     <p className="mt-2 text-slate-500">Closed by {record.closed_by?.name || "System"}</p>
                     <p className="mt-1 text-slate-500">Revenue {money(record.currency, record.revenue_posted_amount)} | Open balance {money(record.currency, record.close_summary?.open_balance_total || 0)}</p>
-                  </div>
+                    <p className="mt-2 font-medium">Finance: {reviewLabel(record.finance_review_status)}</p>
+                  </button>
                 ))}
               </div>
             ) : (
@@ -545,4 +581,8 @@ function formatDateTime(value: string) {
 
 function titleCase(value: string) {
   return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function reviewLabel(status?: string) {
+  return status === "reviewed" ? "Reviewed" : status === "flagged" ? "Flagged" : "Pending Review";
 }

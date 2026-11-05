@@ -189,11 +189,11 @@ export function PropertySettingsPage({ propertyId, setToast }: { propertyId: str
   }
 
   return (
-    <main className="p-4 lg:p-6">
+    <main className="settings-appearance p-4 lg:p-6">
       <section className="rounded-xl border border-line bg-white p-5 shadow-sm lg:p-7">
         <header className="mb-6 flex items-center justify-between gap-4">
           <h1 className="text-3xl font-bold">Property Details</h1>
-          <button onClick={() => void toggleEdit()} disabled={propertyLoading || propertySaving} className="property-settings-action inline-flex h-11 items-center gap-2 rounded-md bg-ink px-5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50">
+          <button onClick={() => void toggleEdit()} disabled={propertyLoading || propertySaving} className="inline-flex h-11 items-center gap-2 rounded-md settings-primary-action bg-ink px-5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50">
             {editing ? <Save className="h-4 w-4" /> : <Edit3 className="h-4 w-4" />}{propertySaving ? "Saving..." : editing ? "Save" : "Edit"}
           </button>
         </header>

@@ -2,6 +2,7 @@
 
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { CalendarDays, Download, Target as TargetIcon, Trash2, X } from "lucide-react";
+import { usePropertyAccess } from "@/app/components/property-access-gate";
 import {
   Area,
   AreaChart,
@@ -47,6 +48,7 @@ type ProfitLossRow = {
 };
 
 export function ProfitLossPage({ propertyId, setToast }: ProfitLossPageProps) {
+  const finance = usePropertyAccess().role === "finance";
   const [period, setPeriod] = useState<ProfitLossPeriod>("Monthly");
   const [view, setView] = useState<ProfitLossView>("Chart");
   const [chartMode, setChartMode] = useState<ChartMode>("Area");
@@ -99,6 +101,7 @@ export function ProfitLossPage({ propertyId, setToast }: ProfitLossPageProps) {
   const targetedProfit = rows.reduce((sum, row) => sum + (row.target === undefined ? 0 : row.profit), 0);
 
   function openTargetDialog(month = currentMonth()) {
+    if (finance) return;
     const saved = targets.find((target) => target.month === month);
     setTargetMonth(month);
     setTargetAmount(saved ? String(saved.amount) : "");
@@ -167,7 +170,7 @@ export function ProfitLossPage({ propertyId, setToast }: ProfitLossPageProps) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-2xl font-semibold">Profit & Loss</h2>
         <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={() => openTargetDialog()}>
+          <Button disabled={finance} onClick={() => openTargetDialog()}>
             <TargetIcon className="h-4 w-4" />
             Set Target
           </Button>
@@ -407,9 +410,9 @@ function Segmented({
   );
 }
 
-function Button({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
+function Button({ children, onClick, disabled }: { children: React.ReactNode; onClick: () => void; disabled?: boolean }) {
   return (
-    <button type="button" onClick={onClick} className="inline-flex h-11 items-center gap-2 rounded-md border border-line bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+    <button type="button" onClick={onClick} disabled={disabled} className="inline-flex h-11 items-center gap-2 rounded-md border border-line bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">
       {children}
     </button>
   );

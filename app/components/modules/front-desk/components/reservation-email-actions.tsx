@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { usePropertyAccess } from "@/app/components/property-access-gate";
 import type { Reservation } from "@/app/data/pms-data";
 import { isValidEmail } from "@/app/lib/reservation-email";
 
@@ -11,6 +12,7 @@ type Props = {
 };
 
 export function ReservationEmailActions({ booking, onReminder, onGeneral }: Props) {
+  const frontDesk = usePropertyAccess().role === "front_desk";
   const [generalOpen, setGeneralOpen] = useState(false);
   const [to, setTo] = useState(booking.email === "-" ? "" : booking.email);
   const [subject, setSubject] = useState("");
@@ -43,12 +45,12 @@ export function ReservationEmailActions({ booking, onReminder, onGeneral }: Prop
       <button type="button" disabled={sending} onClick={() => void sendReminder()} className="rounded-md border border-line px-3 py-2 text-xs font-semibold disabled:opacity-50">
         {sending ? "Sending…" : "Send reminder email"}
       </button>
-      <button type="button" disabled={sending} onClick={() => setGeneralOpen(true)} className="rounded-md border border-line px-3 py-2 text-xs font-semibold disabled:opacity-50">
+      {!frontDesk && <button type="button" disabled={sending} onClick={() => setGeneralOpen(true)} className="rounded-md border border-line px-3 py-2 text-xs font-semibold disabled:opacity-50">
         Send general email
-      </button>
+      </button>}
     </div>
 
-    {generalOpen ? <div className="fixed inset-0 z-[70] grid place-items-center bg-black/40 p-4">
+    {generalOpen && !frontDesk ? <div className="fixed inset-0 z-[70] grid place-items-center bg-black/40 p-4">
       <section className="w-full max-w-lg rounded-xl bg-white p-6 shadow-2xl">
         <h3 className="text-lg font-semibold">Send general email</h3>
         <div className="mt-4 grid gap-3">

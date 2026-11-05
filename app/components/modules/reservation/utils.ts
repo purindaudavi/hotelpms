@@ -55,6 +55,7 @@ export function searchReservation(booking: Reservation, query: string) {
   const needle = query.trim().toLowerCase();
   if (!needle) return true;
   return [
+    booking.id,
     booking.resNo,
     booking.bookingRef,
     booking.guest,

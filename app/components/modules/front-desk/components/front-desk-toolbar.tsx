@@ -1,4 +1,5 @@
 import { Plus } from "lucide-react";
+import { usePropertyAccess } from "@/app/components/property-access-gate";
 import { DeskButton } from "./controls";
 import { DeskTab, deskTabs } from "../types";
 
@@ -23,6 +24,7 @@ export function FrontDeskToolbar({
   onOpenReservation,
   onOpenBusinessBlocks
 }: FrontDeskToolbarProps) {
+  const frontDesk = usePropertyAccess().role === "front_desk";
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -51,7 +53,7 @@ export function FrontDeskToolbar({
           <Plus className="h-4 w-4" />
           Reservation
         </DeskButton>
-        <DeskButton onClick={onOpenBusinessBlocks}>Business Block</DeskButton>
+        {!frontDesk && <DeskButton onClick={onOpenBusinessBlocks}>Business Block</DeskButton>}
       </div>
     </div>
   );

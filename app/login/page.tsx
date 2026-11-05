@@ -4,11 +4,9 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { FormEvent, useEffect, useState } from "react";
 import {
-  BriefcaseBusiness,
   Building2,
   Eye,
   EyeOff,
-  IdCard,
   LockKeyhole,
   LogIn,
   Mail,
@@ -39,8 +37,6 @@ const initialRegisterForm = {
   name: "",
   email: "",
   password: "",
-  role: "Front Desk",
-  emp_no: "",
   mobile: ""
 };
 
@@ -114,10 +110,11 @@ export default function LoginPage() {
     showMessage("", "info");
 
     const name = registerForm.name.trim();
-    const registerEmail = registerForm.email.trim();
+    const registerEmail = registerForm.email.trim().toLowerCase();
+    const mobile = registerForm.mobile.trim();
 
-    if (!name || !registerEmail || !registerForm.password || !registerForm.role.trim()) {
-      showMessage("Name, email, password and role are required.", "error");
+    if (!name || !registerEmail || !registerForm.password || !mobile) {
+      showMessage("Name, email, password and mobile are required.", "error");
       return;
     }
 
@@ -125,16 +122,18 @@ export default function LoginPage() {
       showMessage("Use at least 6 characters for the password.", "error");
       return;
     }
+    if (new TextEncoder().encode(registerForm.password).length > 72) {
+      showMessage("Password is too long. Choose a shorter password.", "error");
+      return;
+    }
 
     setLoading(true);
     try {
       const result = await registerUser({
-        ...registerForm,
         name,
         email: registerEmail,
-        role: registerForm.role.trim(),
-        emp_no: registerForm.emp_no.trim(),
-        mobile: registerForm.mobile.trim()
+        password: registerForm.password,
+        mobile
       });
       setAuthMode("login");
       setEmail(registerEmail);
@@ -162,10 +161,10 @@ export default function LoginPage() {
     setMessageType(type);
   }
 
-  const panelTitle = authMode === "login" ? "Welcome back" : "Create user";
+  const panelTitle = authMode === "login" ? "Welcome back" : "Create your account";
   const panelSubtitle = authMode === "login"
     ? "Sign in to access your property workspace."
-    : "Add a user that can sign in through your auth API.";
+    : "Add your property after signing in, or ask its owner to grant you access.";
 
   return (
     <main className="login-root grid min-h-screen bg-[#f7f9fc] lg:grid-cols-[minmax(0,1.08fr)_minmax(500px,0.92fr)]">
@@ -305,6 +304,7 @@ export default function LoginPage() {
                 autoComplete="name"
                 icon={UserRound}
                 label="Full name"
+                maxLength={100}
                 onChange={(value) => setRegisterForm((current) => ({ ...current, name: value }))}
                 placeholder="Asiri Perera"
                 value={registerForm.name}
@@ -327,42 +327,16 @@ export default function LoginPage() {
                 showPassword={showPassword}
                 value={registerForm.password}
               />
-              <label className="block">
-                <span className="mb-2 block text-sm font-semibold text-slate-600">Role</span>
-                <span className="flex h-[50px] items-center rounded-lg border border-slate-300 bg-white px-4 transition focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-100">
-                  <BriefcaseBusiness className="mr-3 size-[18px] shrink-0 text-slate-400" />
-                  <select
-                    className="h-full min-w-0 flex-1 bg-transparent text-sm text-slate-900 outline-none"
-                    onChange={(event) => setRegisterForm((current) => ({ ...current, role: event.target.value }))}
-                    value={registerForm.role}
-                  >
-                    <option>Owner / Administrator</option>
-                    <option>Manager</option>
-                    <option>Front Desk</option>
-                    <option>Housekeeping</option>
-                    <option>Finance</option>
-                    <option>Reports</option>
-                  </select>
-                </span>
-              </label>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <TextField
-                  icon={IdCard}
-                  label="Employee no."
-                  onChange={(value) => setRegisterForm((current) => ({ ...current, emp_no: value }))}
-                  placeholder="01"
-                  value={registerForm.emp_no}
-                />
-                <TextField
-                  autoComplete="tel"
-                  icon={Phone}
-                  label="Mobile"
-                  onChange={(value) => setRegisterForm((current) => ({ ...current, mobile: value }))}
-                  placeholder="070 355 1339"
-                  type="tel"
-                  value={registerForm.mobile}
-                />
-              </div>
+              <TextField
+                autoComplete="tel"
+                icon={Phone}
+                label="Mobile"
+                maxLength={15}
+                onChange={(value) => setRegisterForm((current) => ({ ...current, mobile: value }))}
+                placeholder="070 355 1339"
+                type="tel"
+                value={registerForm.mobile}
+              />
 
               <Message text={message} type={messageType} />
 
@@ -371,7 +345,7 @@ export default function LoginPage() {
                 disabled={loading}
                 type="submit"
               >
-                {loading ? "Creating user..." : "Create user"}
+                {loading ? "Creating account..." : "Create account"}
               </button>
             </form>
           )}
@@ -430,6 +404,7 @@ function TextField({
   autoComplete,
   icon: Icon,
   label,
+  maxLength,
   onChange,
   placeholder,
   type = "text",
@@ -438,6 +413,7 @@ function TextField({
   autoComplete?: string;
   icon: LucideIcon;
   label: string;
+  maxLength?: number;
   onChange: (value: string) => void;
   placeholder: string;
   type?: string;
@@ -451,6 +427,8 @@ function TextField({
         <input
           autoComplete={autoComplete}
           className="h-full min-w-0 flex-1 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
+          maxLength={maxLength ?? (type === "email" ? 100 : undefined)}
+          required
           onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder}
           type={type}
@@ -489,6 +467,7 @@ function PasswordField({
           onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder}
           type={showPassword ? "text" : "password"}
+          required
           value={value}
         />
         <button

@@ -67,7 +67,7 @@ export function TaxesTab({ taxes, setTaxes, setToast }: TaxesTabProps) {
             />
             Included in displayed prices
           </label>
-          <button className="inline-flex h-11 items-center gap-2 rounded-md bg-ink px-4 font-semibold text-white">
+          <button className="inline-flex h-11 items-center gap-2 rounded-md settings-primary-action bg-ink px-4 font-semibold text-white">
             <Plus className="h-4 w-4" />
             Create
           </button>

@@ -12,6 +12,7 @@ import { createRatePlanRecord, getDailyRates, getRatesApiErrorMessage, saveDaily
 import { getBookingsApiErrorMessage, getBusinessBlocks } from "@/app/lib/bookings-api";
 import type { BusinessBlock } from "../../reservation/types";
 import { property } from "@/app/data/pms-data";
+import { usePropertyAccess } from "@/app/components/property-access-gate";
 import { getPlanRate } from "../../front-desk/rate-plans";
 
 type InventoryPageProps = RoomsRatesModuleProps & {
@@ -27,6 +28,7 @@ type InventoryAction = "" | "bulk" | "rules" | "logs" | "settings";
 type ActiveInventoryAction = Exclude<InventoryAction, "">;
 
 export function InventoryPage({ propertyId, roomTypes, ratePlans, setRatePlans, ratesLoading, ratesError, refreshRatePlans, reservations, setToast }: InventoryPageProps) {
+  const readOnly = usePropertyAccess().role === "front_desk";
   const [businessBlocks, setBusinessBlocks] = useState<BusinessBlock[]>([]);
   const [currency, setCurrency] = useState("All Currencies");
   const [rateCode, setRateCode] = useState("All Rate Codes");
@@ -218,13 +220,13 @@ export function InventoryPage({ propertyId, roomTypes, ratePlans, setRatePlans, 
           <option>Active</option>
           <option>Disabled</option>
         </SelectInput>
-        <ToolbarButton tone="dark" icon={<Save className="h-4 w-4" />} onClick={() => void saveChanges()} disabled={!dirty || saving || loadingDaily}>
+        <ToolbarButton tone="dark" icon={<Save className="h-4 w-4" />} onClick={() => void saveChanges()} disabled={readOnly || !dirty || saving || loadingDaily}>
           {saving ? "Saving..." : "Save Changes"}
         </ToolbarButton>
         <ToolbarButton icon={<RefreshCw className="h-4 w-4" />} onClick={() => void Promise.all([refreshRatePlans(), loadDailyRates()])} disabled={saving || loadingDaily || ratesLoading}>
           Refresh
         </ToolbarButton>
-        <ToolbarButton tone="dark" onClick={() => setCreateOpen(true)}>
+        <ToolbarButton disabled={readOnly} tone="dark" onClick={() => setCreateOpen(true)}>
           Add Rate
         </ToolbarButton>
       </div>
@@ -233,7 +235,7 @@ export function InventoryPage({ propertyId, roomTypes, ratePlans, setRatePlans, 
       {ratesLoading || loadingDaily ? <div className="rounded-md border border-line bg-white px-4 py-3 text-sm text-slate-500">Loading rate plans and daily prices from MongoDB...</div> : null}
 
       <div className="flex flex-wrap justify-center gap-3">
-        <SelectInput value={activeAction} onChange={(event) => setActiveAction(event.target.value as InventoryAction)} className="w-44">
+        <SelectInput disabled={readOnly} value={activeAction} onChange={(event) => setActiveAction(event.target.value as InventoryAction)} className="w-44">
           <option value="">Actions</option>
           <option value="bulk">Bulk Update</option>
           <option value="rules">Availability Rules</option>
@@ -315,7 +317,7 @@ export function InventoryPage({ propertyId, roomTypes, ratePlans, setRatePlans, 
                               type="number"
                               min={0}
                               value={currentCellValue(plan, roomType, date)}
-                              disabled={plan.locked || !plan.active}
+                              disabled={readOnly || plan.locked || !plan.active}
                               onChange={(event) => setCellValue(plan.id, roomType.id, date, Number(event.target.value))}
                               className="h-10 w-24 rounded-md border border-transparent bg-transparent text-center outline-none focus:border-slate-300 focus:bg-white disabled:text-slate-400"
                             />
@@ -331,7 +333,7 @@ export function InventoryPage({ propertyId, roomTypes, ratePlans, setRatePlans, 
         </div>
       </Panel>
 
-      {createOpen ? (
+      {createOpen && !readOnly ? (
         <RatePlanDrawer
           mode="create"
           propertyId={propertyId}
@@ -342,7 +344,7 @@ export function InventoryPage({ propertyId, roomTypes, ratePlans, setRatePlans, 
           onSave={saveRate}
         />
       ) : null}
-      {activeAction ? (
+      {activeAction && !readOnly ? (
         <InventoryActionDrawer
           action={activeAction}
           onClose={() => setActiveAction("")}

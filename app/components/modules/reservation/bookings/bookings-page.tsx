@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { usePropertyAccess } from "@/app/components/property-access-gate";
 import { Download, Eye, Pencil, Plus, RefreshCw, Share2 } from "lucide-react";
 import { type Reservation } from "@/app/data/pms-data";
 import {
@@ -29,12 +30,13 @@ import { BusinessBlockForm } from "./business-block-form";
 import { BusinessBlockDetailDrawer } from "./business-block-detail-drawer";
 
 export function BookingsPage(props: ReservationModuleProps & { initialReference?: string; initialTab?: BookingTab }) {
+  const frontDesk = usePropertyAccess().role === "front_desk";
   const { propertyId, reservations, setReservations, roomList, setRoomList, setToast } = props;
   const { businessDate, homeCurrency, roomTypes, ratePlans, setRatePlans } = useReservationEditorResources(propertyId);
   const reservationActions = useReservationActions({ propertyId, businessDate, reservations, setReservations, roomList, setRoomList, ratePlans, setToast });
   const [blocks, setBlocks] = useState<BusinessBlock[]>([]);
   const [blockLogs, setBlockLogs] = useState<BusinessBlockLogEntry[]>([]);
-  const [tab, setTab] = useState<BookingTab>(props.initialTab ?? "reservations");
+  const [tab, setTab] = useState<BookingTab>(frontDesk ? "reservations" : props.initialTab ?? "reservations");
   const [query, setQuery] = useState(props.initialReference || "");
   const [dateFilter, setDateFilter] = useState<"checkIn" | "checkOut" | "reservationDate">("checkIn");
   const [dateFrom, setDateFrom] = useState("");
@@ -58,7 +60,7 @@ export function BookingsPage(props: ReservationModuleProps & { initialReference?
     const sharedRowsPerPage = Number(params.get("rowsPerPage"));
     const sharedPage = Number(params.get("page"));
 
-    if (sharedTab === "reservations" || sharedTab === "business-blocks") setTab(sharedTab);
+    if (!frontDesk && (sharedTab === "reservations" || sharedTab === "business-blocks")) setTab(sharedTab);
     if (params.has("query")) setQuery(params.get("query") || "");
     if (sharedDateFilter === "checkIn" || sharedDateFilter === "checkOut" || sharedDateFilter === "reservationDate") setDateFilter(sharedDateFilter);
     if (params.has("from")) setDateFrom(params.get("from") || "");
@@ -224,7 +226,7 @@ export function BookingsPage(props: ReservationModuleProps & { initialReference?
 
   return <ReservationPageFrame>
     <div className="flex flex-wrap items-start justify-between gap-4"><h1 className="text-2xl font-semibold">Bookings</h1><div className="flex flex-wrap gap-2">{tab === "reservations" ? <ToolbarButton tone="dark" icon={<Plus className="h-4 w-4" />} onClick={() => openReservationEditor()}>Reservation</ToolbarButton> : <ToolbarButton tone="dark" icon={<Plus className="h-4 w-4" />} onClick={() => { setEditingBlockId(null); setBlockFormOpen(true); }}>Business Block</ToolbarButton>}<ToolbarButton tone="dark" icon={<Share2 className="h-4 w-4" />} onClick={() => void shareCurrentView()}>Share</ToolbarButton><ToolbarButton tone="dark" icon={<Download className="h-4 w-4" />} onClick={tab === "reservations" ? exportBookings : exportBlocks}>Export CSV</ToolbarButton></div></div>
-    <div className="grid gap-4 xl:grid-cols-[360px_1fr_220px_220px_160px_140px]"><div className="self-end"><SegmentedTabs tabs={[{ label: "Reservations", value: "reservations" }, { label: "Business Blocks", value: "business-blocks" }]} value={tab} onChange={(next) => { setTab(next); setPage(1); }} className="w-full" /></div><Field label="Search"><SearchBox value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Search..." /></Field>{tab === "reservations" ? <Field label="Date Filter Type"><SelectInput value={dateFilter} onChange={(event) => setDateFilter(event.target.value as typeof dateFilter)}><option value="checkIn">Check-In</option><option value="checkOut">Check-Out</option><option value="reservationDate">Reservation Date</option></SelectInput></Field> : <Field label="Status"><SelectInput value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>{["All", "Tentative", "Active", "Released", "Cancelled", "Completed"].map((status) => <option key={status}>{status}</option>)}</SelectInput></Field>}<Field label="Date From"><TextInput type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></Field><Field label="Date To"><TextInput type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></Field><div className="flex items-end gap-2">{tab === "reservations" ? <label className="flex h-11 items-center gap-2 rounded-md border border-line px-3 text-sm font-semibold"><input type="checkbox" checked={showAll} onChange={(event) => setShowAll(event.target.checked)} />Show all</label> : null}<ToolbarButton icon={<RefreshCw className="h-4 w-4" />} onClick={resetFilters}>Reset</ToolbarButton></div></div>
+    <div className="grid gap-4 xl:grid-cols-[360px_1fr_220px_220px_160px_140px]"><div className="self-end"><SegmentedTabs tabs={frontDesk ? [{ label: "Reservations", value: "reservations" }] : [{ label: "Reservations", value: "reservations" }, { label: "Business Blocks", value: "business-blocks" }]} value={tab} onChange={(next) => { setTab(next); setPage(1); }} className="w-full" /></div><Field label="Search"><SearchBox value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Search..." /></Field>{tab === "reservations" ? <Field label="Date Filter Type"><SelectInput value={dateFilter} onChange={(event) => setDateFilter(event.target.value as typeof dateFilter)}><option value="checkIn">Check-In</option><option value="checkOut">Check-Out</option><option value="reservationDate">Reservation Date</option></SelectInput></Field> : <Field label="Status"><SelectInput value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>{["All", "Tentative", "Active", "Released", "Cancelled", "Completed"].map((status) => <option key={status}>{status}</option>)}</SelectInput></Field>}<Field label="Date From"><TextInput type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></Field><Field label="Date To"><TextInput type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></Field><div className="flex items-end gap-2">{tab === "reservations" ? <label className="flex h-11 items-center gap-2 rounded-md border border-line px-3 text-sm font-semibold"><input type="checkbox" checked={showAll} onChange={(event) => setShowAll(event.target.checked)} />Show all</label> : null}<ToolbarButton icon={<RefreshCw className="h-4 w-4" />} onClick={resetFilters}>Reset</ToolbarButton></div></div>
 
     {tab === "reservations" ? <ReservationsTable rows={visibleRows} onOpen={(id) => setSelectedBookingId(id)} /> : <BusinessBlocksTable blocks={filteredBlocks} reservations={reservations} businessDate={businessDate} onOpen={(id) => setSelectedBlockId(id)} onEdit={(id) => { setEditingBlockId(id); setBlockFormOpen(true); }} onStatus={(block, status) => changeBlockStatus(block, status)} onRelease={releaseBlock} />}
     {tab === "reservations" ? <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-500"><div className="flex items-center gap-3">Show<SelectInput value={rowsPerPage} onChange={(event) => { setRowsPerPage(Number(event.target.value)); setPage(1); }} className="w-24">{[10, 25, 50].map((size) => <option key={size}>{size}</option>)}</SelectInput>per page</div><div className="flex items-center gap-3"><button disabled={page === 1} onClick={() => setPage((value) => value - 1)} className="rounded border px-4 py-2 disabled:opacity-50">Previous</button><span className="rounded bg-slate-950 px-4 py-2 font-semibold text-white">Page {page} of {totalPages}</span><button disabled={page === totalPages} onClick={() => setPage((value) => value + 1)} className="rounded border px-4 py-2 disabled:opacity-50">Next</button></div></div> : null}

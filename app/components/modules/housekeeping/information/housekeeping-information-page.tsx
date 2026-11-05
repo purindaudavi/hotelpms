@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Download, List, Table2, X } from "lucide-react";
+import { Download, List, RefreshCw, Table2, X } from "lucide-react";
 import { property, type Reservation } from "@/app/data/pms-data";
 import { ViewModeSwitch } from "@/app/components/view-mode-switch";
 import type {
@@ -22,6 +22,10 @@ type InformationProps = HousekeepingModuleProps & {
   roomStatuses: Record<string, HousekeepingStatus>;
   attendantByRoom: Record<string, string>;
   activities: HousekeepingActivity[];
+  loading: boolean;
+  busy: boolean;
+  error: string;
+  refreshHousekeeping: () => Promise<void>;
 };
 
 type InformationRow = HousekeepingReservation & {
@@ -42,7 +46,11 @@ export function HousekeepingInformationPage({
   roomList,
   roomStatuses,
   attendantByRoom,
-  activities
+  activities,
+  loading,
+  busy,
+  error,
+  refreshHousekeeping
 }: InformationProps) {
   const [activeTab, setActiveTab] = useState<HousekeepingInfoTab>("Arrival");
   const [view, setView] = useState<"grid" | "list">("grid");
@@ -88,6 +96,7 @@ export function HousekeepingInformationPage({
       <div>
         <h1 className="text-3xl font-bold text-ink">Housekeeping Information</h1>
         <p className="mt-2 text-slate-500">Plan arrivals, departures and stayover work from MongoDB reservations and housekeeping records.</p>
+        <p className="mt-1 text-sm text-slate-500">Updates every 30 seconds while this tab is visible.</p>
         <div className="mt-4 max-w-xl">
           <SegmentedTabs tabs={infoTabs} active={activeTab} onChange={setActiveTab} />
         </div>
@@ -101,10 +110,13 @@ export function HousekeepingInformationPage({
           <HkButton onClick={resetToday}>Today</HkButton>
         </div>
       </section>
+      {error ? <p role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">Could not refresh housekeeping information. {error} Displayed records may be out of date.</p> : null}
+      {loading ? <p role="status" className="text-sm text-slate-500">Refreshing housekeeping information...</p> : null}
 
       <section className="flex flex-wrap items-start justify-between gap-4">
         <TitleBlock activeTab={activeTab} count={visibleRows.length} dateFrom={dateFrom} dateTo={dateTo} />
         <div className="flex items-center gap-3">
+          <HkButton disabled={loading || busy} onClick={() => void refreshHousekeeping()}><RefreshCw className="h-4 w-4" />Refresh</HkButton>
           <ViewModeSwitch value={view} onChange={setView} options={[
             { value: "grid", label: "Card view", icon: <Table2 className="h-4 w-4" /> },
             { value: "list", label: "List view", icon: <List className="h-4 w-4" /> }

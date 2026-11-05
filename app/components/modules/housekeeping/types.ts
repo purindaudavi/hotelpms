@@ -14,7 +14,11 @@ export type HousekeepingModuleProps = {
 };
 
 export type HousekeepingStatus = "Clean" | "Dirty" | "Occupied" | "WIP";
-export type HousekeepingBoardTab = "All" | "Clean" | "Dirty" | "Occupied" | "WIP" | "Available" | "Activity";
+export type HousekeepingBoardTab = "All" | "Requests" | "Clean" | "Dirty" | "Occupied" | "WIP" | "Available" | "Activity";
+export type HousekeepingTask = {
+  status: "requested" | "assigned" | "in_progress" | "completed" | "inspected";
+  priority?: string; notes?: string; requestedAt?: string; requestedBy?: string;
+};
 export type HousekeepingInfoTab = "Arrival" | "Departure" | "In House" | "All" | "Other";
 
 export type HousekeepingAttendant = {
@@ -26,17 +30,29 @@ export type HousekeepingAttendant = {
   phone: string;
   email: string;
   joinedIso: string;
+  available?: boolean;
+  busyRooms?: string[];
+  queuedRooms?: string[];
 };
 
+export type HousekeepingAction = "room_marked_dirty" | "requested" | "assigned" | "claimed" | "cleaning_started" | "cleaning_completed" | "inspection_completed";
 export type HousekeepingActivity = {
   id: string;
+  physicalRoomId?: string;
   roomCode: string;
   roomType: string;
   attendant: string;
   status: HousekeepingStatus;
-  state: "Started" | "Completed" | "Assigned";
+  state: "Started" | "Completed" | "Assigned" | "Requested" | "Claimed" | "Inspected" | "Marked dirty";
+  action?: HousekeepingAction;
+  actorName?: string;
+  actorRole?: string;
+  previousStatus?: string;
+  resultStatus?: string;
+  notes?: string;
   createdAt: string;
   finishedAt?: string;
+  completionNotes?: string;
 };
 
 export type HousekeepingReservation = {

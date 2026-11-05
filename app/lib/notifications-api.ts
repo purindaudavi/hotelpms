@@ -10,7 +10,9 @@ export type NotificationType =
   | "withdrawal"
   | "purchase"
   | "expense"
-  | "transaction";
+  | "transaction"
+  | "housekeeping_request"
+  | "housekeeping_assignment";
 
 export type PmsNotification = {
   id: string;

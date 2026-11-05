@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { usePropertyAccess } from "@/app/components/property-access-gate";
 import { Maximize2, Minimize2, Pencil, Plus, Trash2, X } from "lucide-react";
 import { Reservation, ReservationStatus, Room } from "@/app/data/pms-data";
 import { createUuid } from "@/app/lib/record-ids";
@@ -8,6 +9,7 @@ import { createRatePlanRecord, getDefaultRateSuggestions, getRateQuote, getRates
 import { addDays, bookingToForm, daysBetween, parseDate, roomHasOverlap, toISODate } from "../utils";
 import { RatePlan, ReservationForm, ReservationRoomDraft } from "../types";
 import { IconButton } from "./controls";
+import { CheckoutReviewDialog } from "./checkout-review-dialog";
 import { InputField, SelectField, TextAreaField } from "./form-fields";
 import { useCrossBookingLinks } from "@/app/components/hooks/use-cross-booking-links";
 import { roomTypeAvailability } from "@/app/lib/business-block-repository";
@@ -39,6 +41,7 @@ type ReservationEditorProps = {
 };
 
 export function ReservationEditor(props: ReservationEditorProps) {
+  const frontDesk = usePropertyAccess().role === "front_desk";
   const { propertyId, booking, initialForm, reservations, roomList, roomTypes, businessBlocks, ratePlans, setRatePlans, homeCurrency, defaultDate, onClose, onSave, onDelete, setToast } = props;
   const { links: crossBookLinks } = useCrossBookingLinks(propertyId);
   const [travelAgents, setTravelAgents] = useState<TravelAgent[]>([]);
@@ -52,6 +55,7 @@ export function ReservationEditor(props: ReservationEditorProps) {
   const [expanded, setExpanded] = useState(false);
   const submitLock = useRef(false);
   const [error, setError] = useState("");
+  const [checkoutForm, setCheckoutForm] = useState<ReservationForm | null>(null);
   const [rateDialogOpen, setRateDialogOpen] = useState(false);
   const [editingLineId, setEditingLineId] = useState(form.roomLines[0]?.id ?? "");
   const [quoteEnabled, setQuoteEnabled] = useState(!booking && !initialForm?.businessBlockId);
@@ -356,13 +360,23 @@ export function ReservationEditor(props: ReservationEditorProps) {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (submitLock.current) return;
+    if (frontDesk && (quoteLoading || quoteError)) { setError(quoteError || "Wait for the rate quote before saving."); return; }
     const validationError = validate();
     if (validationError) { setError(validationError); return; }
+    if (booking?.status === "Checked-in" && form.status === "Checked-out") {
+      setError(""); setCheckoutForm(structuredClone(form)); return;
+    }
+    await performSave(form);
+  }
+
+  async function performSave(value: ReservationForm): Promise<SaveResult> {
+    if (submitLock.current) return { ok: false, error: "A save is already in progress." };
     submitLock.current = true;
     setSaving(true); setError("");
     try {
-      const result = await onSave(form);
+      const result = await onSave(value);
       if (!result.ok) setError(result.error);
+      return result;
     } finally {
       submitLock.current = false;
       setSaving(false);
@@ -373,6 +387,7 @@ export function ReservationEditor(props: ReservationEditorProps) {
 
   return (
     <div className="fixed inset-0 z-50 bg-black/45">
+      {checkoutForm && booking ? <CheckoutReviewDialog propertyId={propertyId} reservationId={booking.id} setToast={setToast} onClose={() => setCheckoutForm(null)} onConfirm={() => performSave(checkoutForm)} /> : null}
       <form onSubmit={submit} className={`ml-auto flex h-full w-full flex-col bg-white shadow-2xl transition-[max-width,border-radius] ${expanded ? "max-w-none rounded-none" : "max-w-[1380px] rounded-l-2xl"}`}>
         <header className="flex items-center justify-between border-b border-line px-6 py-4">
           <div className="flex items-center gap-8"><h2 className="text-xl font-semibold">Reservation</h2></div>
@@ -422,7 +437,7 @@ export function ReservationEditor(props: ReservationEditorProps) {
           </div>{form.bookingSource === "Travel Agent" && form.travelAgentId ? <p className="mt-2 text-xs text-slate-500">Performance will be credited to {form.travelAgentName}. Commission saved for this reservation: {form.travelAgentCommission}%.</p> : null}</section>
 
           <section className="mt-4 rounded-md bg-slate-50 p-3">
-            <div className="grid gap-4 lg:grid-cols-[1.1fr_1fr_1.2fr]"><div className="flex gap-2"><SelectField label="Rate Plan" value={form.ratePlanId} onChange={selectRatePlan} options={ratePlans.filter((p) => (p.active && form.checkIn >= p.validFrom && (form.isDayRoom ? form.checkIn : addDays(form.checkOut, -1)) <= p.validTo) || p.id === form.ratePlanId).map((p) => ({ value: p.id, label: p.name }))} /><button type="button" aria-label="Create rate plan" className="mt-7 grid h-11 w-11 place-items-center rounded-md border border-line bg-white" onClick={() => setRateDialogOpen(true)}><Plus className="h-4 w-4" /></button></div>
+            <div className="grid gap-4 lg:grid-cols-[1.1fr_1fr_1.2fr]"><div className="flex gap-2"><SelectField label="Rate Plan" value={form.ratePlanId} onChange={selectRatePlan} options={ratePlans.filter((p) => (p.active && form.checkIn >= p.validFrom && (form.isDayRoom ? form.checkIn : addDays(form.checkOut, -1)) <= p.validTo) || p.id === form.ratePlanId).map((p) => ({ value: p.id, label: p.name }))} />{!frontDesk && <button type="button" aria-label="Create rate plan" className="mt-7 grid h-11 w-11 place-items-center rounded-md border border-line bg-white" onClick={() => setRateDialogOpen(true)}><Plus className="h-4 w-4" /></button>}</div>
               <SelectField disabled label="Currency" value={form.currency} onChange={(value) => update("currency", value)} options={[form.currency]} />
               <SelectField disabled label="Meal Plan" value={form.mealPlan} onChange={(value) => update("mealPlan", value)} options={[form.mealPlan]} /></div>
             <p className="mt-2 text-xs text-slate-500">Currency, meal plan, cancellation terms and room prices come from the selected rate plan.</p>
@@ -437,11 +452,11 @@ export function ReservationEditor(props: ReservationEditorProps) {
                 <td className="px-2 py-2"><select disabled={!editable} value={line.bedType} onChange={(e) => updateRoomLine(line.id, { bedType: e.target.value })} className="h-10 rounded-md border border-line bg-white px-2 disabled:bg-slate-100">{["Bed Type", "King Bed", "Twin Bed", "Queen Bed"].map((v) => <option key={v}>{v}</option>)}</select></td>
                 <td className="px-2 py-2"><input disabled={!editable} type="number" min="1" max={roomTypes.find((type) => type.id === line.roomTypeId)?.maxAdults} value={line.adults} onChange={(e) => updateRoomLine(line.id, { adults: Number(e.target.value) })} className="h-10 w-16 rounded-md border border-line px-2 disabled:bg-slate-100" /></td>
                 <td className="px-2 py-2"><input disabled={!editable} type="number" min="0" max={roomTypes.find((type) => type.id === line.roomTypeId)?.maxChildren} value={line.children} onChange={(e) => updateRoomLine(line.id, { children: Number(e.target.value) })} className="h-10 w-16 rounded-md border border-line px-2 disabled:bg-slate-100" /></td>
-                <td className="px-2 py-2"><input disabled={!editable || line.isFoc} type="number" min="0" value={line.effectiveNightlyRate} onChange={(e) => updateRoomLine(line.id, { effectiveNightlyRate: Number(e.target.value) })} className="h-10 w-28 rounded-md border border-yellow-400 px-2 disabled:bg-slate-100" />{guestSupplement(roomTypes.find((type) => type.id === line.roomTypeId), line.adults, line.children) > 0 ? <span className="block text-[10px] text-blue-600">Includes {form.currency} {guestSupplement(roomTypes.find((type) => type.id === line.roomTypeId), line.adults, line.children).toFixed(2)} extra guest / night</span> : null}{!line.isFoc && line.effectiveNightlyRate !== line.originalNightlyRate ? <span className="block text-[10px] text-amber-600">Custom override</span> : null}</td>
-                <td className="px-2 py-2"><input aria-label="Complimentary (FOC)" type="checkbox" checked={line.isFoc} onChange={(e) => toggleFoc(line, e.target.checked)} /></td>
+                <td className="px-2 py-2"><input disabled={frontDesk || !editable || line.isFoc} type="number" min="0" value={line.effectiveNightlyRate} onChange={(e) => updateRoomLine(line.id, { effectiveNightlyRate: Number(e.target.value) })} className="h-10 w-28 rounded-md border border-yellow-400 px-2 disabled:bg-slate-100" />{guestSupplement(roomTypes.find((type) => type.id === line.roomTypeId), line.adults, line.children) > 0 ? <span className="block text-[10px] text-blue-600">Includes {form.currency} {guestSupplement(roomTypes.find((type) => type.id === line.roomTypeId), line.adults, line.children).toFixed(2)} extra guest / night</span> : null}{!line.isFoc && line.effectiveNightlyRate !== line.originalNightlyRate ? <span className="block text-[10px] text-amber-600">Custom override</span> : null}</td>
+                <td className="px-2 py-2"><input aria-label="Complimentary (FOC)" disabled={frontDesk} type="checkbox" checked={line.isFoc} onChange={(e) => toggleFoc(line, e.target.checked)} /></td>
                 <td className="px-2 py-2"><button type="button" onClick={() => setEditingLineId(editable ? "" : line.id)}><Pencil className="h-4 w-4" /></button></td>
                 <td className="px-2 py-2"><button type="button" className="text-red-500" onClick={() => removeRoomLine(line.id)}><Trash2 className="h-4 w-4" /></button></td>
-                {line.isFoc ? <td className="px-2 py-2" colSpan={10}><input value={line.focReason} onChange={(e) => updateRoomLine(line.id, { focReason: e.target.value })} placeholder="Complimentary reason (required)" className="h-10 w-full rounded-md border border-amber-300 bg-amber-50 px-3" /><p className="mt-1 text-xs text-amber-700">Effective rate is zero; original rate {line.originalNightlyRate.toFixed(2)} is retained. Manager approval is recorded but not enforced in this demo.</p></td> : null}
+                {line.isFoc ? <td className="px-2 py-2" colSpan={10}><input disabled={frontDesk} value={line.focReason} onChange={(e) => updateRoomLine(line.id, { focReason: e.target.value })} placeholder="Complimentary reason (required)" className="h-10 w-full rounded-md border border-amber-300 bg-amber-50 px-3" /><p className="mt-1 text-xs text-amber-700">Effective rate is zero; original rate {line.originalNightlyRate.toFixed(2)} is retained. Manager approval is recorded but not enforced in this demo.</p></td> : null}
               </tr>; })}</tbody></table></div>
             <div className="mt-3 flex items-center justify-between"><button type="button" onClick={addRoomLine} className="rounded-md border border-line bg-white px-4 py-2 text-sm font-semibold">Add Room</button><strong>Total: {form.currency} {total.toFixed(2)}</strong></div>
           </section>
@@ -454,9 +469,9 @@ export function ReservationEditor(props: ReservationEditorProps) {
           </div>
         </div>
 
-        <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-6 py-4"><label className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={form.checkInNow} onChange={(e) => update("checkInNow", e.target.checked)} />Check in guest immediately</label><label className={`flex items-center gap-2 text-sm ${isValidEmail(form.email) ? "text-slate-600" : "text-slate-400"}`}><input type="checkbox" disabled={!isValidEmail(form.email)} checked={form.sendEmail} onChange={(e) => update("sendEmail", e.target.checked)} />Send confirmation email to guest</label><div className="flex gap-2">{booking ? <button type="button" disabled={saving} className="rounded-md border border-red-200 px-4 text-sm text-red-600 disabled:opacity-60" onClick={() => { if (window.confirm("Delete this reservation?")) void onDelete(booking.id); }}>Delete</button> : null}<button type="submit" disabled={saving} className="reservation-primary-action h-12 rounded-md bg-ink px-8 text-sm font-semibold text-white disabled:opacity-60">{saving ? "Saving..." : booking ? "Update" : "Reserve"}</button></div></footer>
+        <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-6 py-4"><label className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={form.checkInNow} onChange={(e) => update("checkInNow", e.target.checked)} />Check in guest immediately</label><label className={`flex items-center gap-2 text-sm ${isValidEmail(form.email) ? "text-slate-600" : "text-slate-400"}`}><input type="checkbox" disabled={!isValidEmail(form.email)} checked={form.sendEmail} onChange={(e) => update("sendEmail", e.target.checked)} />Send confirmation email to guest</label><div className="flex gap-2">{booking && !frontDesk ? <button type="button" disabled={saving} className="rounded-md border border-red-200 px-4 text-sm text-red-600 disabled:opacity-60" onClick={() => { if (window.confirm("Delete this reservation?")) void onDelete(booking.id); }}>Delete</button> : null}<button type="submit" disabled={saving} className="reservation-primary-action h-12 rounded-md bg-ink px-8 text-sm font-semibold text-white disabled:opacity-60">{saving ? "Saving..." : booking ? "Update" : "Reserve"}</button></div></footer>
       </form>
-      {rateDialogOpen ? <RatePlanDialog propertyId={propertyId} homeCurrency={homeCurrency} defaultDate={defaultDate} roomTypes={roomTypes} onClose={() => setRateDialogOpen(false)} onCreate={(plan) => { setRatePlans((current) => [...current, plan]); if (plan.active) applyRatePlan(plan); setRateDialogOpen(false); }} /> : null}
+      {rateDialogOpen && !frontDesk ? <RatePlanDialog propertyId={propertyId} homeCurrency={homeCurrency} defaultDate={defaultDate} roomTypes={roomTypes} onClose={() => setRateDialogOpen(false)} onCreate={(plan) => { setRatePlans((current) => [...current, plan]); if (plan.active) applyRatePlan(plan); setRateDialogOpen(false); }} /> : null}
     </div>
   );
 }

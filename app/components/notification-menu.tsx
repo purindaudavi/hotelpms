@@ -2,9 +2,12 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { usePropertyAccess } from "./property-access-gate";
 import {
   Bell,
   BookOpenCheck,
+  ClipboardList,
+  UserCheck,
   CheckCheck,
   CircleDollarSign,
   CreditCard,
@@ -26,15 +29,21 @@ import {
   type PmsNotification
 } from "@/app/lib/notifications-api";
 
-export function NotificationMenu({ propertyId }: { propertyId: string }) {
+export function NotificationMenu({ propertyId, onReopen }: { propertyId: string; onReopen: () => void }) {
+  const frontDesk = usePropertyAccess().role === "front_desk";
+  const housekeeping = usePropertyAccess().role === "housekeeping";
+  const finance = usePropertyAccess().role === "finance";
   const router = useRouter();
   const menuRef = useRef<HTMLDivElement>(null);
+  const reading = useRef(false);
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<PmsNotification[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   const load = useCallback(async (quiet = false) => {
+    if (reading.current || (quiet && document.hidden)) return;
+    reading.current = true;
     if (!quiet) setLoading(true);
     try {
       const response = await listNotifications(propertyId);
@@ -43,6 +52,7 @@ export function NotificationMenu({ propertyId }: { propertyId: string }) {
     } catch (loadError) {
       setError(getNotificationsApiErrorMessage(loadError));
     } finally {
+      reading.current = false;
       if (!quiet) setLoading(false);
     }
   }, [propertyId]);
@@ -50,7 +60,9 @@ export function NotificationMenu({ propertyId }: { propertyId: string }) {
   useEffect(() => {
     void load();
     const timer = window.setInterval(() => void load(true), 30_000);
-    return () => window.clearInterval(timer);
+    const onVisible = () => { if (!document.hidden) void load(true); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", onVisible); };
   }, [load]);
 
   useEffect(() => {
@@ -77,6 +89,9 @@ export function NotificationMenu({ propertyId }: { propertyId: string }) {
       item.id === notification.id ? { ...item, read: true } : item
     ));
     setOpen(false);
+    // Invoice-created and payment alerts can share a destination. Next ignores
+    // a push to the current URL, so explicitly reset/reload the active module.
+    if (new URL(notification.href, window.location.origin).pathname === window.location.pathname) onReopen();
     router.push(notification.href);
     if (!notification.read) {
       try {
@@ -115,15 +130,15 @@ export function NotificationMenu({ propertyId }: { propertyId: string }) {
       </button>
 
       {open ? (
-        <section className="absolute right-0 top-12 z-50 w-[min(420px,calc(100vw-24px))] overflow-hidden rounded-xl border border-line bg-white shadow-[0_24px_70px_rgba(15,23,42,0.2)]">
+        <section className="fixed left-3 right-3 top-[72px] z-50 overflow-hidden rounded-xl border border-line bg-white shadow-[0_24px_70px_rgba(15,23,42,0.2)] sm:absolute sm:left-auto sm:right-0 sm:top-12 sm:w-[420px]">
           <header className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
-            <div>
+            <div className="min-w-0 flex-1">
               <h2 className="font-semibold text-slate-950">Notifications</h2>
-              <p className="text-xs text-slate-500">{unreadCount} unread</p>
+              <p className="text-xs text-slate-500">{unreadCount} unread{frontDesk ? " · Bookings, guest invoices & payments" : housekeeping ? " · Requests & your assignments" : finance ? " · Financial records" : ""}</p>
             </div>
-            <div className="flex items-center gap-1">
+            <div className="flex shrink-0 items-center gap-1">
               {unreadCount ? (
-                <button type="button" onClick={() => void markAllRead()} className="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50">
+                <button type="button" onClick={() => void markAllRead()} className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-2 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50">
                   <CheckCheck className="h-3.5 w-3.5" /> Mark all read
                 </button>
               ) : null}
@@ -145,8 +160,9 @@ export function NotificationMenu({ propertyId }: { propertyId: string }) {
                 <button
                   key={notification.id}
                   type="button"
+                  data-unread={!notification.read}
                   onClick={() => void openNotification(notification)}
-                  className={`flex w-full gap-3 border-b border-line px-4 py-3 text-left transition last:border-b-0 hover:bg-slate-50 ${notification.read ? "bg-white" : "bg-blue-50/60"}`}
+                  className={`notification-row flex w-full gap-3 border-b border-line px-4 py-3 text-left transition last:border-b-0 hover:bg-slate-50 ${notification.read ? "bg-white" : "bg-blue-50/60"}`}
                 >
                   <span className={`mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-lg ${notificationTone(notification.type)}`}>
                     <NotificationIcon type={notification.type} />
@@ -157,7 +173,7 @@ export function NotificationMenu({ propertyId }: { propertyId: string }) {
                       {!notification.read ? <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-blue-600" /> : null}
                     </span>
                     <span className="mt-1 block text-xs leading-relaxed text-slate-600">{notification.message}</span>
-                    <span className="mt-1.5 block text-[11px] text-slate-400">{relativeTime(notification.timestamp)}</span>
+                    <span className="mt-1.5 block text-[11px] text-slate-500">{relativeTime(notification.timestamp)}</span>
                   </span>
                 </button>
               ))
@@ -166,7 +182,7 @@ export function NotificationMenu({ propertyId }: { propertyId: string }) {
                 <div>
                   <Bell className="mx-auto h-6 w-6 text-slate-400" />
                   <p className="mt-2 text-sm font-semibold text-slate-700">No notifications yet</p>
-                  <p className="mt-1 text-xs text-slate-500">New booking and financial records will appear here.</p>
+                  <p className="mt-1 text-xs text-slate-500">{frontDesk ? "New bookings, guest invoices and recorded guest payments will appear here." : housekeeping ? "Open cleaning requests and your room assignments will appear here." : finance ? "Invoices, payments and other financial records will appear here." : "New bookings, financial records and housekeeping requests or assignments will appear here."}</p>
                 </div>
               </div>
             )}
@@ -181,6 +197,8 @@ export function NotificationMenu({ propertyId }: { propertyId: string }) {
 function NotificationIcon({ type }: { type: NotificationType }) {
   const className = "h-4 w-4";
   if (type === "booking") return <BookOpenCheck className={className} />;
+  if (type === "housekeeping_request") return <ClipboardList className={className} />;
+  if (type === "housekeeping_assignment") return <UserCheck className={className} />;
   if (type === "invoice") return <FileText className={className} />;
   if (type === "payment") return <CreditCard className={className} />;
   if (type === "credit_note") return <FileMinus2 className={className} />;
@@ -193,6 +211,8 @@ function NotificationIcon({ type }: { type: NotificationType }) {
 
 function notificationTone(type: NotificationType) {
   if (type === "booking") return "bg-blue-100 text-blue-700";
+  if (type === "housekeeping_request") return "bg-amber-100 text-amber-700";
+  if (type === "housekeeping_assignment") return "bg-teal-100 text-teal-700";
   if (type === "refund" || type === "withdrawal" || type === "expense") return "bg-orange-100 text-orange-700";
   if (type === "payment") return "bg-emerald-100 text-emerald-700";
   if (type === "credit_note") return "bg-violet-100 text-violet-700";

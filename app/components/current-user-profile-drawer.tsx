@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { usePropertyAccess } from "./property-access-gate";
 import {
   Activity,
   BadgeCheck,
@@ -63,6 +64,7 @@ export function CurrentUserProfileDrawer({
   currency,
   cachedTransactions
 }: CurrentUserProfileDrawerProps) {
+  const housekeepingOnly = usePropertyAccess().role === "housekeeping";
   const [transactions, setTransactions] = useState<BackendFinancialTransaction[]>([]);
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
   const [loading, setLoading] = useState(false);
@@ -74,7 +76,7 @@ export function CurrentUserProfileDrawer({
   const [savingPassword, setSavingPassword] = useState(false);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || housekeepingOnly) return;
 
     let cancelled = false;
     setLoading(true);
@@ -100,7 +102,7 @@ export function CurrentUserProfileDrawer({
     return () => {
       cancelled = true;
     };
-  }, [open, propertyId]);
+  }, [open, propertyId, housekeepingOnly]);
 
   useEffect(() => {
     if (!open) return;
@@ -210,7 +212,7 @@ export function CurrentUserProfileDrawer({
             </div>
             <div className="min-w-0">
               <h2 id="current-user-profile-title" className="truncate text-2xl font-bold">{user.name}</h2>
-              <p className="mt-1 text-sm font-semibold text-slate-600">{user.role}</p>
+              <p className="mt-1 text-sm font-semibold text-slate-600">{housekeepingOnly ? "Housekeeping" : user.role}</p>
               <p className="mt-1 truncate text-sm text-slate-500">{user.email}</p>
             </div>
           </div>
@@ -230,7 +232,7 @@ export function CurrentUserProfileDrawer({
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <Detail icon={BadgeCheck} label="Employee No." value={user.empNo || "-"} />
               <Detail icon={Activity} label="Status" value="Active" />
-              <Detail icon={Building2} label="Role" value={user.role || "Staff"} />
+              <Detail icon={Building2} label="Role" value={housekeepingOnly ? "Housekeeping" : user.role || "Staff"} />
               <Detail icon={CalendarDays} label="Session" value={user.mode === "demo" ? "Demo workspace" : "Authenticated"} />
               <Detail icon={Mail} label="Email" value={user.email} />
               <Detail icon={Phone} label="Phone" value={user.mobile || "-"} />
@@ -244,7 +246,7 @@ export function CurrentUserProfileDrawer({
               <p className="mt-1 text-sm text-slate-500">Property ID: {propertyId}</p>
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
-              {permissions.map((permission) => (
+              {(housekeepingOnly ? ["My dashboard", "My housekeeping tasks"] : permissions).map((permission) => (
                 <span key={permission} className="rounded-full border border-line bg-white px-3 py-1.5 text-xs font-semibold text-slate-600">
                   {permission}
                 </span>
@@ -252,7 +254,7 @@ export function CurrentUserProfileDrawer({
             </div>
           </section>
 
-          <section className="rounded-xl border border-line p-5">
+          {!housekeepingOnly ? <><section className="rounded-xl border border-line p-5">
             <SectionTitle icon={CircleDollarSign} title="Owner financial activity" />
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <Summary label="Completed withdrawals" value={String(ownerWithdrawals.length)} />
@@ -297,6 +299,7 @@ export function CurrentUserProfileDrawer({
             </div>
           </section>
 
+          </> : null}
           <section className="rounded-xl border border-line p-5">
             <SectionTitle icon={ShieldCheck} title="Account security" />
             {user.mode === "demo" ? (

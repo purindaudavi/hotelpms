@@ -90,8 +90,19 @@ const housekeepingClass: Record<Room["housekeeping"], string> = {
   WIP: "border-indigo-500 bg-indigo-50 text-indigo-700"
 };
 
+import { usePropertyAccess } from "@/app/components/property-access-gate";
+import { canOpenPropertyPage } from "@/app/lib/property-permissions";
+import { FrontDeskReferencePage } from "@/app/components/modules/front-desk/front-desk-reference-page";
+import { HousekeepingWorkPage } from "@/app/components/modules/housekeeping/housekeeping-work-page";
+import { FinanceWorkspacePage } from "@/app/components/modules/finance/finance-workspace-page";
+
 export function ModuleContent(props: ModuleProps) {
   const path = props.activePath;
+  const access = usePropertyAccess();
+  if (!canOpenPropertyPage(access.role, access.permissions, path)) return <main className="space-y-3 p-6"><h1 className="text-2xl font-semibold">Access restricted</h1><p className="text-slate-500">Your property role does not allow this page. Ask an owner or administrator if you need different access.</p><a href={`/properties/${props.propertyId}/${["housekeeping", "finance"].includes(access.role || "") ? "dashboard" : "front-desk"}`} className="inline-block text-sm font-semibold text-blue-600">{access.role === "finance" ? "Open Finance overview" : access.role === "housekeeping" ? "Open my housekeeping tasks" : "Open Front Desk"}</a></main>;
+  if (access.role === "housekeeping") return <HousekeepingWorkPage propertyId={props.propertyId} dashboard={path === "dashboard"} />;
+  if (access.role === "finance" && (["dashboard"].includes(path) || path.startsWith("reservation/"))) return <FinanceWorkspacePage key={path} propertyId={props.propertyId} activePath={path} />;
+  if (access.role === "front_desk" && ["dashboard", "rooms-rates/rooms", "rooms-rates/rates", "reservation/travel-agents"].includes(path)) return <FrontDeskReferencePage {...props} />;
 
   if (path === "dashboard") return <DashboardModulePage {...props} />;
   if (path === "front-desk") return <FrontDeskPage {...props} />;
@@ -1094,7 +1105,7 @@ function ChannelActionPage({ title, action, setToast }: { title: string; action:
 
 function SettingsModule(props: ModuleProps) {
   const path = props.activePath;
-  if (path.endsWith("users")) return <UsersSettingsPage />;
+  if (path.endsWith("users")) return <UsersSettingsPage propertyId={props.propertyId} />;
   if (path.endsWith("templates")) return <SettingsTemplatesPage propertyId={props.propertyId} setToast={props.setToast} />;
   if (path.endsWith("data-import")) return <DataImportPage setToast={props.setToast} />;
   if (path.endsWith("activity-logs")) return <ActivityLogsPage />;

@@ -2,9 +2,12 @@
 
 import { type Dispatch, type SetStateAction } from "react";
 import { PRODUCT_NAME } from "@/app/lib/product-brand";
+import { usePropertyAccess } from "@/app/components/property-access-gate";
 import type { PropertyDetails } from "./property-types";
 
 export function PropertyInfo({ value, onChange, editing }: { value: PropertyDetails; onChange: Dispatch<SetStateAction<PropertyDetails>>; editing: boolean; setToast: (message: string) => void }) {
+  const { permissions } = usePropertyAccess();
+  const canManageSubscription = permissions.includes("subscription.manage");
   const set = (key: keyof PropertyDetails, next: string | boolean) => onChange((current) => ({ ...current, [key]: next }));
   const locationQuery = value.latitude && value.longitude
     ? `${value.latitude},${value.longitude}`
@@ -19,12 +22,12 @@ export function PropertyInfo({ value, onChange, editing }: { value: PropertyDeta
           <Input label="Platform Name" value={PRODUCT_NAME} disabled />
           <Input label="Hotel GUID" value={value.hotelGuid} onChange={(v) => set("hotelGuid", v)} disabled={!editing} />
           <Input label="Number of Rooms" value={value.numberOfRooms} disabled type="number" />
-          <Input label="Plan" value={value.plan} onChange={(v) => set("plan", v)} disabled={!editing} />
+          <Input label="Plan (owner only)" value={value.plan} onChange={(v) => set("plan", v)} disabled={!editing || !canManageSubscription} />
         </div>
         <div className="space-y-5">
           <Input label="Hotel Type" value={value.hotelType} onChange={(v) => set("hotelType", v)} disabled={!editing} />
           <Input label="Star Category" value={value.starCategory} onChange={(v) => set("starCategory", v)} disabled={!editing} type="number" />
-          <Switch label="On Trial" checked={value.onTrial} onChange={(v) => set("onTrial", v)} disabled={!editing} />
+          <Switch label="On Trial (owner only)" checked={value.onTrial} onChange={(v) => set("onTrial", v)} disabled={!editing || !canManageSubscription} />
         </div>
         <section>
           <h2 className="mb-3 text-lg font-semibold">Hotel Logo</h2>

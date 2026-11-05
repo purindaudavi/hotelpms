@@ -1,6 +1,11 @@
 "use client";
 
-import { type FormEvent, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { PropertyStaffAccess } from "@/app/components/property-staff-access";
+import { usePropertyAccess } from "@/app/components/property-access-gate";
+import { listProperties, type PropertySummary } from "@/app/lib/property-workspaces";
+import { getApiErrorMessage } from "@/app/lib/api";
 import { Filter, Search, SlidersHorizontal, UserCog, UserPlus, X } from "lucide-react";
 
 const permissions = [
@@ -26,7 +31,34 @@ type UserRecord = {
   status: "Invited" | "Active";
 };
 
-export function UsersSettingsPage() {
+export function UsersSettingsPage({ propertyId }: { propertyId: string }) {
+  const { role, permissions: granted } = usePropertyAccess();
+  const [property, setProperty] = useState<PropertySummary | null>(null);
+  const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  const permitted = granted.includes("staff.manage");
+  useEffect(() => {
+    let active = true;
+    if (role === "demo" || !permitted) return;
+    setError("");
+    void listProperties().then((items) => {
+      if (!active) return;
+      const current = items.find((item) => item.property_id === propertyId);
+      if (!current || !current.permissions.includes("staff.manage")) setError("You no longer have permission to manage staff access. Reload this page.");
+      else setProperty(current);
+    }).catch((failure) => { if (active) setError(getApiErrorMessage(failure, "Could not load property access.")); });
+    return () => { active = false; };
+  }, [propertyId, permitted, role, attempt]);
+  if (role === "demo") return <><p className="px-6 pt-4 text-sm text-slate-500">Demo preview only. No staff invitations or access changes are sent.</p><DemoUsersSettingsPage /></>;
+  return <main className="settings-appearance space-y-5 p-4 lg:p-6"><h1 className="text-3xl font-bold">Users &amp; access</h1>
+    {!permitted ? <p role="alert" className="text-sm text-slate-500">Only the property owner or an administrator can manage staff access.</p>
+      : error ? <div><p role="alert" className="text-sm text-rose-600">{error}</p><button onClick={() => setAttempt((value) => value + 1)} className="mt-3 text-sm font-semibold text-blue-600">Retry</button></div>
+      : property ? <PropertyStaffAccess property={property} /> : <p role="status" className="text-sm text-slate-500">Loading property access…</p>}
+    <Link href="/properties" className="inline-block text-sm font-semibold text-blue-600">Your properties</Link>
+  </main>;
+}
+
+function DemoUsersSettingsPage() {
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [search, setSearch] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
@@ -56,7 +88,7 @@ export function UsersSettingsPage() {
   const filtersActive = permissionFilter !== "All" || statusFilter !== "All";
 
   return (
-    <main className="space-y-4 p-4 lg:p-6">
+    <main className="settings-appearance space-y-4 p-4 lg:p-6">
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-ink">Users</h1>
@@ -65,7 +97,7 @@ export function UsersSettingsPage() {
         <button
           type="button"
           onClick={() => setDrawerOpen(true)}
-          className="inline-flex h-12 items-center gap-2 rounded-md bg-ink px-5 text-sm font-semibold text-white transition hover:bg-slate-800"
+          className="inline-flex h-12 items-center gap-2 rounded-md settings-primary-action bg-ink px-5 text-sm font-semibold text-white transition hover:bg-slate-800"
         >
           <UserPlus className="h-5 w-5" />
           Add User
@@ -189,7 +221,7 @@ function InviteUserDrawer({ onClose, onInvite }: { onClose: () => void; onInvite
             </div>
           </fieldset>
 
-          <button type="submit" className="h-12 w-full rounded-md bg-ink text-sm font-semibold text-white transition hover:bg-slate-800">Send Invitation</button>
+          <button type="submit" className="h-12 w-full rounded-md settings-primary-action bg-ink text-sm font-semibold text-white transition hover:bg-slate-800">Send Invitation</button>
         </form>
       </aside>
     </div>

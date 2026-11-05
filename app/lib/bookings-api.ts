@@ -299,13 +299,13 @@ const billingPartyFromApi: Record<string, BusinessBlock["billingParty"]> = {
   split: "Split"
 };
 
-export async function getReservations(propertyId: string) {
+export async function getReservations(propertyId: string, signal?: AbortSignal) {
   const reservations: ApiReservation[] = [];
   let page = 1;
   let pages = 1;
   do {
     const response = await api.get<ReservationListResponse>("/bookings/reservations", {
-      params: { property_id: propertyId, limit: 100, page, details: true }
+      params: { property_id: propertyId, limit: 100, page, details: true }, signal
     });
     reservations.push(...response.data.reservations);
     pages = response.data.pages;
@@ -407,6 +407,23 @@ export async function updateReservationEmailDelivery(
     { headers: actorHeaders() }
   );
   return mapReservation(response.data.reservation);
+}
+
+export type CheckoutReview = {
+  reservation_id: string;
+  reservation_no: string;
+  guest_name: string;
+  can_check_out: boolean;
+  checked_at: string;
+  issues: string[];
+  totals_by_currency: Array<{ currency: string; total: number; paid: number; credited: number; balance_due: number; refund_due: number }>;
+  invoices: Array<{ id: string; reference: string; status: string; currency: string; total: number; paid: number; credited: number; balance_due: number; refund_due: number;
+    lines: Array<{ description: string; category: string; quantity: number; amount: number }> }>;
+};
+
+export async function getCheckoutReview(propertyId: string, reservationId: string) {
+  const response = await api.get<CheckoutReview>(`/bookings/reservations/${reservationId}/checkout-review`, { params: { property_id: propertyId } });
+  return response.data;
 }
 
 export async function transitionReservation(

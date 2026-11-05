@@ -17,8 +17,6 @@ export type RegisterInput = {
   name: string;
   email: string;
   password: string;
-  role: string;
-  emp_no: string;
   mobile: string;
 };
 
@@ -46,7 +44,7 @@ export async function loginUser(input: LoginInput) {
 
 export async function registerUser(input: RegisterInput) {
   const response = await api.post<MessageResponse>("/auth/register", input);
-  return response.data.message || "User created successfully";
+  return response.data.message || "Account created successfully";
 }
 
 export async function getAuthenticatedUser(): Promise<SessionUser> {

@@ -36,7 +36,7 @@ export function DataImportPage({ setToast }: { setToast: (message: string) => vo
   }
 
   return (
-    <main className="space-y-6 p-4 lg:p-6">
+    <main className="settings-appearance space-y-6 p-4 lg:p-6">
       <header>
         <h1 className="text-3xl font-bold">Data Import</h1>
         <p className="mt-1 text-slate-500">Import reservations from an Excel or CSV file and prepare booking payloads.</p>
@@ -47,7 +47,7 @@ export function DataImportPage({ setToast }: { setToast: (message: string) => vo
         <input type="file" accept=".csv,.xlsx,.xls" onChange={chooseFile} className="mt-6 block w-full rounded-md border border-line p-3 text-sm" />
         <div className="mt-4 flex flex-wrap gap-3">
           <button onClick={downloadTemplate} className="inline-flex h-11 items-center gap-2 rounded-md border border-line px-4 font-semibold"><Download className="h-4 w-4" />Download template</button>
-          <button onClick={buildPayloads} disabled={!file} className="inline-flex h-11 items-center gap-2 rounded-md bg-ink px-4 font-semibold text-white disabled:opacity-40"><Hammer className="h-4 w-4" />Build payloads</button>
+          <button onClick={buildPayloads} disabled={!file} className="inline-flex h-11 items-center gap-2 rounded-md settings-primary-action bg-ink px-4 font-semibold text-white disabled:opacity-40"><Hammer className="h-4 w-4" />Build payloads</button>
         </div>
         {preview.length ? <div className="mt-6 overflow-x-auto"><h3 className="mb-3 font-semibold">Payload preview</h3><table className="min-w-max text-left text-sm"><tbody>{preview.map((row, index) => <tr key={index} className="border-b border-line">{row.map((cell, cellIndex) => <td key={cellIndex} className={`px-3 py-2 ${index === 0 ? "font-semibold" : ""}`}>{cell}</td>)}</tr>)}</tbody></table></div> : null}
       </section>

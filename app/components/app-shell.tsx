@@ -55,7 +55,9 @@ import {
 
 import { NotificationMenu } from "@/app/components/notification-menu";
 import { PRODUCT_ICON_URL, PRODUCT_NAME } from "@/app/lib/product-brand";
-import { PropertyAccessGate } from "@/app/components/property-access-gate";
+import { PropertyAccessGate, usePropertyAccess } from "@/app/components/property-access-gate";
+import { propertyRoleLabel } from "@/app/lib/property-workspaces";
+import { canOpenPropertyPage } from "@/app/lib/property-permissions";
 import { PropertySwitcher } from "@/app/components/property-switcher";
 
 type WorkspaceProps = {
@@ -72,10 +74,19 @@ export function Workspace({ propertyId }: WorkspaceProps) {
 }
 
 function WorkspaceContent({ propertyId, activePath }: WorkspaceProps & { activePath: string }) {
+  const propertyAccess = usePropertyAccess();
+  const housekeepingOnly = propertyAccess.role === "housekeeping";
+  const financeOnly = propertyAccess.role === "finance";
+  const [notificationReopen, setNotificationReopen] = useState(0);
+  const visibleNavigation = navigation.flatMap((group) => {
+    const children = group.children?.filter((item) => canOpenPropertyPage(propertyAccess.role, propertyAccess.permissions, item.path));
+    if (group.children) return children?.length ? [{ ...group, path: children[0].path, children }] : [];
+    return canOpenPropertyPage(propertyAccess.role, propertyAccess.permissions, group.path) ? [group] : [];
+  });
   const router = useRouter();
-  const reservationKey = reservationStorageKey(propertyId);
-  const roomKey = `staypilot:${propertyId}:rooms`;
-  const transactionKey = `staypilot:${propertyId}:transactions`;
+  const reservationKey = financeOnly ? `staypilot:${propertyId}:finance:reservations` : housekeepingOnly ? `staypilot:${propertyId}:housekeeping:empty-reservations` : reservationStorageKey(propertyId);
+  const roomKey = `staypilot:${propertyId}:${financeOnly ? "finance:empty-rooms" : housekeepingOnly ? "housekeeping:empty-rooms" : "rooms"}`;
+  const transactionKey = `staypilot:${propertyId}:${financeOnly ? "finance:empty-transactions" : housekeepingOnly ? "housekeeping:empty-transactions" : "transactions"}`;
   const sidebarScrollKey = `staypilot:${propertyId}:sidebar-scroll`;
   const sidebarCollapseKey = `staypilot:${propertyId}:sidebar-collapsed`;
   const homeCurrency = readPropertyHomeCurrency(propertyId);
@@ -87,12 +98,12 @@ function WorkspaceContent({ propertyId, activePath }: WorkspaceProps & { activeP
   const [toast, setToast] = useState("");
   const [reservations, setReservations] = useLocalStorageState<Reservation[]>(
     reservationKey,
-    seedReservations,
+    (housekeepingOnly || financeOnly) ? [] : seedReservations,
     isReservationArray,
     (records) => migrateReservationRecords(records, propertyId, homeCurrency)
   );
-  const [roomList, setRoomList] = useLocalStorageState<Room[]>(roomKey, seedRooms, isRoomArray);
-  const [transactions, setTransactions] = useLocalStorageState<FinancialTransaction[]>(transactionKey, seedTransactions, isTransactionArray);
+  const [roomList, setRoomList] = useLocalStorageState<Room[]>(roomKey, (housekeepingOnly || financeOnly) ? [] : seedRooms, isRoomArray);
+  const [transactions, setTransactions] = useLocalStorageState<FinancialTransaction[]>(transactionKey, (housekeepingOnly || financeOnly) ? [] : seedTransactions, isTransactionArray);
   const [sidebarCollapsed, setSidebarCollapsed] = useLocalStorageState(sidebarCollapseKey, false);
   const [dataSource, setDataSource] = useState("connecting");
   const [profileOpen, setProfileOpen] = useState(false);
@@ -147,6 +158,11 @@ function WorkspaceContent({ propertyId, activePath }: WorkspaceProps & { activeP
   useEffect(() => {
     let cancelled = false;
     if (authChecking) return;
+    if (housekeepingOnly) { setDataSource("Housekeeping"); return; }
+    if (financeOnly) { setRoomList([]); void getReservations(propertyId).then(values => { if (!cancelled) { setReservations(values); setDataSource("Finance"); } }).catch(() => { if (!cancelled) { setReservations([]); setDataSource("unavailable"); } }); return () => { cancelled = true; }; }
+    // These screens load their own required data, including reservations only
+    // on Information. Avoid a duplicate catalog/reservation bootstrap here.
+    if (activePath.startsWith("housekeeping/")) { setDataSource("Housekeeping"); return; }
 
     Promise.all([getRoomCatalog(propertyId), getReservations(propertyId)])
       .then(([catalog, savedReservations]) => {
@@ -165,7 +181,7 @@ function WorkspaceContent({ propertyId, activePath }: WorkspaceProps & { activeP
     return () => {
       cancelled = true;
     };
-  }, [authChecking, activePath, propertyId, setReservations, setRoomList]);
+  }, [authChecking, activePath, propertyId, setReservations, setRoomList, housekeepingOnly, financeOnly]);
 
   useLayoutEffect(() => {
     if (authChecking) return;
@@ -272,7 +288,7 @@ function WorkspaceContent({ propertyId, activePath }: WorkspaceProps & { activeP
         </div>
 
         <nav ref={sidebarScrollRef} onScroll={rememberSidebarScroll} className="table-scroll flex-1 overflow-y-auto px-2 py-3">
-          {navigation.map((group) => {
+          {visibleNavigation.map((group) => {
             const Icon = group.icon;
             const active = isGroupActive(group, activePath);
             const isExpanded = sidebarCollapsed ? collapsedExpanded.has(group.title) : expanded.has(group.title);
@@ -318,6 +334,7 @@ function WorkspaceContent({ propertyId, activePath }: WorkspaceProps & { activeP
                 {isExpanded ? (
                   <div className="sidebar-submenu-rail ml-5 mt-1 border-l border-line pl-2">
                     {group.children.map((item) => {
+                      if (item.path === "settings/users" && propertyAccess.role !== "demo" && !propertyAccess.permissions.includes("staff.manage")) return null;
                       const ChildIcon = item.icon;
                       const childActive = item.path === activePath || activePath.startsWith(`${item.path}/`);
                       return (
@@ -353,6 +370,7 @@ function WorkspaceContent({ propertyId, activePath }: WorkspaceProps & { activeP
             <div className={`min-w-0 flex-1 ${sidebarCollapsed ? "lg:hidden" : ""}`}>
               <p className="truncate text-sm font-semibold">{currentUser.name}</p>
               <p className="truncate text-xs text-slate-500">{currentUser.email}</p>
+              <p className="truncate text-xs text-slate-500">{propertyRoleLabel(propertyAccess.role)}</p>
             </div>
             <ChevronRight className={`h-4 w-4 text-slate-500 ${sidebarCollapsed ? "lg:hidden" : ""}`} />
           </button>
@@ -421,7 +439,7 @@ function WorkspaceContent({ propertyId, activePath }: WorkspaceProps & { activeP
             <TopIcon label="Calendar">
               <Calendar className="h-4 w-4" />
             </TopIcon>
-            <NotificationMenu propertyId={propertyId} />
+            {<NotificationMenu key={`${propertyId}:${propertyAccess.role}`} propertyId={propertyId} onReopen={() => setNotificationReopen((value) => value + 1)} />}
             <TopIcon label="Search">
               <Search className="h-4 w-4" />
             </TopIcon>
@@ -436,6 +454,7 @@ function WorkspaceContent({ propertyId, activePath }: WorkspaceProps & { activeP
         </header>
 
         <ModuleContent
+          key={notificationReopen}
           activePath={activePath}
           propertyId={propertyId}
           reservations={reservations}

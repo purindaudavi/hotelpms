@@ -333,7 +333,7 @@ function mapProperty(property: ApiProperty, fallback: PropertyDetails): Property
       hotelType: info.hotel_type,
       hotelGuid: info.hotel_guid,
       starCategory: String(info.star_category),
-      numberOfRooms: String(property.statistics.physical_room_count),
+      numberOfRooms: String(property.statistics?.physical_room_count ?? 0),
       onTrial: info.on_trial,
       plan: info.plan,
       description: info.description,

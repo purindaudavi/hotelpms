@@ -431,14 +431,67 @@ button:disabled {
   background-color: #202326 !important;
 }
 
-:root[data-theme="dark"] .app-shell-root .property-settings-action {
+:root[data-theme="dark"] .app-shell-root .settings-primary-action,
+:root[data-theme="dark"] .app-shell-root .housekeeping-primary-action {
   background-color: #14161a !important;
   border: 1px solid #3b3f44 !important;
   color: #f8fafc !important;
 }
 
-:root[data-theme="dark"] .app-shell-root .property-settings-action:hover:not(:disabled) {
+:root[data-theme="dark"] .app-shell-root .settings-primary-action:hover:not(:disabled),
+:root[data-theme="dark"] .app-shell-root .housekeeping-primary-action:hover:not(:disabled) {
   background-color: #202326 !important;
+}
+
+:root[data-theme="dark"] .notification-row {
+  background-color: var(--theme-panel) !important;
+}
+
+:root[data-theme="dark"] .notification-row[data-unread="true"] {
+  background-color: color-mix(in srgb, #3b82f6 10%, var(--theme-panel)) !important;
+}
+
+:root[data-theme="dark"] .notification-row:hover,
+:root[data-theme="dark"] .notification-row:focus-visible {
+  background-color: #2a2d31 !important;
+}
+
+/* Keep settings controls readable without changing foreground-based ink colors. */
+:root[data-theme="dark"] .settings-appearance :where(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="range"]):not([type="hidden"]),
+  select,
+  textarea
+) {
+  background-color: var(--theme-panel) !important;
+  border-color: rgb(var(--theme-line-rgb)) !important;
+  color: var(--foreground);
+}
+
+:root[data-theme="dark"] .settings-appearance :is(input, select, textarea):is(:disabled, [readonly]) {
+  background-color: var(--theme-muted) !important;
+  color: #aebbd0;
+}
+
+:root[data-theme="dark"] .settings-appearance input[type="file"]::file-selector-button {
+  margin-right: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid rgb(var(--theme-line-rgb));
+  border-radius: 0.375rem;
+  background-color: var(--theme-muted);
+  color: var(--foreground);
+  cursor: pointer;
+}
+
+:root[data-theme="dark"] .settings-appearance input[type="file"]:disabled::file-selector-button {
+  cursor: not-allowed;
+}
+
+:root[data-theme="dark"] .settings-appearance input[type="checkbox"] {
+  accent-color: #94a3b8;
+}
+
+:root[data-theme="dark"] .settings-appearance .gateway-switch-thumb {
+  background-color: #f8fafc !important;
 }
 
 :root[data-theme="dark"] .front-desk-grid th[class~="bg-rose-50"] {

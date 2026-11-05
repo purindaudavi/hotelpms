@@ -141,7 +141,7 @@ export function PropertyImages({
             type="button"
             onClick={() => void saveLogo()}
             disabled={controlsDisabled || !logoFile}
-            className="mt-4 inline-flex h-11 items-center gap-2 rounded-md bg-ink px-5 text-sm font-semibold text-white disabled:opacity-40"
+            className="mt-4 inline-flex h-11 items-center gap-2 rounded-md settings-primary-action bg-ink px-5 text-sm font-semibold text-white disabled:opacity-40"
           >
             <Upload className="h-4 w-4" />
             {saving ? "Saving..." : logo ? "Replace Logo" : "Upload Logo"}
@@ -186,7 +186,7 @@ export function PropertyImages({
             placeholder="Description for the selected upload"
             className="focus-ring mt-4 min-h-24 w-full rounded-md border border-line p-3 disabled:bg-slate-50"
           />
-          <button type="button" onClick={() => void saveGallery()} disabled={controlsDisabled || !galleryFiles.length} className="mt-4 inline-flex h-11 items-center gap-2 rounded-md bg-ink px-5 text-sm font-semibold text-white disabled:opacity-40">
+          <button type="button" onClick={() => void saveGallery()} disabled={controlsDisabled || !galleryFiles.length} className="mt-4 inline-flex h-11 items-center gap-2 rounded-md settings-primary-action bg-ink px-5 text-sm font-semibold text-white disabled:opacity-40">
             <ImagePlus className="h-4 w-4" />
             {saving ? "Uploading..." : "Upload Gallery Images"}
           </button>

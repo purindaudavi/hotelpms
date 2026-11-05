@@ -18,7 +18,7 @@ export function HkButton({
 }) {
   const styles = {
     secondary: "border border-line bg-white text-ink hover:bg-slate-50",
-    primary: "bg-ink text-white hover:bg-slate-800",
+    primary: "housekeeping-primary-action bg-ink text-white hover:bg-slate-800",
     purple: "bg-indigo-700 text-white hover:bg-indigo-800",
     green: "bg-emerald-600 text-white hover:bg-emerald-700"
   };
@@ -32,9 +32,9 @@ export function HkButton({
 
 export function SegmentedTabs<T extends string>({ tabs, active, onChange }: { tabs: readonly T[]; active: T; onChange: (tab: T) => void }) {
   return (
-    <div className="grid rounded-lg bg-slate-100 p-1 text-sm font-semibold text-slate-500" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}>
+    <div className="flex overflow-x-auto rounded-lg bg-slate-100 p-1 text-sm font-semibold text-slate-500">
       {tabs.map((tab) => (
-        <button key={tab} onClick={() => onChange(tab)} className={`h-10 rounded-md px-3 transition ${active === tab ? "bg-white text-ink shadow-sm" : "hover:text-ink"}`}>
+        <button type="button" key={tab} onClick={() => onChange(tab)} className={`h-10 shrink-0 flex-1 whitespace-nowrap rounded-md px-3 transition ${active === tab ? "bg-white text-ink shadow-sm" : "hover:text-ink"}`}>
           {tab}
         </button>
       ))}
@@ -48,7 +48,7 @@ export function SearchField({ value, onChange, placeholder }: { value: string; o
       value={value}
       onChange={(event) => onChange(event.target.value)}
       placeholder={placeholder}
-      className="h-11 min-w-[320px] rounded-md border border-line bg-white px-4 text-sm outline-none transition focus:border-sky-300 focus:ring-2 focus:ring-sky-100"
+      className="h-11 w-full min-w-0 sm:min-w-[320px] rounded-md border border-line bg-white px-4 text-sm outline-none transition focus:border-sky-300 focus:ring-2 focus:ring-sky-100"
     />
   );
 }

@@ -89,7 +89,15 @@ export type NightAuditActor = {
   email?: string;
 };
 
-export type NightAudit = {
+export type FinanceAuditReview = {
+  version: number;
+  finance_review_status: "pending_review" | "reviewed" | "flagged";
+  finance_review_note: string;
+  finance_reviewed_by?: NightAuditActor;
+  finance_reviewed_at?: string;
+  finance_review_history: Array<{ status: "reviewed" | "flagged"; note: string; actor: NightAuditActor; at: string }>;
+};
+export type NightAudit = FinanceAuditReview & {
   _id: string;
   property_id: string;
   business_date: string;
@@ -120,7 +128,7 @@ export type NightAudit = {
   blockers: Array<NightAuditException & { step_id: string }>;
 };
 
-export type NightAuditHistoryRecord = {
+export type NightAuditHistoryRecord = FinanceAuditReview & {
   _id: string;
   property_id: string;
   business_date: string;
@@ -145,63 +153,64 @@ export async function getCurrentNightAudit(propertyId: string) {
   return response.data.night_audit;
 }
 
-export async function getNightAuditHistory(propertyId: string, limit = 20) {
+export async function getNightAuditHistory(propertyId: string, limit = 100) {
   const response = await api.get<HistoryResponse>("/night-audit/history", {
     params: { property_id: propertyId, limit }
   });
   return response.data.night_audits;
 }
 
-export async function reviewNightAuditStep(propertyId: string, stepId: string) {
-  return currentFromPost("/night-audit/current/review", propertyId, { step_id: stepId });
+export async function reviewNightAuditStep(propertyId: string, stepId: string, auditId: string) {
+  return currentFromPost("/night-audit/current/review", propertyId, auditId, { step_id: stepId });
 }
 
 export async function overrideNightAuditExceptions(
   propertyId: string,
   stepId: string,
   exceptionIds: string[],
-  reason: string
+  reason: string,
+  auditId: string
 ) {
-  return currentFromPost("/night-audit/current/override", propertyId, {
+  return currentFromPost("/night-audit/current/override", propertyId, auditId, {
     step_id: stepId,
     exception_ids: exceptionIds,
     reason
   });
 }
 
-export async function postNightAuditRoomRevenue(propertyId: string) {
-  return currentFromPost("/night-audit/current/post-room-revenue", propertyId);
+export async function postNightAuditRoomRevenue(propertyId: string, auditId: string) {
+  return currentFromPost("/night-audit/current/post-room-revenue", propertyId, auditId);
 }
 
-export async function reviewNightAuditHousekeeping(propertyId: string) {
-  return currentFromPost("/night-audit/current/review-housekeeping", propertyId);
+export async function reviewNightAuditHousekeeping(propertyId: string, auditId: string) {
+  return currentFromPost("/night-audit/current/review-housekeeping", propertyId, auditId);
 }
 
-export async function reviewNightAuditChannels(propertyId: string) {
-  return currentFromPost("/night-audit/current/review-channels", propertyId);
+export async function reviewNightAuditChannels(propertyId: string, auditId: string) {
+  return currentFromPost("/night-audit/current/review-channels", propertyId, auditId);
 }
 
-export async function generateNightAuditReports(propertyId: string) {
-  return currentFromPost("/night-audit/current/generate-reports", propertyId);
+export async function generateNightAuditReports(propertyId: string, auditId: string) {
+  return currentFromPost("/night-audit/current/generate-reports", propertyId, auditId);
 }
 
-export async function saveNightAuditNote(propertyId: string, closeNote: string) {
+export async function saveNightAuditNote(propertyId: string, closeNote: string, auditId: string) {
   const response = await api.patch<CurrentResponse>(
     "/night-audit/current/notes",
-    { property_id: propertyId, close_note: closeNote },
+    { property_id: propertyId, close_note: closeNote, audit_id: auditId },
     { headers: actorHeaders() }
   );
   return response.data.night_audit;
 }
 
-export async function completeNightAudit(propertyId: string, closeNote: string) {
+export async function completeNightAudit(propertyId: string, closeNote: string, auditId: string) {
   const response = await api.post<{
     message: string;
     night_audit: NightAuditHistoryRecord;
     next_business_date: string;
   }>(
     "/night-audit/current/complete",
-    { property_id: propertyId, close_note: closeNote },
+    { property_id: propertyId, close_note: closeNote, audit_id: auditId },
     { headers: actorHeaders() }
   );
   return response.data;
@@ -211,10 +220,10 @@ export function getNightAuditApiErrorMessage(error: unknown) {
   return getApiErrorMessage(error, "The Night Audit request could not be completed.");
 }
 
-async function currentFromPost(path: string, propertyId: string, body: Record<string, unknown> = {}) {
+async function currentFromPost(path: string, propertyId: string, auditId: string, body: Record<string, unknown> = {}) {
   const response = await api.post<CurrentResponse>(
     path,
-    { property_id: propertyId, ...body },
+    { property_id: propertyId, audit_id: auditId, ...body },
     { headers: actorHeaders() }
   );
   return response.data.night_audit;
@@ -226,4 +235,11 @@ function actorHeaders() {
     "x-user-name": currentSessionUser.name,
     "x-user-email": currentSessionUser.email
   };
+}
+
+export async function getNightAudit(propertyId: string, auditId: string) {
+  return (await api.get<CurrentResponse>(`/night-audit/${encodeURIComponent(auditId)}`, { params: { property_id: propertyId } })).data.night_audit;
+}
+export async function reviewClosedNightAudit(propertyId: string, auditId: string, status: "reviewed" | "flagged", note: string, version: number) {
+  return (await api.post<CurrentResponse>(`/night-audit/${encodeURIComponent(auditId)}/finance-review`, { property_id: propertyId, status, note, version })).data.night_audit;
 }
