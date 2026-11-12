@@ -19,6 +19,10 @@ export type BackendPurchase = {
   attachments: string[];
   gl_lines: Array<{ _id?: string; account: string; amount: number; memo: string }>;
   status: "to_be_paid" | "paid" | "voided";
+  paid_at?: string;
+  payment_method?: string;
+  payment_method_details?: string;
+  payment_reference?: string;
   created_at: string;
 };
 
@@ -34,6 +38,7 @@ export type BackendExpense = {
   attachments: string[];
   remark: string;
   status: "posted" | "voided";
+  cash_request_id?: string;
   created_at: string;
 };
 

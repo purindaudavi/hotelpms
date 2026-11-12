@@ -330,6 +330,8 @@ export const navigation: NavGroup[] = [
       { title: "Integrations", path: "financials/integrations", icon: Plug }
     ]
   },
+  { title: "Financials 2", path: "financials-2", icon: WalletCards },
+  { title: "Money requests", path: "money-requests", icon: WalletCards },
   { title: "Reports", path: "reports", icon: BarChart3 },
   {
     title: "Channel Manager",

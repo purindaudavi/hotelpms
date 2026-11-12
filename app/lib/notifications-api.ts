@@ -12,7 +12,8 @@ export type NotificationType =
   | "expense"
   | "transaction"
   | "housekeeping_request"
-  | "housekeeping_assignment";
+  | "housekeeping_assignment"
+  | "money_request";
 
 export type PmsNotification = {
   id: string;

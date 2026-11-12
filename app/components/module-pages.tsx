@@ -50,6 +50,8 @@ import { FrontDeskPage } from "@/app/components/modules/front-desk/front-desk-pa
 import { ReservationPage as ReservationModulePage } from "@/app/components/modules/reservation/reservation-page";
 import { RoomsRatesPage as RoomsRatesModulePage } from "@/app/components/modules/rooms-rates/rooms-rates-page";
 import { HousekeepingPage as HousekeepingModulePage } from "@/app/components/modules/housekeeping/housekeeping-page";
+import { MoneyRequestsPage } from "@/app/components/modules/money-requests-page";
+import { Financials2Page } from "@/app/components/modules/financials2/financials2-page";
 import { FinancialsPage as FinancialsModulePage } from "@/app/components/modules/financials/financials-page";
 import { ReportsPage as ReportsModulePage } from "@/app/components/modules/reports/reports-page";
 import { ChannelManagerRequestPage } from "@/app/components/modules/channelmanager/request";
@@ -100,7 +102,7 @@ export function ModuleContent(props: ModuleProps) {
   const path = props.activePath;
   const access = usePropertyAccess();
   if (!canOpenPropertyPage(access.role, access.permissions, path)) return <main className="space-y-3 p-6"><h1 className="text-2xl font-semibold">Access restricted</h1><p className="text-slate-500">Your property role does not allow this page. Ask an owner or administrator if you need different access.</p><a href={`/properties/${props.propertyId}/${["housekeeping", "finance"].includes(access.role || "") ? "dashboard" : "front-desk"}`} className="inline-block text-sm font-semibold text-blue-600">{access.role === "finance" ? "Open Finance overview" : access.role === "housekeeping" ? "Open my housekeeping tasks" : "Open Front Desk"}</a></main>;
-  if (access.role === "housekeeping") return <HousekeepingWorkPage propertyId={props.propertyId} dashboard={path === "dashboard"} />;
+  if (access.role === "housekeeping" && path !== "money-requests") return <HousekeepingWorkPage propertyId={props.propertyId} dashboard={path === "dashboard"} />;
   if (access.role === "finance" && (["dashboard"].includes(path) || path.startsWith("reservation/"))) return <FinanceWorkspacePage key={path} propertyId={props.propertyId} activePath={path} />;
   if (access.role === "front_desk" && ["dashboard", "rooms-rates/rooms", "rooms-rates/rates", "reservation/travel-agents"].includes(path)) return <FrontDeskReferencePage {...props} />;
 
@@ -109,6 +111,8 @@ export function ModuleContent(props: ModuleProps) {
   if (path.startsWith("reservation")) return <ReservationModulePage {...props} />;
   if (path.startsWith("rooms-rates")) return <RoomsRatesModulePage {...props} />;
   if (path.startsWith("housekeeping")) return <HousekeepingModulePage {...props} />;
+  if (path === "money-requests") return <MoneyRequestsPage propertyId={props.propertyId} setToast={props.setToast} />;
+  if (path === "financials-2") return <Financials2Page propertyId={props.propertyId} setToast={props.setToast} />;
   if (path.startsWith("financials")) return <FinancialsModulePage {...props} />;
   if (path === "reports") return <ReportsModulePage {...props} />;
   if (path.startsWith("channel-manager")) return <ChannelManagerModule {...props} />;
@@ -1108,7 +1112,7 @@ function SettingsModule(props: ModuleProps) {
   if (path.endsWith("users")) return <UsersSettingsPage propertyId={props.propertyId} />;
   if (path.endsWith("templates")) return <SettingsTemplatesPage propertyId={props.propertyId} setToast={props.setToast} />;
   if (path.endsWith("data-import")) return <DataImportPage setToast={props.setToast} />;
-  if (path.endsWith("activity-logs")) return <ActivityLogsPage />;
+  if (path.endsWith("activity-logs")) return <ActivityLogsPage propertyId={props.propertyId} />;
   if (path.endsWith("employee")) return <EmployeePage propertyId={props.propertyId} />;
   return <PropertySettingsPage propertyId={props.propertyId} setToast={props.setToast} />;
 }

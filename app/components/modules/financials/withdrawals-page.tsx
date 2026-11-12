@@ -41,8 +41,8 @@ const paymentMethods: Array<{ value: WithdrawalPaymentMethod; label: string }> =
 
 export function WithdrawalsPage({ propertyId, setToast, initialReference = "" }: Props) {
   const role = usePropertyAccess().role;
-  const finance = role === "finance";
-  const canApprove = role === "owner" || role === "administrator";
+  const finance = ["administrator", "finance"].includes(role || "");
+  const canApprove = role === "owner";
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
   const [totals, setTotals] = useState<Array<{ currency: string; amount: number; count: number }>>([]);
   const [search, setSearch] = useState(initialReference);
@@ -103,7 +103,7 @@ export function WithdrawalsPage({ propertyId, setToast, initialReference = "" }:
     <header className="flex flex-wrap items-start justify-between gap-4">
       <div>
         <h1 className="text-2xl font-bold">Withdrawals</h1>
-        <p className="mt-1 text-sm text-slate-500">{finance ? "Prepare a withdrawal request for Owner/Admin approval. Pending requests do not post money." : "Review pending requests or record completed withdrawals. Approve only after money has actually been received."}</p>
+        <p className="mt-1 text-sm text-slate-500">{finance ? "Prepare a withdrawal request for Owner approval. Pending requests do not post money." : "Review pending requests or record completed withdrawals. Approve only after money has actually been received."}</p>
       </div>
       <div className="flex gap-2">
         <button type="button" onClick={() => void load()} disabled={loading} className="inline-flex items-center gap-2 rounded-md border border-line px-4 py-2 text-sm font-semibold">
@@ -166,7 +166,7 @@ export function WithdrawalsPage({ propertyId, setToast, initialReference = "" }:
 }
 
 function CreateWithdrawalDialog({ propertyId, onClose, onCreated, setToast }: Props & { onClose: () => void; onCreated: (message: string) => Promise<void> }) {
-  const finance = usePropertyAccess().role === "finance";
+  const finance = ["administrator", "finance"].includes(usePropertyAccess().role || "");
   const [recipients, setRecipients] = useState<WithdrawalRecipient[]>([]);
   const [recipientId, setRecipientId] = useState("");
   const [loadingRecipients, setLoadingRecipients] = useState(true);
@@ -248,7 +248,7 @@ function WithdrawalDetails({ details, onClose, onVoid, onComplete, canApprove }:
   return <Modal title={item.withdrawal_no} onClose={onClose}>
     <div className="space-y-5">
       <div className="flex items-center justify-between"><StatusBadge status={item.status} />{canApprove && item.status !== "voided" && <button type="button" onClick={onVoid} className="rounded-md border border-red-500 px-4 py-2 font-semibold text-red-600">{item.status === "pending" ? "Reject Request" : "Void Withdrawal"}</button>}</div>
-      {item.status === "pending" ? !item.recipient_user_id ? <p className="rounded-lg border border-amber-300 p-3 text-sm text-amber-700">This older request has no verified recipient. Owner/Admin must reject it and a new request must select an Owner or Administrator.</p> : !canApprove ? <p className="rounded-lg border border-line p-3 text-sm text-slate-500">Awaiting Owner/Admin approval. This request has not posted a withdrawal.</p> : <form className="space-y-3 rounded-lg border border-line p-4" onSubmit={event => { event.preventDefault(); if (saving) return; setSaving(true); void onComplete(item, note.trim(), date).catch(() => undefined).finally(() => setSaving(false)); }}><p className="text-sm text-slate-500">Approve only after the recipient has actually received this money.</p><Field label="Actual money received"><input type="datetime-local" required value={date} onChange={event => setDate(event.target.value)} className={inputClass} /></Field><Field label="Approval note"><textarea required minLength={5} maxLength={1000} value={note} onChange={event => setNote(event.target.value)} className={inputClass} /></Field><button disabled={saving} className="rounded-lg bg-blue-600 px-4 py-3 font-semibold text-white disabled:opacity-50">{saving ? "Saving..." : "Approve and Record"}</button></form> : null}
+      {item.status === "pending" ? !item.recipient_user_id ? <p className="rounded-lg border border-amber-300 p-3 text-sm text-amber-700">This older request has no verified recipient. Owner must reject it and a new request must select an Owner or Administrator.</p> : !canApprove ? <p className="rounded-lg border border-line p-3 text-sm text-slate-500">Awaiting Owner approval. This request has not posted a withdrawal.</p> : <form className="space-y-3 rounded-lg border border-line p-4" onSubmit={event => { event.preventDefault(); if (saving) return; setSaving(true); void onComplete(item, note.trim(), date).catch(() => undefined).finally(() => setSaving(false)); }}><p className="text-sm text-slate-500">Approve only after the recipient has actually received this money.</p><Field label="Actual money received"><input type="datetime-local" required value={date} onChange={event => setDate(event.target.value)} className={inputClass} /></Field><Field label="Approval note"><textarea required minLength={5} maxLength={1000} value={note} onChange={event => setNote(event.target.value)} className={inputClass} /></Field><button disabled={saving} className="rounded-lg bg-blue-600 px-4 py-3 font-semibold text-white disabled:opacity-50">{saving ? "Saving..." : "Approve and Record"}</button></form> : null}
       {item.approved_by?.name ? <p className="text-sm text-slate-500">Approved by {item.approved_by.name} · {item.approval_note}</p> : null}
       <div className="grid gap-4 rounded-lg border border-line p-4 sm:grid-cols-2">
         <Detail label={item.status === "pending" ? "Requested recipient" : "Paid to"} value={item.paid_to} />

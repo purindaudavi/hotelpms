@@ -1,588 +1,106 @@
 "use client";
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { CheckCircle2, AlertTriangle, RefreshCw, Play, Download, ShieldCheck } from "lucide-react";
+import { api, getApiErrorMessage } from "@/app/lib/api";
 
-import { useEffect, useMemo, useState } from "react";
-import {
-  AlertTriangle,
-  CalendarDays,
-  CheckCircle2,
-  Clock,
-  Download,
-  FileText,
-  Hotel,
-  Loader2,
-  Moon,
-  RefreshCw,
-  Save,
-  ShieldCheck,
-  WalletCards,
-  XCircle
-} from "lucide-react";
-import { usePropertyAccess } from "@/app/components/property-access-gate";
-import { dateLabel } from "@/app/data/pms-data";
-import {
-  getNightAudit,
-  reviewClosedNightAudit,
-  completeNightAudit,
-  generateNightAuditReports,
-  getCurrentNightAudit,
-  getNightAuditApiErrorMessage,
-  getNightAuditHistory,
-  overrideNightAuditExceptions,
-  postNightAuditRoomRevenue,
-  reviewNightAuditChannels,
-  reviewNightAuditHousekeeping,
-  reviewNightAuditStep,
-  saveNightAuditNote,
-  type NightAudit,
-  type NightAuditHistoryRecord,
-  type NightAuditStep,
-  type NightAuditStepStatus
-} from "@/app/lib/night-audit-api";
+type Totals = { currency: string; amount: number }[];
+type Issue = { id: string; group: string; title: string; detail: string; severity: string; link: string; can_override: boolean; context_hash: string; overridden: boolean; override?: { reason: string; approved_by: Actor } };
+type Actor = { user_id?: string; name?: string; email?: string };
+type ReceiptGroup = { key: string; currency: string; method: string; expected: number; count: number; verification?: { actual: number; note: string } };
+type Snapshot = { timezone: string; receipt_totals: Totals; charge_totals: Totals; outflow_totals: Totals; balance_totals: Totals; returned_totals: Totals; payment_fingerprint: string; receipt_groups: ReceiptGroup[];
+  exceptions: Issue[]; blockers: Issue[]; rooms: { room: string; housekeeping_status: string }[]; receipts: { id: string; invoice_no: string; amount: number; currency: string; payment_method: string; reference: string }[]; legacy_posting: boolean };
+type Audit = { _id: string; business_date: string; status: "open" | "closed"; legacy: boolean; version: number; snapshot: Snapshot; next_business_date: string; close_note: string; closed_by?: Actor; closed_at?: string;
+  permissions: { run: boolean; verify: boolean; override: boolean }; reports: { report_run_id: string; title: string }[]; finance_review_status: string; finance_review_note: string; finance_reviewed_by?: Actor; finance_reviewed_at?: string;
+  finance_review_history: { status: string; note: string; actor: Actor; at: string }[] };
+type History = Pick<Audit, "_id" | "business_date" | "closed_by" | "closed_at" | "finance_review_status">;
+type Report = { title: string; rows?: Record<string, unknown>[]; limitations: string[] };
+const pretty = (v: string) => (v || "").replaceAll("_", " ").replace(/^./, s => s.toUpperCase());
+const money = (n: number, c: string) => `${c} ${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const stamp = (s?: string) => s ? new Date(s).toLocaleString() : "";
+const button = "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-line bg-white px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50";
+const primary = "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50";
+const input = "min-w-0 w-full rounded-lg border border-line bg-white px-3 py-2.5 text-sm";
+const actor = (a?: Actor) => a?.name || a?.email || "System";
 
-type NightAuditPageProps = {
-  propertyId: string;
-  setToast: (message: string) => void;
-};
-
-const expectedReports = [
-  "Business Analysis",
-  "Deposit Ledger",
-  "Occupancy by Date",
-  "Revenue Report",
-  "Inventory By Room Type",
-  "List of Reservations"
-];
-
-const statusClass: Record<NightAuditStepStatus, string> = {
-  done: "bg-emerald-50 text-emerald-700",
-  reviewed_with_warnings: "bg-amber-50 text-amber-700",
-  ready: "bg-blue-50 text-blue-700",
-  warning: "bg-amber-50 text-amber-700",
-  blocked: "bg-rose-50 text-rose-700",
-  disabled: "bg-slate-100 text-slate-500"
-};
-
-export function NightAuditPage({ propertyId, setToast }: NightAuditPageProps) {
-  const access = usePropertyAccess();
-  const isOwnerAdmin = ["owner", "administrator"].includes(access.role || "");
-  const [reviewNote, setReviewNote] = useState("");
-  const [reviewStatus, setReviewStatus] = useState<"reviewed" | "flagged">("reviewed");
-  const [audit, setAudit] = useState<NightAudit | null>(null);
-  const [history, setHistory] = useState<NightAuditHistoryRecord[]>([]);
-  const [closeNote, setCloseNote] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [action, setAction] = useState("");
-  const [errorMessage, setErrorMessage] = useState("");
-
-  useEffect(() => {
-    void loadAudit(false);
-  }, [propertyId]);
-
-  const requiredSteps = useMemo(() => audit?.steps.filter((step) => step.required) ?? [], [audit]);
-  const completedRequired = requiredSteps.filter((step) => isCompleteStatus(step.status)).length;
-  const blockerCount = audit?.blockers.length ?? 0;
-  const warningCount = audit?.steps.reduce(
-    (total, step) => total + step.exceptions.filter((exception) => exception.severity === "warning" && !exception.resolved).length,
-    0
-  ) ?? 0;
-  const busy = Boolean(action);
-  const canRun = audit?.status === "open" && (isOwnerAdmin || (access.role === "front_desk" && access.permissions.includes("night-audit.run")));
-
-  async function openClosedAudit(id: string) {
-    if (busy) return;
-    setAction("history"); setErrorMessage("");
-    try { const selected = await getNightAudit(propertyId, id); setAudit(selected); setCloseNote(selected.close_note || ""); setReviewNote(selected.finance_review_note || ""); setReviewStatus(selected.finance_review_status === "flagged" ? "flagged" : "reviewed"); }
-    catch (error) { setErrorMessage(getNightAuditApiErrorMessage(error)); }
-    finally { setAction(""); }
-  }
-
-  async function saveFinanceReview() {
-    if (!audit || audit.status !== "closed" || access.role !== "finance" || busy) return;
-    await runAction("finance-review", () => reviewClosedNightAudit(propertyId, audit._id, reviewStatus, reviewNote, audit.version), "Finance review saved. The closed day remains unchanged.");
-    try { setHistory(await getNightAuditHistory(propertyId)); } catch (error) { setErrorMessage(getNightAuditApiErrorMessage(error)); }
-  }
-
-  async function loadAudit(showToast: boolean) {
+export function NightAuditPage({ propertyId }: { propertyId: string; setToast?: (s: string) => void }) {
+  const [selected, setSelected] = useState(""), [audit, setAudit] = useState<Audit | null>(null), [history, setHistory] = useState<History[]>([]);
+  const [error, setError] = useState(""), [notice, setNotice] = useState(""), [loading, setLoading] = useState(true), [busy, setBusy] = useState(false);
+  const [confirmed, setConfirmed] = useState(false), [note, setNote] = useState(""), [report, setReport] = useState<Report | null>(null);
+  const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
-    setErrorMessage("");
     try {
-      const [current, closedAudits] = await Promise.all([
-        getCurrentNightAudit(propertyId),
-        getNightAuditHistory(propertyId)
-      ]);
-      setAudit(current);
-      setHistory(closedAudits);
-      setCloseNote(current.close_note || "");
-      if (showToast) setToast("Night Audit refreshed from MongoDB");
-    } catch (error) {
-      const message = getNightAuditApiErrorMessage(error);
-      setErrorMessage(message);
-      if (showToast) setToast(message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function runAction(key: string, operation: () => Promise<NightAudit>, successMessage: string) {
-    if (busy) return;
-    setAction(key);
-    setErrorMessage("");
+      const [a, h] = await Promise.all([api.get<{ night_audit: Audit }>(selected ? `/night-audit/${selected}` : "/night-audit/current", { params: { property_id: propertyId }, signal }), api.get<{ night_audits: History[] }>("/night-audit/history", { params: { property_id: propertyId }, signal })]);
+      if (!signal?.aborted) { setAudit(a.data.night_audit); setHistory(h.data.night_audits); setError(""); }
+    } catch (e) { if (!signal?.aborted) { setAudit(null); setError(getApiErrorMessage(e, "Could not load Night Audit. Refresh to retry.")); } }
+    finally { if (!signal?.aborted) setLoading(false); }
+  }, [propertyId, selected]);
+  useEffect(() => { const c = new AbortController(); setAudit(null); setConfirmed(false); setNote(""); setReport(null); setNotice(""); void load(c.signal); return () => c.abort(); }, [load]);
+  const change = async (path: string, body: object, message: string) => {
+    if (busy || !audit) return; setBusy(true); setError(""); setNotice("");
     try {
-      const current = await operation();
-      setAudit(current);
-      setCloseNote(current.close_note || closeNote);
-      setToast(successMessage);
-    } catch (error) {
-      const message = getNightAuditApiErrorMessage(error);
-      setErrorMessage(message);
-      setToast(message);
-    } finally {
-      setAction("");
-    }
-  }
-
-  function reviewStep(step: NightAuditStep) {
-    if (!canRun || !audit || step.disabled || isCompleteStatus(step.status)) return;
-    if (step.id === "folio-posting") {
-      void runAction(step.id, () => postNightAuditRoomRevenue(propertyId, audit._id), "Room revenue posted to MongoDB");
-      return;
-    }
-    if (step.id === "housekeeping-close") {
-      void runAction(step.id, () => reviewNightAuditHousekeeping(propertyId, audit._id), "Housekeeping board reviewed");
-      return;
-    }
-    if (step.id === "channel-check") {
-      void runAction(step.id, () => reviewNightAuditChannels(propertyId, audit._id), "Channel check reviewed");
-      return;
-    }
-    if (step.id === "audit-reports") {
-      void runAction(step.id, () => generateNightAuditReports(propertyId, audit._id), "Night Audit close pack generated in MongoDB");
-      return;
-    }
-    void runAction(step.id, () => reviewNightAuditStep(propertyId, step.id, audit._id), `${step.title} reviewed`);
-  }
-
-  function requestManagerOverride(step: NightAuditStep) {
-    if (!canRun || !isOwnerAdmin || !audit) return;
-    const blockerIds = step.exceptions
-      .filter((exception) => exception.severity === "blocker" && !exception.resolved)
-      .map((exception) => exception.id);
-    if (!blockerIds.length) return;
-    const reason = window.prompt("Enter the Owner/Admin override reason (at least 10 characters):", "");
-    if (!reason) return;
-    if (reason.trim().length < 10) {
-      setToast("The override reason must contain at least 10 characters");
-      return;
-    }
-    void runAction(
-      `override:${step.id}`,
-      () => overrideNightAuditExceptions(propertyId, step.id, blockerIds, reason.trim(), audit._id),
-      `${step.title} override recorded with Owner/Admin reason`
-    );
-  }
-
-  function saveNote() {
-    if (!canRun || !audit) return;
-    void runAction("note", () => saveNightAuditNote(propertyId, closeNote, audit._id), "Close note saved to MongoDB");
-  }
-
-  async function finishAudit() {
-    if (!canRun || !audit?.can_complete || busy) return;
-    const confirmed = window.confirm(
-      `Close business date ${audit.business_date} and open ${addDays(audit.business_date, 1)}? This cannot be undone from this screen.`
-    );
-    if (!confirmed) return;
-    setAction("complete");
-    setErrorMessage("");
-    try {
-      const result = await completeNightAudit(propertyId, closeNote, audit._id);
-      setToast(result.message);
-      const [nextAudit, closedAudits] = await Promise.all([
-        getCurrentNightAudit(propertyId),
-        getNightAuditHistory(propertyId)
-      ]);
-      setAudit(nextAudit);
-      setHistory(closedAudits);
-      setCloseNote(nextAudit.close_note || "");
-    } catch (error) {
-      const message = getNightAuditApiErrorMessage(error);
-      setErrorMessage(message);
-      setToast(message);
-    } finally {
-      setAction("");
-    }
-  }
-
-  function downloadAuditPack() {
-    if (!audit) return;
-    const blob = new Blob([JSON.stringify(audit, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `night-audit-${audit.business_date}.json`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(url);
-    setToast("Current MongoDB Night Audit snapshot downloaded");
-  }
-
-  if (loading && !audit) {
-    return (
-      <main className="grid min-h-[calc(100vh-72px)] place-items-center bg-white p-6">
-        <div className="flex items-center gap-3 text-sm text-slate-500">
-          <Loader2 className="h-5 w-5 animate-spin" />
-          Loading Night Audit from MongoDB...
-        </div>
-      </main>
-    );
-  }
-
-  if (!audit) {
-    return (
-      <main className="min-h-[calc(100vh-72px)] bg-white p-4 lg:p-6">
-        <section className="rounded-lg border border-rose-200 bg-rose-50 p-5 text-rose-700">
-          <h1 className="text-xl font-semibold">Night Audit could not be loaded</h1>
-          <p className="mt-2 text-sm">{errorMessage || "Check that the backend and MongoDB are running."}</p>
-          <button type="button" onClick={() => void loadAudit(true)} className="mt-4 rounded-md bg-rose-700 px-4 py-2 text-sm font-semibold text-white">
-            Try Again
-          </button>
+      const r = await api.post<{ night_audit: Audit; outcome?: string }>(path, { property_id: propertyId, audit_id: audit._id, ...body });
+      setAudit(r.data.night_audit); setNotice(r.data.outcome === "blocked" ? "The day is still open. Resolve the items below, then run again." : message);
+      setHistory((await api.get<{ night_audits: History[] }>("/night-audit/history", { params: { property_id: propertyId } })).data.night_audits);
+      setConfirmed(false);
+    } catch (e) { setError(getApiErrorMessage(e, "The action could not finish. Refresh to confirm the day status before retrying.")); }
+    finally { setBusy(false); }
+  };
+  const openReport = async (id: string) => { if (!audit || busy) return; setBusy(true); try { setReport((await api.get<{ report: Report }>(`/night-audit/${audit._id}/reports/${id}`, { params: { property_id: propertyId } })).data.report); } catch (e) { setError(getApiErrorMessage(e, "Could not open the saved report.")); } finally { setBusy(false); } };
+  const s = audit?.snapshot, closed = audit?.status === "closed";
+  return <main className="settings-appearance min-w-0 space-y-6 p-4 text-ink lg:p-7">
+    <header className="flex flex-wrap items-start justify-between gap-4"><div><h1 className="text-3xl font-bold">Night Audit</h1><p className="mt-2 text-sm text-slate-500">Check the day. Resolve exceptions. Close once. Verify later.</p></div><button className={button} disabled={busy || loading} onClick={() => void load()}><RefreshCw size={16} className={loading ? "animate-spin" : ""} />Refresh</button></header>
+    {error && <p role="alert" className="rounded-xl border border-red-300 p-4 text-sm text-red-600">{error}</p>}
+    {notice && <p role="status" className="rounded-xl border border-blue-300 p-4 text-sm text-blue-600">{notice}</p>}
+    {!audit ? <p className="rounded-xl border border-line bg-white p-8 text-slate-500">{loading ? "Loading the audit day…" : "No audit loaded. Use Refresh to try again."}</p> : <>
+      <section className="rounded-2xl border border-line bg-white p-5 lg:p-6"><div className="flex flex-wrap items-start justify-between gap-5"><div><p className="text-sm text-slate-500">Business date</p><h2 className="mt-1 text-3xl font-bold">{audit.business_date}</h2><p className="mt-2 flex items-center gap-2 text-sm font-semibold">{closed ? <CheckCircle2 size={17} className="text-emerald-600" /> : <Play size={17} className="text-blue-600" />}{closed ? "Completed" : "Open"}<span className="font-normal text-slate-500">· {closed ? pretty(audit.finance_review_status || "pending_review") : "Run now · No scheduled automatic close"}</span></p></div>
+        <div className="max-w-lg text-sm text-slate-500">{closed ? <><p>Completed by {actor(audit.closed_by)} · {stamp(audit.closed_at)}</p><p className="mt-2">Next business date: <b>{audit.next_business_date}</b>. Verification does not delay hotel operations.</p><button className={`${button} mt-3`} disabled={busy || loading} onClick={() => { if (selected) setSelected(""); else void load(); }}>Open current day</button></> : <><p>One run checks reservations and receipts, records existing invoiced stay charges, saves six reports and advances the date.</p><p className="mt-2">No-show decisions stay with staff. A failed run leaves the day open and can be retried safely.</p></>}</div></div>
+        {audit.legacy && <p className="mt-4 rounded-lg border border-amber-300 p-3 text-sm text-amber-600">Historical audit from the previous workflow. Its original figures are preserved; new payment checks and charge calculations are not reconstructed.</p>}
+      </section>
+      {!audit.legacy && s && <>
+        <div className="grid gap-4 md:grid-cols-3"><Metric title="Payments received that day" totals={s.receipt_totals} detail="Actual receipt dates, separated by currency. Not the value of confirmed bookings." /><Metric title="Billed stay charges for this day" totals={s.charge_totals} detail="Room and meal charges including tax, less apportioned credits. Already on guest invoices; no second charge or cash entry." /><section className="rounded-2xl border border-line bg-white p-5"><p className="text-sm text-slate-500">Needs attention</p><p className={`mt-2 text-3xl font-bold ${s.blockers.length ? "text-orange-600" : "text-emerald-600"}`}>{s.blockers.length}</p><p className="mt-2 text-xs text-slate-500">{closed ? "Unresolved blockers at close" : "Resolve blockers before closing. Owner/Admin alone can approve eligible exceptions."}</p></section></div>
+        <section className="rounded-2xl border border-line bg-white p-5"><div className="flex items-center gap-2"><AlertTriangle size={18} className={s.blockers.length ? "text-orange-600" : "text-emerald-600"} /><h2 className="text-lg font-semibold">Checks and exceptions</h2></div>
+          {!s.exceptions.length ? <p className="mt-4 text-sm text-emerald-600">No exceptions found in reservations, housekeeping or receipt checks.</p> : <div className="mt-4 divide-y divide-slate-200">{s.exceptions.map(i => <IssueCard key={i.id} issue={i} propertyId={propertyId} owner={audit.permissions.override && !closed} busy={busy} onOverride={reason => change("/night-audit/current/override", { exception_id: i.id, context_hash: i.context_hash, reason }, "Exception approved. The underlying reservation/room status was not changed.")} />)}</div>}
+          <details className="mt-4 text-sm"><summary className="cursor-pointer font-semibold text-blue-600">What this run checks</summary><ul className="mt-3 list-disc space-y-2 pl-5 text-slate-500"><li>Arrivals needing a decision and due checkouts still in-house.</li><li>Existing accommodation invoices, including day-use and tax.</li><li>Receipts posted on this date and saved external verification.</li><li>Dirty/in-progress rooms and maintenance warnings.</li><li>Six saved reports before the date changes. OTA reconciliation is not connected.</li></ul></details>
         </section>
-      </main>
-    );
-  }
-
-  const snapshot = audit.snapshot;
-  const reportTitles = audit.reports.length ? audit.reports.map((report) => report.title) : expectedReports;
-  const folioStep = findStep(audit, "folio-posting");
-  const housekeepingStep = findStep(audit, "housekeeping-close");
-  const reportsStep = findStep(audit, "audit-reports");
-
-  return (
-    <main className="min-h-[calc(100vh-72px)] bg-white p-4 lg:p-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-semibold">Night Audit</h1>
-            <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">MongoDB live</span>
-          </div>
-          <p className="mt-1 text-sm text-slate-500">Close the business day after front desk, housekeeping, financials, and reports are reviewed.</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="flex h-11 items-center gap-2 rounded-md border border-line bg-slate-50 px-3 text-sm font-semibold" title="The business date advances only after Complete Audit.">
-            <CalendarDays className="h-4 w-4 text-slate-500" />
-            <input type="date" value={audit.business_date} readOnly disabled className="border-0 bg-transparent p-0 disabled:opacity-100" />
-          </label>
-          <button type="button" onClick={() => void loadAudit(true)} disabled={busy || loading} className="inline-flex h-11 items-center gap-2 rounded-md border border-line bg-white px-4 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50">
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-            {audit.status === "closed" ? "Open current day" : "Refresh"}
-          </button>
-          <button type="button" onClick={downloadAuditPack} disabled={busy} className="inline-flex h-11 items-center gap-2 rounded-md border border-line bg-white px-4 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50">
-            <Download className="h-4 w-4" />
-            Download Pack
-          </button>
-          {canRun && <button type="button" onClick={() => void finishAudit()} className="inline-flex h-11 items-center gap-2 rounded-md bg-slate-950 px-4 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400" disabled={!audit.can_complete || busy}>
-            {action === "complete" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Moon className="h-4 w-4" />}
-            Complete Audit
-          </button>}
-        </div>
-      </div>
-
-      {errorMessage ? (
-        <div className="mt-4 flex items-start gap-2 rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>{errorMessage}</span>
-        </div>
-      ) : null}
-
-      <section className="mt-5 rounded-lg border border-line bg-white p-5">
-        <h2 className="text-lg font-semibold">{audit.status === "closed" ? "Completed" : "Open business day"}{audit.status === "closed" ? ` · Finance: ${reviewLabel(audit.finance_review_status)}` : ""}</h2>
-        {audit.status === "closed" ? <>
-          <p className="mt-2 text-sm text-slate-500">Completed by {audit.closed_by?.name || audit.closed_by?.email || "System"} · {audit.closed_at ? new Date(audit.closed_at).toLocaleString() : ""}. Next business day: {audit.next_business_date}. Finance review does not hold up the next day.</p>
-          {audit.finance_reviewed_at && <p className="mt-2 text-sm">Last review by {audit.finance_reviewed_by?.name || audit.finance_reviewed_by?.email} · {new Date(audit.finance_reviewed_at).toLocaleString()}</p>}
-          {audit.finance_review_note && <p className="mt-2 whitespace-pre-wrap text-sm">{audit.finance_review_note}</p>}
-          {access.role === "finance" && <div className="mt-4 space-y-3"><label className="grid gap-2 text-sm">Review outcome<select value={reviewStatus} disabled={busy} onChange={event => setReviewStatus(event.target.value as "reviewed" | "flagged")} className="h-11 rounded-md border border-line bg-white px-3"><option value="reviewed">Reviewed</option><option value="flagged">Flagged</option></select></label><label className="grid gap-2 text-sm">Review notes<textarea maxLength={3000} value={reviewNote} disabled={busy} onChange={event => setReviewNote(event.target.value)} className="min-h-24 rounded-md border border-line p-3" placeholder="Explain any discrepancy. Required when flagging." /></label><button onClick={() => void saveFinanceReview()} disabled={busy || (reviewStatus === "flagged" && reviewNote.trim().length < 3)} className="rounded-md bg-blue-600 px-4 py-2 font-semibold text-white disabled:opacity-50">Save Finance review</button></div>}
-          {(audit.finance_review_history || []).length > 0 && <details className="mt-3 text-sm"><summary className="cursor-pointer font-medium">Review history</summary><ul className="mt-2 space-y-2">{audit.finance_review_history.map((review, index) => <li key={index}>{reviewLabel(review.status)} · {review.actor.name || review.actor.email} · {new Date(review.at).toLocaleString()}<p className="whitespace-pre-wrap text-slate-500">{review.note}</p></li>)}</ul></details>}
-        </> : <p className="mt-2 text-sm text-slate-500">{canRun ? "Complete the required checks before closing. Blocker overrides require Owner/Admin." : "Read-only operational audit. Select a completed day under Previous Closes to record a Finance review."}</p>}
-      </section>
-
-      <section className="mt-5 grid gap-4 xl:grid-cols-5">
-        <SummaryCard label="Business Date" value={dateLabel(audit.business_date)} helper={`Next close opens ${dateLabel(addDays(audit.business_date, 1))}`} icon={<CalendarDays className="h-5 w-5" />} />
-        <SummaryCard label="Occupied Rooms" value={String(snapshot.occupied_rooms)} helper={`${snapshot.available_rooms} available`} icon={<Hotel className="h-5 w-5" />} />
-        <SummaryCard label="Revenue To Post" value={money(snapshot.currency, snapshot.revenue_posted ? snapshot.revenue_posted_amount : snapshot.estimated_room_revenue)} helper={`${snapshot.transaction_count} posted transactions today`} icon={<WalletCards className="h-5 w-5" />} />
-        <SummaryCard label="Open Balances" value={money(snapshot.currency, snapshot.open_balance_total)} helper={`${snapshot.open_balances.length} folios with balance`} icon={<FileText className="h-5 w-5" />} />
-        <SummaryCard label="Exceptions" value={`${blockerCount} / ${warningCount}`} helper="Blockers / warnings" icon={<AlertTriangle className="h-5 w-5" />} />
-      </section>
-
-      <section className="mt-5 rounded-lg border border-line bg-white p-5 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h2 className="text-2xl font-semibold">Audit Progress</h2>
-            <p className="mt-1 text-sm text-slate-500">{completedRequired} of {requiredSteps.length} required checks completed.</p>
-          </div>
-          {canRun && <div className="flex flex-wrap gap-2">
-            <QuickAction label="Post Room Revenue" actionKey="folio-posting" activeAction={action} disabled={busy || isCompleteStatus(folioStep.status)} onClick={() => reviewStep(folioStep)} />
-            <QuickAction label="Review Housekeeping" actionKey="housekeeping-close" activeAction={action} disabled={busy || isCompleteStatus(housekeepingStep.status)} onClick={() => reviewStep(housekeepingStep)} />
-            <QuickAction label="Generate Reports" actionKey="audit-reports" activeAction={action} disabled={busy || isCompleteStatus(reportsStep.status)} primary onClick={() => reviewStep(reportsStep)} />
-          </div>}
-        </div>
-        <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-100">
-          <div className="h-full rounded-full bg-emerald-500 transition-[width]" style={{ width: `${Math.round((completedRequired / Math.max(requiredSteps.length, 1)) * 100)}%` }} />
-        </div>
-      </section>
-
-      <div className="mt-5 grid gap-5 xl:grid-cols-[1.3fr_0.7fr]">
-        <section className="space-y-4">
-          {audit.steps.map((step) => {
-            const active = action === step.id || action === `override:${step.id}`;
-            const blockers = step.exceptions.filter((exception) => exception.severity === "blocker" && !exception.resolved);
-            const allowOverride = canRun && isOwnerAdmin && step.id === "front-desk-status" && blockers.length > 0;
-            return (
-              <article key={step.id} className={`rounded-lg border border-line bg-white p-5 shadow-sm ${step.disabled ? "opacity-75" : ""}`}>
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-3">
-                      {statusIcon(step.status)}
-                      <h3 className="text-xl font-semibold">{step.title}</h3>
-                      <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusClass[step.status]}`}>{statusLabel(step.status)}</span>
-                    </div>
-                    <p className="mt-2 text-sm text-slate-500">{step.description}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-2xl font-semibold">{step.metric}</p>
-                    <p className="text-xs text-slate-500">{step.required ? "Required" : "Not required"}</p>
-                  </div>
-                </div>
-
-                <div className="mt-4 grid gap-4 lg:grid-cols-2">
-                  <div className="rounded-md bg-slate-50 p-4">
-                    <p className="text-sm font-semibold text-slate-700">Evidence</p>
-                    <ul className="mt-3 space-y-2 text-sm text-slate-600">
-                      {stepEvidence(step.id, audit).map((item) => (
-                        <li key={item} className="flex gap-2">
-                          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
-                          <span>{item}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                  <div className="rounded-md bg-slate-50 p-4">
-                    <p className="text-sm font-semibold text-slate-700">Exceptions</p>
-                    {step.exceptions.length ? (
-                      <div className="mt-3 space-y-2">
-                        {step.exceptions.map((exception) => (
-                          <div key={exception.id} className="rounded-md border border-line bg-white p-3 text-sm">
-                            <div className="flex items-center justify-between gap-3">
-                              <span className="font-semibold">{exception.label}</span>
-                              <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${exception.resolved ? "bg-emerald-50 text-emerald-700" : exception.severity === "blocker" ? "bg-rose-50 text-rose-700" : "bg-amber-50 text-amber-700"}`}>
-                                {exception.resolved ? "Overridden" : titleCase(exception.severity)}
-                              </span>
-                            </div>
-                            <p className="mt-1 text-slate-500">{exception.detail}</p>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="mt-3 text-sm text-slate-500">No exceptions for this audit check.</p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="mt-4 flex justify-end gap-2">
-                  {allowOverride ? (
-                    <button type="button" onClick={() => requestManagerOverride(step)} disabled={busy} className="rounded-md border border-line bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50">
-                      Owner/Admin Override
-                    </button>
-                  ) : null}
-                  {canRun && !step.disabled && !isCompleteStatus(step.status) ? (
-                    <button type="button" onClick={() => reviewStep(step)} disabled={busy || (step.status === "blocked" && !["folio-posting", "audit-reports"].includes(step.id))} className="inline-flex items-center gap-2 rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400">
-                      {active ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                      {stepActionLabel(step)}
-                    </button>
-                  ) : null}
-                </div>
-              </article>
-            );
-          })}
+        <section className="rounded-2xl border border-line bg-white p-5"><h2 className="text-lg font-semibold">Payment checks</h2><p className="mt-2 text-sm text-slate-500">Compare receipts with cash received, successful card-terminal transactions or bank evidence. This checks receipt amounts, not the closing bank/drawer balance. No card numbers or bank login details.</p>
+          <Receipts key={`${audit._id}:${s.payment_fingerprint}`} groups={s.receipt_groups} canEdit={audit.permissions.run && !closed} busy={busy} onSave={entries => change("/night-audit/current/reconciliation", { fingerprint: s.payment_fingerprint, entries }, "Receipt checks saved. Differences remain blockers until resolved or approved by Owner/Admin.")} />
+          <details className="mt-4 text-sm"><summary className="cursor-pointer font-semibold text-blue-600">View the receipts being checked ({s.receipts.length})</summary><div className="mt-3 max-h-80 overflow-auto"><table className="w-full min-w-[620px] text-left"><thead><tr>{["Invoice", "Method", "Payment reference", "Amount"].map(v => <th className="p-2 text-xs text-slate-500" key={v}>{v}</th>)}</tr></thead><tbody>{s.receipts.map(p => <tr key={p.id} className="border-t border-line"><td className="p-2">{p.invoice_no || "Reservation payment"}</td><td className="p-2">{pretty(p.payment_method)}</td><td className="p-2">{p.reference || "Not recorded"}</td><td className="whitespace-nowrap p-2">{money(p.amount, p.currency)}</td></tr>)}</tbody></table></div></details>
+          <div className="mt-5 grid gap-3 md:grid-cols-3"><SmallTotals title="Recorded payments out" totals={s.outflow_totals} /><SmallTotals title="Unused advances returned" totals={s.returned_totals} /><SmallTotals title="Unpaid guest invoices · all dates" totals={s.balance_totals} /></div><p className="mt-3 text-xs text-slate-500">Unpaid invoices include future bookings and checked-out guests. They are not today's cash receipts. An unpaid balance alone does not stop the audit.</p>
         </section>
-
-        <aside className="space-y-5">
-          <section className="rounded-lg border border-line bg-white p-5 shadow-sm">
-            <h2 className="text-xl font-semibold">Audit Reports</h2>
-            <div className="mt-4 space-y-2">
-              {reportTitles.map((report) => (
-                <div key={report} className="flex items-center justify-between rounded-md border border-line px-3 py-2 text-sm">
-                  <span>{report}</span>
-                  {audit.reports_generated_at ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <Clock className="h-4 w-4 text-slate-400" />}
-                </div>
-              ))}
-            </div>
-            {audit.reports_generated_at ? (
-              <p className="mt-3 text-xs text-slate-500">Generated {formatDateTime(audit.reports_generated_at)}</p>
-            ) : (
-              <p className="mt-3 text-xs text-amber-600">Generate reports before completing the audit.</p>
-            )}
-          </section>
-
-          <section className="rounded-lg border border-line bg-white p-5 shadow-sm">
-            <h2 className="text-xl font-semibold">Close Notes</h2>
-            <textarea readOnly={!canRun} maxLength={3000} value={closeNote} onChange={(event) => setCloseNote(event.target.value)} placeholder="Optional handover notes for the next shift..." className="focus-ring mt-4 min-h-32 w-full rounded-md border border-line px-3 py-2 text-sm" />
-            {canRun && <button type="button" onClick={saveNote} disabled={busy} className="mt-3 inline-flex items-center gap-2 rounded-md border border-line bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50">
-              {action === "note" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              Save Note
-            </button>}
-          </section>
-
-          <section className="rounded-lg border border-line bg-white p-5 shadow-sm">
-            <h2 className="text-xl font-semibold">Previous Closes</h2>
-            {history.length ? (
-              <div className="mt-4 max-h-[40rem] space-y-3 overflow-y-auto">
-                {history.map((record) => (
-                  <button type="button" disabled={busy} onClick={() => void openClosedAudit(record._id)} key={record._id} className="block w-full rounded-md border border-line p-3 text-left text-sm hover:bg-slate-50 disabled:opacity-50">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold">{dateLabel(record.business_date)}</span>
-                      <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">Closed</span>
-                    </div>
-                    <p className="mt-2 text-slate-500">Closed by {record.closed_by?.name || "System"}</p>
-                    <p className="mt-1 text-slate-500">Revenue {money(record.currency, record.revenue_posted_amount)} | Open balance {money(record.currency, record.close_summary?.open_balance_total || 0)}</p>
-                    <p className="mt-2 font-medium">Finance: {reviewLabel(record.finance_review_status)}</p>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <p className="mt-4 text-sm text-slate-500">No completed Night Audits in MongoDB yet.</p>
-            )}
-          </section>
-        </aside>
-      </div>
-    </main>
-  );
+      </>}
+      {!closed && audit.permissions.run && <section className="space-y-4 rounded-2xl border border-line bg-white p-5"><h2 className="text-lg font-semibold">Close this business day</h2><label className="grid gap-2 text-sm">Handover note (optional)<textarea className={input} rows={2} maxLength={3000} value={note} disabled={busy} onChange={e => setNote(e.target.value)} placeholder="Anything the next shift should know" /></label><label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={confirmed} disabled={busy} onChange={e => setConfirmed(e.target.checked)} />I am ready to close {audit.business_date}. The next business date will open if all checks pass.</label><button className={primary} disabled={busy || loading || !confirmed} onClick={() => void change("/night-audit/current/run", { confirmed, close_note: note }, "Audit completed. Reports saved and the next business day is open.")}><Play size={16} />{busy ? "Working…" : "Run Night Audit"}</button><p className="text-xs text-slate-500">Unresolved blockers stop the run before closing. Charges and reports are saved together; retrying cannot bill guests twice.</p></section>}
+      {closed && <section className="rounded-2xl border border-line bg-white p-5"><h2 className="text-lg font-semibold">Saved reports</h2><p className="mt-2 text-sm text-slate-500">These reports are frozen at close. Later booking/payment changes do not rewrite them.</p><div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{audit.reports.map(r => <button key={r.report_run_id} className={`${button} justify-start text-left`} disabled={busy} onClick={() => void openReport(r.report_run_id)}>{r.title}</button>)}</div>{audit.close_note && <p className="mt-4 whitespace-pre-wrap text-sm"><b>Handover:</b> {audit.close_note}</p>}</section>}
+      {closed && <Review key={`${audit._id}:${audit.version}`} audit={audit} busy={busy} onSave={(status, reviewNote) => change(`/night-audit/${audit._id}/finance-review`, { status, note: reviewNote, version: audit.version, confirmed: true }, "Verification saved. The closed day and its reports were not changed.")} />}
+    </>}
+    {report && <ReportPanel report={report} onClose={() => setReport(null)} />}
+    <section className="rounded-2xl border border-line bg-white p-5"><h2 className="text-lg font-semibold">Completed days</h2><p className="mt-2 text-sm text-slate-500">Open a previous day to inspect reports and verify it. The latest 100 closes are shown.</p><div className="mt-4 max-h-96 overflow-auto">{history.length ? history.map(h => <button disabled={busy} key={h._id} onClick={() => setSelected(h._id)} className={`flex w-full flex-wrap items-center justify-between gap-2 border-b border-line p-3 text-left text-sm ${audit?._id === h._id ? "bg-blue-50 text-blue-700" : ""}`}><span><b>{h.business_date}</b><span className="ml-3 text-slate-500">{actor(h.closed_by)}</span></span><span>{pretty(h.finance_review_status || "pending_review")}</span></button>) : <p className="py-4 text-sm text-slate-500">No completed audits yet.</p>}</div></section>
+  </main>;
 }
 
-function QuickAction({ label, actionKey, activeAction, disabled, primary = false, onClick }: {
-  label: string;
-  actionKey: string;
-  activeAction: string;
-  disabled: boolean;
-  primary?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button type="button" onClick={onClick} disabled={disabled} className={`inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-50 ${primary ? "bg-blue-600 text-white hover:bg-blue-700" : "border border-line bg-white hover:bg-slate-50"}`}>
-      {activeAction === actionKey ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-      {label}
-    </button>
-  );
+function Metric({ title, totals, detail }: { title: string; totals: Totals; detail: string }) { return <section className="rounded-2xl border border-line bg-white p-5"><p className="text-sm text-slate-500">{title}</p><div className="mt-2 space-y-1">{totals.length ? totals.map(t => <p className="text-2xl font-bold" key={t.currency}>{money(t.amount, t.currency)}</p>) : <p className="text-2xl font-bold">0.00</p>}</div><p className="mt-3 text-xs leading-5 text-slate-500">{detail}</p></section>; }
+function SmallTotals({ title, totals }: { title: string; totals: Totals }) { return <div className="rounded-xl border border-line p-3 text-sm"><p className="text-xs text-slate-500">{title}</p>{totals.length ? totals.map(t => <p className="mt-1 font-semibold" key={t.currency}>{money(t.amount, t.currency)}</p>) : <p className="mt-1">0.00</p>}</div>; }
+function IssueCard({ issue: i, propertyId, owner, busy, onOverride }: { issue: Issue; propertyId: string; owner: boolean; busy: boolean; onOverride: (reason: string) => Promise<void> }) {
+  const [open, setOpen] = useState(false), [reason, setReason] = useState("");
+  return <div className="py-4"><div className="flex flex-wrap items-center justify-between gap-3"><h3 className="text-sm font-semibold">{i.title}</h3><span className={`text-xs font-semibold ${i.overridden ? "text-blue-600" : "text-orange-600"}`}>{i.overridden ? "Exception approved" : i.severity === "blocker" ? "Needs a fix" : "Warning"}</span></div><p className="mt-2 text-sm text-slate-500">{i.detail}</p>{i.overridden && <p className="mt-2 text-sm">Approved by {actor(i.override?.approved_by)}: {i.override?.reason}</p>}<div className="mt-3 flex flex-wrap gap-4 text-sm">{i.link && <Link className="font-semibold text-blue-600" href={`/properties/${propertyId}/${i.link}`}>Open relevant page</Link>}{owner && i.can_override && !i.overridden && i.severity === "blocker" && <button disabled={busy} className="font-semibold text-blue-600" onClick={() => setOpen(!open)}>Approve exception</button>}</div>{open && !i.overridden && <form className="mt-3 space-y-3" onSubmit={e => { e.preventDefault(); void onOverride(reason); }}><label className="grid gap-2 text-sm">Why can the day close with this issue?<textarea required minLength={10} maxLength={1000} rows={2} className={input} value={reason} disabled={busy} onChange={e => setReason(e.target.value)} /></label><button disabled={busy || reason.trim().length < 10} className={button}>Save Owner/Admin exception</button></form>}</div>;
 }
-
-function SummaryCard({ label, value, helper, icon }: { label: string; value: string; helper: string; icon: React.ReactNode }) {
-  return (
-    <section className="rounded-lg border border-line bg-white p-5 shadow-sm">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-semibold text-slate-600">{label}</span>
-        <span className="grid h-9 w-9 place-items-center rounded-md bg-slate-50 text-slate-600">{icon}</span>
-      </div>
-      <p className="mt-4 text-2xl font-semibold">{value}</p>
-      <p className="mt-1 text-sm text-slate-500">{helper}</p>
-    </section>
-  );
+function Receipts({ groups, canEdit, busy, onSave }: { groups: ReceiptGroup[]; canEdit: boolean; busy: boolean; onSave: (entries: { key: string; actual: number; note: string; confirmed: boolean }[]) => Promise<void> }) {
+  const [entries, setEntries] = useState(groups.map(g => ({ key: g.key, actual: g.verification ? String(g.verification.actual) : "", note: g.verification?.note || "", confirmed: Boolean(g.verification) })));
+  const update = (index: number, field: string, value: string | boolean) => setEntries(items => items.map((e, i) => i === index ? { ...e, [field]: value } : e));
+  if (!groups.length) return <p className="mt-4 text-sm text-emerald-600">No guest payments were received on this date. No receipt check is required.</p>;
+  return <form className="mt-4 space-y-4" onSubmit={e => { e.preventDefault(); void onSave(entries.map(v => ({ ...v, actual: Number(v.actual) }))); }}>{groups.map((g, index) => <div key={g.key} className="rounded-xl border border-line p-4"><div className="flex flex-wrap justify-between gap-3"><h3 className="font-semibold">{pretty(g.method)} · {g.currency}</h3><p className="text-sm">PMS receipts: <b>{money(g.expected, g.currency)}</b> · {g.count} payment(s)</p></div><div className="mt-3 grid gap-3 md:grid-cols-2"><label className="grid gap-2 text-sm">Actual receipts verified<input type="number" required min="0" step="0.01" className={input} disabled={busy || !canEdit} value={entries[index].actual} onChange={e => update(index, "actual", e.target.value)} placeholder="Amount checked against external evidence" /></label><label className="grid gap-2 text-sm">Note / evidence reference<textarea rows={1} maxLength={1000} className={input} disabled={busy || !canEdit} value={entries[index].note} onChange={e => update(index, "note", e.target.value)} placeholder="Terminal batch / bank reference; explain a difference" /></label></div>{entries[index].actual !== "" && <p className={`mt-3 text-sm font-semibold ${Number(entries[index].actual) === g.expected ? "text-emerald-600" : "text-orange-600"}`}>Difference: {money(Number(entries[index].actual) - g.expected, g.currency)}</p>}<label className="mt-3 flex items-start gap-2 text-sm"><input type="checkbox" required disabled={busy || !canEdit} checked={entries[index].confirmed} onChange={e => update(index, "confirmed", e.target.checked)} />I compared these receipts with actual cash received / successful card-terminal records / bank evidence.</label></div>)}{canEdit && <button className={button} disabled={busy || entries.some(e => !e.confirmed || e.actual === "")}>Save receipt checks</button>}</form>;
 }
-
-function findStep(audit: NightAudit, stepId: string) {
-  const step = audit.steps.find((item) => item.id === stepId);
-  if (!step) throw new Error(`Night Audit step ${stepId} was not returned by the API.`);
-  return step;
+function Review({ audit, busy, onSave }: { audit: Audit; busy: boolean; onSave: (status: string, note: string) => Promise<void> }) {
+  const [status, setStatus] = useState("reviewed"), [note, setNote] = useState(""), [confirmed, setConfirmed] = useState(false);
+  return <section className="rounded-2xl border border-line bg-white p-5"><h2 className="flex items-center gap-2 text-lg font-semibold"><ShieldCheck size={19} />Verification</h2><p className="mt-2 text-sm text-slate-500">Finance or Owner/Admin checks saved reports, payment evidence and approved exceptions. Verification never reopens or edits the day.</p><p className="mt-3 font-semibold">{pretty(audit.finance_review_status || "pending_review")}</p>{audit.finance_reviewed_by && <p className="mt-1 text-sm text-slate-500">{actor(audit.finance_reviewed_by)} · {stamp(audit.finance_reviewed_at)}{audit.finance_reviewed_by.user_id === audit.closed_by?.user_id && " · Also ran this audit"}</p>}{audit.finance_review_note && <p className="mt-2 whitespace-pre-wrap text-sm">{audit.finance_review_note}</p>}{audit.permissions.verify && <form className="mt-4 space-y-3" onSubmit={e => { e.preventDefault(); void onSave(status, note); }}><label className="grid gap-2 text-sm">Outcome<select value={status} disabled={busy} className={input} onChange={e => setStatus(e.target.value)}><option value="reviewed">Reviewed — checked and accepted</option><option value="flagged">Flagged — needs investigation</option></select></label><label className="grid gap-2 text-sm">Review note<textarea maxLength={3000} required={status === "flagged"} minLength={status === "flagged" ? 5 : undefined} className={input} value={note} disabled={busy} onChange={e => setNote(e.target.value)} /></label><label className="flex items-start gap-2 text-sm"><input type="checkbox" required disabled={busy} checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />I reviewed the saved reports and supporting payment evidence.</label><button className={primary} disabled={busy || !confirmed || (status === "flagged" && note.trim().length < 5)}>Save verification</button></form>}{audit.finance_review_history?.length > 0 && <details className="mt-4 text-sm"><summary className="cursor-pointer text-blue-600">Verification history</summary>{audit.finance_review_history.map((r, i) => <p className="mt-3 whitespace-pre-wrap border-t border-line pt-3" key={i}>{pretty(r.status)} · {actor(r.actor)} · {stamp(r.at)}<br />{r.note}</p>)}</details>}</section>;
 }
-
-function isCompleteStatus(status: NightAuditStepStatus) {
-  return status === "done" || status === "reviewed_with_warnings";
-}
-
-function statusLabel(status: NightAuditStepStatus) {
-  if (status === "reviewed_with_warnings") return "Done with warnings";
-  return titleCase(status);
-}
-
-function statusIcon(status: NightAuditStepStatus) {
-  if (status === "done") return <CheckCircle2 className="h-5 w-5 text-emerald-600" />;
-  if (status === "reviewed_with_warnings" || status === "warning") return <AlertTriangle className="h-5 w-5 text-amber-600" />;
-  if (status === "ready") return <ShieldCheck className="h-5 w-5 text-blue-600" />;
-  if (status === "disabled") return <ShieldCheck className="h-5 w-5 text-slate-400" />;
-  return <XCircle className="h-5 w-5 text-rose-600" />;
-}
-
-function stepActionLabel(step: NightAuditStep) {
-  if (step.id === "folio-posting") return "Post Room Revenue";
-  if (step.id === "housekeeping-close") return "Review Housekeeping";
-  if (step.id === "channel-check") return "Review Channels";
-  if (step.id === "audit-reports") return "Generate Reports";
-  return "Mark Reviewed";
-}
-
-function stepEvidence(stepId: string, audit: NightAudit) {
-  const snapshot = audit.snapshot;
-  if (stepId === "front-desk-status") {
-    return [
-      `${snapshot.due_arrivals.length} arrivals due today`,
-      `${snapshot.due_departures.length} checked-in departures due`,
-      `${snapshot.in_house.length} active in-house stays`
-    ];
-  }
-  if (stepId === "folio-posting") {
-    return [
-      `${snapshot.transaction_count} posted financial transactions on the audit date`,
-      `${money(snapshot.currency, snapshot.estimated_room_revenue)} calculated room revenue`
-    ];
-  }
-  if (stepId === "payment-reconciliation") {
-    return [
-      `${money(snapshot.currency, snapshot.deposit_total)} deposits and paid amounts recorded`,
-      `${snapshot.open_balances.length} reservations have a remaining balance`
-    ];
-  }
-  if (stepId === "housekeeping-close") {
-    return [
-      `${snapshot.available_rooms} rooms available`,
-      `${snapshot.occupied_rooms} rooms occupied`,
-      `${snapshot.dirty_rooms.length} dirty or in-progress rooms`
-    ];
-  }
-  if (stepId === "channel-check") {
-    return snapshot.channel_manager.connected
-      ? ["Live Channel Manager integration connected"]
-      : ["No live Channel Manager API is connected", "This check is not required for close"];
-  }
-  return audit.reports_generated_at
-    ? [`${audit.reports.length} reports generated ${formatDateTime(audit.reports_generated_at)}`]
-    : [`${expectedReports.length} reports required for close`];
-}
-
-function money(currency: string, value: number) {
-  return `${currency} ${Number(value || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
-function addDays(value: string, days: number) {
-  const date = new Date(`${value}T00:00:00.000Z`);
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
-}
-
-function formatDateTime(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Unknown time";
-  return date.toLocaleString("en-US", {
-    month: "short",
-    day: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit"
-  });
-}
-
-function titleCase(value: string) {
-  return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function reviewLabel(status?: string) {
-  return status === "reviewed" ? "Reviewed" : status === "flagged" ? "Flagged" : "Pending Review";
+function ReportPanel({ report, onClose }: { report: Report; onClose: () => void }) {
+  const rows = report.rows || [], columns = rows.length ? Object.keys(rows[0]).filter(k => !k.endsWith("_id") && k !== "id" && k !== "actor") : [];
+  const value = (v: unknown) => {
+    if (v === undefined || v === null) return "";
+    if (Array.isArray(v) && v.every(t => t && typeof t.currency === "string" && typeof t.amount === "number")) return v.map(t => money(t.amount, t.currency)).join(" / ");
+    return typeof v === "object" ? JSON.stringify(v) : String(v);
+  };
+  const download = () => { const cell = (v: unknown) => { let s = value(v); if (/^[\s]*[=+@-]/.test(s)) s = "'" + s; return `"${s.replaceAll('"', '""')}"`; }; const csv = "\uFEFF" + [columns, ...rows.map(r => columns.map(c => r[c]))].map(r => r.map(cell).join(",")).join("\r\n"); const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" })), a = document.createElement("a"); a.href = url; a.download = `${report.title.replaceAll(" ", "-")}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); };
+  return <section className="min-w-0 rounded-2xl border border-line bg-white p-5"><div className="flex flex-wrap justify-between gap-3"><h2 className="text-lg font-semibold">{report.title}</h2><div className="flex gap-2"><button className={button} onClick={download} disabled={!rows.length}><Download size={16} />Export CSV</button><button className={button} onClick={onClose}>Close report</button></div></div><div className="mt-4 max-h-96 overflow-auto">{rows.length ? <table className="w-full min-w-max text-left text-xs"><thead><tr>{columns.map(c => <th key={c} className="p-2">{pretty(c)}</th>)}</tr></thead><tbody>{rows.map((r, i) => <tr key={i} className="border-t border-line">{columns.map(c => <td key={c} className="max-w-sm whitespace-pre-wrap p-2">{value(r[c])}</td>)}</tr>)}</tbody></table> : <p className="text-sm text-slate-500">No saved rows. Historical reports may contain summary metadata only.</p>}</div></section>;
 }

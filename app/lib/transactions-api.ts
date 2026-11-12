@@ -8,7 +8,7 @@ export type BackendFinancialTransaction = {
   property_id: string;
   transaction_no: string;
   transaction_date: string;
-  source_type: "invoice" | "payment" | "credit_note" | "refund" | "withdrawal" | "purchase" | "supplier_payment" | "expense";
+  source_type: "invoice" | "payment" | "credit_note" | "refund" | "withdrawal" | "purchase" | "supplier_payment" | "expense" | "money_request" | "money_request_return";
   source_id: string;
   source_number: string;
   direction: BackendTransactionDirection;
@@ -21,6 +21,7 @@ export type BackendFinancialTransaction = {
   description: string;
   status: BackendTransactionStatus;
   created_by?: { user_id?: string; name?: string; email?: string };
+  created_at?: string;
   voided_at?: string;
   void_reason?: string;
 };

@@ -2,6 +2,9 @@ import type { PropertyRole } from "./property-workspaces";
 
 const frontDeskPages = new Set(["dashboard", "front-desk", "reservation/bookings", "reservation/arrivals", "reservation/departures", "reservation/in-house", "reservation/guest-profile", "reservation/travel-agents", "rooms-rates/rooms", "rooms-rates/rates", "rooms-rates/inventory", "housekeeping/board", "housekeeping/information", "financials/invoices"]);
 export function canOpenPropertyPage(role: PropertyRole | "demo" | null, permissions: string[], path: string) {
+  if (path === "settings/activity-logs") return role === "owner" || role === "administrator";
+  if (path === "money-requests") return ["owner", "administrator", "finance", "front_desk", "housekeeping"].includes(role || "");
+  if (path === "financials-2") return ["owner", "administrator", "finance"].includes(role || "") || (role === "member" && permissions.includes("operations.manage"));
   if (path === "night-audit") return ["owner", "administrator", "finance"].includes(role || "") || (role === "front_desk" && permissions.includes("night-audit.run"));
   if (role === "demo" || permissions.includes("operations.manage")) return true;
   if (role === "housekeeping") return ["dashboard", "housekeeping/board"].includes(path);

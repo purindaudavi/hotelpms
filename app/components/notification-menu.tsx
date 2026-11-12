@@ -134,7 +134,7 @@ export function NotificationMenu({ propertyId, onReopen }: { propertyId: string;
           <header className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
             <div className="min-w-0 flex-1">
               <h2 className="font-semibold text-slate-950">Notifications</h2>
-              <p className="text-xs text-slate-500">{unreadCount} unread{frontDesk ? " · Bookings, guest invoices & payments" : housekeeping ? " · Requests & your assignments" : finance ? " · Financial records" : ""}</p>
+              <p className="text-xs text-slate-500">{unreadCount} unread{frontDesk ? " · Bookings, payments & money requests" : housekeeping ? " · Cleaning, assignments & money requests" : finance ? " · Financial records" : ""}</p>
             </div>
             <div className="flex shrink-0 items-center gap-1">
               {unreadCount ? (
@@ -182,7 +182,7 @@ export function NotificationMenu({ propertyId, onReopen }: { propertyId: string;
                 <div>
                   <Bell className="mx-auto h-6 w-6 text-slate-400" />
                   <p className="mt-2 text-sm font-semibold text-slate-700">No notifications yet</p>
-                  <p className="mt-1 text-xs text-slate-500">{frontDesk ? "New bookings, guest invoices and recorded guest payments will appear here." : housekeeping ? "Open cleaning requests and your room assignments will appear here." : finance ? "Invoices, payments and other financial records will appear here." : "New bookings, financial records and housekeeping requests or assignments will appear here."}</p>
+                  <p className="mt-1 text-xs text-slate-500">{frontDesk ? "Bookings, guest payments and your money request updates will appear here." : housekeeping ? "Cleaning requests, assignments and your money request updates will appear here." : finance ? "Invoices, payments and other financial records will appear here." : "New bookings, financial records and housekeeping requests or assignments will appear here."}</p>
                 </div>
               </div>
             )}
